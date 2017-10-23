@@ -55,4 +55,6 @@ consensus2genome("Gypsy2_DM.fasta", "dmel-all-chromosome-r6.17.fasta")
 ```
 
 
-<img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Gypsy_example.jpeg width="500">
+<img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Gypsy_example.jpeg width="550">
+
+As you can see, the graph tells you that the consensus is 7221 bp long, has 417 fragments (hits) on the reference genome and only one fragment is superior of equal to 90% of the consensus sequence (and it is displayed in red).
