@@ -12,14 +12,14 @@ consensus2genome calls blastn from the command line as 'blastn', thus blastn mus
 
 ### 1. Load the function in R
 In R, simply copy and paste the content of consensus2genome.R into a R console and press Enter. Alternatively, you can 'source' the consensus2genome.R file:
-```R
+```Rscript
 source("consensus2genome.R")
 ```
 The function is now loaded for your current R session.
 
 
 ### 2. Run consensus2genome
-```
+```Rscript
 consensus2genome(query, db, FL_thresh, alpha, full_alpha, auto_y)
 ```
 #### mendatory arguments
@@ -47,5 +47,12 @@ wget ftp://ftp.flybase.net/genomes/Drosophila_melanogaster/current/fasta/dmel-al
 gunzip dmel-all-chromosome-r6.17.fasta.gz
 makeblastdb -in dmel-all-chromosome-r6.17.fasta -out dmel-all-chromosome-r6.17.fasta -dbtype 'nucl'
 ```
+
+2. Open R (type 'R' in the terminal then press Enter), load consensus2genome and run the function
+```Rscript
+source("../consensus2genone.R") # load the function
+consensus2genome("Gypsy2_DM.fasta", "dmel-all-chromosome-r6.17.fasta")
+```
+
 
 ![Gypsy2](https://github.com/clemgoub/consensus2genome/blob/master/Example/Gypsy_example.jpeg)
