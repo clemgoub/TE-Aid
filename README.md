@@ -35,3 +35,7 @@ consensus2genome(query, db, FL_thresh, alpha, full_alpha, auto_y)
 - **full_alpha** 0 to 1. Transparency of the full lenght hits (according the FL_thresh) displayed on the graph (red) (0 = invidible, 1 = dense), default = 1
 
 - **auto_y** T or 0 to N. auto adjustment of the y-axis. If true (default) the y-axis (% divergence of the hit to the consensus) is adjusted relative to the data. Can be manually adjusted by changing it with any value > 0 (in % divergence). 
+
+### Example
+
+![Gypsy2](https://github.com/clemgoub/consensus2genome/blob/master/Example/Gypsy_example.jpeg)
