@@ -55,4 +55,4 @@ consensus2genome("Gypsy2_DM.fasta", "dmel-all-chromosome-r6.17.fasta")
 ```
 
 
-<img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Gypsy_example.jpeg width="300">
+<img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Gypsy_example.jpeg width="500">
