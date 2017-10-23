@@ -12,14 +12,14 @@ consensus2genome calls blastn from the command line as 'blastn', thus blastn mus
 
 ### 1. Load the function in R
 In R, simply copy and paste the content of consensus2genome.R into a R console and press Enter. Alternatively, you can 'source' the consensus2genome.R file:
-```R
+```Rscript
 source("consensus2genome.R")
 ```
 The function is now loaded for your current R session.
 
 
 ### 2. Run consensus2genome
-```
+```Rscript
 consensus2genome(query, db, FL_thresh, alpha, full_alpha, auto_y)
 ```
 #### mendatory arguments
@@ -35,3 +35,26 @@ consensus2genome(query, db, FL_thresh, alpha, full_alpha, auto_y)
 - **full_alpha** 0 to 1. Transparency of the full lenght hits (according the FL_thresh) displayed on the graph (red) (0 = invidible, 1 = dense), default = 1
 
 - **auto_y** T or 0 to N. auto adjustment of the y-axis. If true (default) the y-axis (% divergence of the hit to the consensus) is adjusted relative to the data. Can be manually adjusted by changing it with any value > 0 (in % divergence). 
+
+### Example
+
+In this example we are going to map the Gypsy-2 element of ***Drosophila melanogaster*** over the reference genome. We assume that we start from the main folder of consensus2genome package. The consensus sequence is located in the 'Example' folder, and we will need to download the ***D. melanogaster*** reference genome and make a blast database out of it. Let's go!
+
+1. Download the ***D. melanogaster*** genome and create a blast db
+```shell
+cd Example
+wget ftp://ftp.flybase.net/genomes/Drosophila_melanogaster/current/fasta/dmel-all-chromosome-r6.17.fasta.gz
+gunzip dmel-all-chromosome-r6.17.fasta.gz
+makeblastdb -in dmel-all-chromosome-r6.17.fasta -out dmel-all-chromosome-r6.17.fasta -dbtype 'nucl'
+```
+
+2. Open R (type 'R' in the terminal then press Enter), load consensus2genome and run the function
+```Rscript
+source("../consensus2genone.R") # load the function
+consensus2genome("Gypsy2_DM.fasta", "dmel-all-chromosome-r6.17.fasta")
+```
+
+
+<img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Gypsy_example.jpeg width="550">
+
+As you can see, the graph tells you that the consensus is 7221 bp long, has 417 fragments (hits) on the reference genome and only one fragment is superior of equal to 90% of the consensus sequence (and it is displayed in red).
