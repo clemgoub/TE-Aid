@@ -38,4 +38,14 @@ consensus2genome(query, db, FL_thresh, alpha, full_alpha, auto_y)
 
 ### Example
 
+In this example we are going to map the Gypsy-2 element of ***Drosophila melanogaster*** over the reference genome. We assume that we start from the main folder of consensus2genome package. The consensus sequence is located in the 'Example' folder, and we will need to download the ***D. melanogaster*** reference genome and make a blast database out of it. Let's go!
+
+1. Download the ***D. melanogaster*** genome and create a blast db
+```shell
+cd Example
+wget ftp://ftp.flybase.net/genomes/Drosophila_melanogaster/current/fasta/dmel-all-chromosome-r6.17.fasta.gz
+gunzip dmel-all-chromosome-r6.17.fasta.gz
+makeblastdb -in dmel-all-chromosome-r6.17.fasta -out dmel-all-chromosome-r6.17.fasta -dbtype 'nucl'
+```
+
 ![Gypsy2](https://github.com/clemgoub/consensus2genome/blob/master/Example/Gypsy_example.jpeg)
