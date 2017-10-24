@@ -64,6 +64,7 @@ consensus2genome("Jockey_DM.fasta", "/Users/clementgoubert/Documents/TEblast2gra
 ```
 
 <img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Jockey-1.jpeg width="550">
+
 ```Rscript
 consensus2genome("Jockey_DM.fasta", "/Users/clementgoubert/Documents/TEblast2graph/dmel-all-chromosome-r6.17.fasta", full_alpha=0.2, alpha=0.2)
 ```
@@ -82,6 +83,7 @@ consensus2genome("Jockey_DM.fasta", "/Users/clementgoubert/Documents/TEblast2gra
 - Note that I also adjusted here again **alpha** to 0.5 and **full_alpha** to 0.2 for a better render.
 
 #### 3. Exporting the graph
+
 ```Rscript
 pdf("Gypsy2.pdf", width = 8, height= 10)
 consensus2genome("Gypsy2_DM.fasta", "dmel-all-chromosome-r6.17.fasta")
