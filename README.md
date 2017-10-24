@@ -79,7 +79,7 @@ consensus2genome("Jockey_DM.fasta", "/Users/clementgoubert/Documents/TEblast2gra
 ```
 <img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Jockey-3.jpeg width="550">
 
-Note that I also adjusted here again **alpha** to 0.5 and **full_alpha** to 0.2 for a better render.
+- Note that I also adjusted here again **alpha** to 0.5 and **full_alpha** to 0.2 for a better render.
 
 #### 3. Exporting the graph
 ```Rscript
