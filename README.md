@@ -38,7 +38,7 @@ consensus2genome(query, db, FL_thresh, alpha, full_alpha, auto_y)
 
 ## Example
 
-In this example we are going to map the Gypsy-2 and Jockey elements of ***Drosophila melanogaster*** over the reference genome. We assume that we start from the main folder of consensus2genome package. The consensus sequence is located in the 'Example' folder, and we will need to download the ***D. melanogaster*** reference genome and make a blast database out of it. Let's go!
+- In this example we are going to map the Gypsy-2 and Jockey elements of ***Drosophila melanogaster*** over the reference genome. We assume that we start from the main folder of consensus2genome package. The consensus sequence is located in the 'Example' folder, and we will need to download the ***D. melanogaster*** reference genome and make a blast database out of it. Let's go!
 
 #### 1. Download the ***D. melanogaster*** genome and create a blast db
 ```shell
@@ -56,7 +56,7 @@ consensus2genome("Gypsy2_DM.fasta", "dmel-all-chromosome-r6.17.fasta")
 <img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Gypsy_example.jpeg width="550">
 As you can see, the graph tells you that the consensus is 7221 bp long, has 417 fragments (hits) on the reference genome and only one fragment is superior of equal to 90% of the consensus sequence (and it is displayed in red).
 
-Now lets play with the different options of the function, that can be useful with a more fuzy graph at a first glance. We are going to map Jockey, a recent LINE element. According to the evolutionaty biology of this TE family, we expect to see a lot of recent copies (little divergence), many full length copies, as well as the characteristic pattern of 5' truncation of the LINE retroelements.
+- Now lets play with the different options of the function, that can be useful with a more fuzy graph at a first glance. We are going to map Jockey, a recent LINE element. According to the evolutionaty biology of this TE family, we expect to see a lot of recent copies (little divergence), many full length copies, as well as the characteristic pattern of 5' truncation of the LINE retroelements.
 
 ```Rscript
 consensus2genome("Jockey_DM.fasta", "/Users/clementgoubert/Documents/TEblast2graph/dmel-all-chromosome-r6.17.fasta")
@@ -68,15 +68,17 @@ consensus2genome("Jockey_DM.fasta", "/Users/clementgoubert/Documents/TEblast2gra
 ```
 <img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Jockey-2.jpeg width="1100">
 
-As expected we observe a lot of recent copies, as well as 12 full lenght elements. However they seem to mask the other copies. In the same fashin, there are more hits on the 3' end than on the 5' end due to the 5' truncation. We can play with the transparency of the graph to have a better view.
+- As expected we observe a lot of recent copies, as well as 12 full lenght elements. However they seem to mask the other copies. In the same fashin, there are more hits on the 3' end than on the 5' end due to the 5' truncation. We can play with the transparency of the graph to have a better view.
 What we've done? We have a little increased the transparency of the black lines (alpha=0.3 by default to alpha=0.2) and drasticly increased the one of the red 'full-length' hits (alpha = 1 by default to alpha = 0.2).
 
-Now we still don't really see well what is going on because most of the copies are recent, but the graph shows the whole range of divergence, including two older hits, up to 25%. We can "zoom" in to get a better view with the **auto_y** parameter
+- Now we still don't really see well what is going on because most of the copies are recent, but the graph shows the whole range of divergence, including two older hits, up to 25%. We can "zoom" in to get a better view with the **auto_y** parameter
 
 ```Rscript
 consensus2genome("Jockey_DM.fasta", "/Users/clementgoubert/Documents/TEblast2graph/dmel-all-chromosome-r6.17.fasta", full_alpha=0.2, alpha=0.5, auto_y=3.5)
 ```
 <img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Jockey-3.jpeg width="550">
+
+Note that I also adjusted here again **alpha** to 0.5 and **full_alpha** to 0.2 for a better render.
 
 #### 3. Exporting the graph
 ```Rscript
