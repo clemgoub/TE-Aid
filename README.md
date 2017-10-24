@@ -61,15 +61,22 @@ Now lets play with the different options of the function, that can be useful wit
 ```Rscript
 consensus2genome("Jockey_DM.fasta", "/Users/clementgoubert/Documents/TEblast2graph/dmel-all-chromosome-r6.17.fasta")
 ```
-As expected we observe a lot of recent copies, as well as 12 full lenght elements. However they seem to mask the other copies. In the same fashin, there are more hits on the 3' end than on the 5' end due to the 5' truncation. We can play with the transparency of the graph to have a better view.
+
 <img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Jockey-1.jpeg width="550">
 ```Rscript
 consensus2genome("Jockey_DM.fasta", "/Users/clementgoubert/Documents/TEblast2graph/dmel-all-chromosome-r6.17.fasta", full_alpha=0.2, alpha=0.2)
 ```
 <img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Jockey-2.jpeg width="1100">
 
+As expected we observe a lot of recent copies, as well as 12 full lenght elements. However they seem to mask the other copies. In the same fashin, there are more hits on the 3' end than on the 5' end due to the 5' truncation. We can play with the transparency of the graph to have a better view.
 What we've done? We have a little increased the transparency of the black lines (alpha=0.3 by default to alpha=0.2) and drasticly increased the one of the red 'full-length' hits (alpha = 1 by default to alpha = 0.2).
 
+Now we still don't really see well what is going on because most of the copies are recent, but the graph shows the whole range of divergence, including two older hits, up to 25%. We can "zoom" in to get a better view with the **auto_y** parameter
+
+```Rscript
+consensus2genome("Jockey_DM.fasta", "/Users/clementgoubert/Documents/TEblast2graph/dmel-all-chromosome-r6.17.fasta", full_alpha=0.2, alpha=0.5, auto_y=3.5)
+```
+<img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Jockey-3.jpeg width="550">
 
 #### 3. Exporting the graph
 ```Rscript
