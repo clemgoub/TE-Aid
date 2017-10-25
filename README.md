@@ -64,13 +64,13 @@ consensus2genome("Gypsy2_DM.fasta", "dmel-all-chromosome-r6.17.fasta")
 - Now lets play with the different options of the function, that can be useful with a more fuzy graph at a first glance. We are going to map Jockey, a recent LINE element. According to the evolutionaty biology of this TE family, we expect to see a lot of recent copies (little divergence), many full length copies, as well as the characteristic pattern of 5' truncation of the LINE retroelements.
 
 ```Rscript
-consensus2genome("Jockey_DM.fasta", "/Users/clementgoubert/Documents/TEblast2graph/dmel-all-chromosome-r6.17.fasta")
+consensus2genome("Jockey_DM.fasta", "dmel-all-chromosome-r6.17.fasta")
 ```
 
 <img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Jockey-1.jpeg width="550">
 
 ```Rscript
-consensus2genome("Jockey_DM.fasta", "/Users/clementgoubert/Documents/TEblast2graph/dmel-all-chromosome-r6.17.fasta", full_alpha=0.2, alpha=0.2)
+consensus2genome("Jockey_DM.fasta", "dmel-all-chromosome-r6.17.fasta", full_alpha=0.2, alpha=0.2)
 ```
 <img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Jockey-2.jpeg width="1100">
 
@@ -80,7 +80,7 @@ What we've done? We have a little increased the transparency of the black lines 
 - Now we still don't really see well what is going on because most of the copies are recent, but the graph shows the whole range of divergence, including two older hits, up to 25%. We can "zoom" in to get a better view with the **auto_y** parameter
 
 ```Rscript
-consensus2genome("Jockey_DM.fasta", "/Users/clementgoubert/Documents/TEblast2graph/dmel-all-chromosome-r6.17.fasta", full_alpha=0.2, alpha=0.5, auto_y=3.5)
+consensus2genome("Jockey_DM.fasta", "dmel-all-chromosome-r6.17.fasta", full_alpha=0.2, alpha=0.5, auto_y=3.5)
 ```
 <img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Jockey-3.jpeg width="550">
 
