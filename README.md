@@ -32,6 +32,9 @@ consensus2genome(query, db, FL_thresh, alpha, full_alpha, auto_y)
 - **db** the path of your blast database (nucleotide format)
 
 #### optional arguments
+
+**evalue** The evalue threshold to keep a blastn hit, default = 10e-8
+
 **FL_thresh** Full-lenght threshold, in % of the consensus sequence. Will display in red the genomic hits >= to this threshold. Default = 90%
 
 - **alpha** 0 to 1. Transparency of the hits displayed on the graphs (0 = invidible, 1 = dense), default = 0.3
