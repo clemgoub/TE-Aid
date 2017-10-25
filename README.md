@@ -2,6 +2,8 @@
 consensus2genome is a R function that blast any TE consensus sequence (nucleotides, fasta) to a reference reference genome and then output a mapping graph which displays the blast hits along the consensus (x axis) according to their divergence to it (y axis).
 The function performs automatically the blast through the system and print a customizable graph.
 
+The consensus size, number of fragments (hits) and full length copies (according to user-defined threshold) found are automatically printed on the graph.
+
 <img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/cons2gen.jpeg width="900">
 
 ## Dependencies
