@@ -93,5 +93,5 @@ pdf("Gypsy2.pdf", width = 8, height= 10)
 consensus2genome("Gypsy2_DM.fasta", "dmel-all-chromosome-r6.17.fasta")
 dev.off()
 ```
-This will create a file called "Gypsy2.pdf" in your working directory (***i.e.*** 'Example' here). You can change this in with any path in the pdf("yourpath/file.pdf", with = , height = ) function of the code. The with and eight can be left empty and are relative values. If you use large numbers for pdf, the text might appear very small. Alternatively, you can use the png() function that works the same to output you graph in png. However you should then adjust the dimention on pixels.
+This will create a file called "Gypsy2.pdf" in your working directory (***i.e.*** 'Example' here). You can change this in with any path in the pdf("yourpath/file.pdf", with = , height = ) function of the code. The width and height can be left empty and are relative values. If you use large numbers for pdf, the text might appear very small. Alternatively, you can use the png() function that works the same to output you graph in png. However you should then adjust the dimention on pixels.
 
