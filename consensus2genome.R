@@ -11,7 +11,7 @@
 ### db: path to blast db (blast formated nucleotide database)                       ###
 #######################################################################################
 
-TEblast2graph=function(query=NULL, db=NULL, evalue=10e-8, FL_thresh=0.9, alpha=0.3, full_alpha=1, auto_y=T){
+consensus2genome=function(query=NULL, db=NULL, evalue=10e-8, FL_thresh=0.9, alpha=0.3, full_alpha=1, auto_y=T){
   if(is.null(query)){print('query not specified')}
   if(is.null(db)){print('db not specified')}
   #perform the blast
