@@ -6,6 +6,11 @@ The consensus size, number of fragments (hits) and full length copies (according
 
 <img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/cons2gen.jpeg width="900">
 
+*************
+changelog v1.1
+- added the coverage curve (right y axix)
+*************
+
 ## Dependencies
 - [R](https://cran.r-project.org/mirrors.html)
 - [blastn](https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download)
@@ -42,6 +47,10 @@ consensus2genome(query, db, FL_thresh, alpha, full_alpha, auto_y)
 - **full_alpha** 0 to 1. Transparency of the full lenght hits (according the FL_thresh) displayed on the graph (red) (0 = invidible, 1 = dense), default = 1
 
 - **auto_y** T or 0 to N. auto adjustment of the y-axis. If true (default) the y-axis (% divergence of the hit to the consensus) is adjusted relative to the data. Can be manually adjusted by changing it with any value > 0 (in % divergence). 
+
+- **cover** Defaut = T. Display the coverage curve (in color, right y axis). Set to **F** (False) to remove. Represents the coverage in bp of the consensus sequence after the piling-up of the different hits.
+
+- **covcol** Color for the coverage curve.
 
 ## Example
 
