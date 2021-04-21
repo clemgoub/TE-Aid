@@ -13,11 +13,33 @@
 
 source("consensus2genome.R")
 
-Args = commandArgs()
-input=as.character(Args[6])
-database=as.character(Args[7])
-print(input)
-pdf(width = 8, height = 4, file = paste(tail(strsplit(as.character(input), "/")[[1]],1), ".c2g.pdf", sep=""))
-consensus2genome(query = input,
-                 db = database)
+Args 		=	commandArgs()
+query		=	as.character(Args[6])
+database	=	as.character(Args[7])
+evalue		=	as.numeric(Args[8])
+FLthresh 	=	as.numeric(Args[9])
+alpha 		=	as.numeric(Args[10])
+full_alpha  =	as.numeric(Args[11])
+autoy		=	as.character(Args[12]) # TRUE or numeric value for y max
+output		=	as.character(Args[13])
+#cover		=	as.character(Args[13]) # bool 
+#covcol		=	as.character(Args[14])
+#drops		=	as.numeric(Args[14])
+
+print(query)
+
+pdf(width = 16, height = 8, file = paste(output, "/", tail(strsplit(as.character(query), "/")[[1]],1), ".c2g.pdf", sep=""))
+
+consensus2genome(query 		=	query,
+                 db 		=	database,
+                 evalue 	=	evalue,
+                 FL_thresh 	=	FLthresh,
+                 alpha 		=	alpha,
+                 full_alpha	=	full_alpha,
+                 auto_y 	=	autoy
+#                 ,
+#                 cover		=	cover,
+#                 cov_thresh	=	drops
+#                 ,
+                 )
 dev.off()

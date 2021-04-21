@@ -1,23 +1,78 @@
 # consensus2genome
-consensus2genome is a R function that blast any TE consensus sequence (nucleotides, fasta) to a reference reference genome and then output a mapping graph which displays the blast hits along the consensus (x axis) according to their divergence to it as horizontal lines (left y axis) . It also displays the overall consensus coverage after the piling-up all copies as a colored curve (right y axis).
-The function performs the blast automatically through the system and print a customizable graph.
+consensus2genome (c2g) blasts any transposable element (TE) consensus sequence (nucleotides, fasta) to a reference genome and outputs a mapping graph displaying blastn hits divergence to their consensus as horizontal lines (y axis) along the consensus (x axis). It also plots the overall consensus coverage after piling-up all copies.
+
+The function performs the **blastn** automatically through the system and print a customizable graph with **R**.
 
 The consensus size, number of fragments (hits) and full length copies (according to user-defined threshold) found are automatically printed on the graph.
+
+support: click the "issues" tab on github or [email me](mailto:goubert.clement@gmail.com)
 
 <img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/cons2gen.jpeg width="900">
 
 *************
+changelog v2
+- add shell wrapper, coverage on second graph
 changelog v1.1
 - added the coverage curve (right y axix)
 *************
 
 ## Dependencies
-- [R](https://cran.r-project.org/mirrors.html)
+- [R (Rscript)](https://cran.r-project.org/mirrors.html)
 - [blastn](https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download)
 
-consensus2genome calls blastn from the command line as 'blastn', thus blastn must be in your path. If it is not the case, for example if you have installed it in your home directory, you can modify the code with the full path of your blastn executable ([email me](mailto:goubert.clement@gmail.com) if necessary)
+consensus2genome calls blastn and R from the command line with 'blastn' and 'Rscript' commands. Both `blastn` and `Rscript` must be in the user path (usually the case following the default install of these progams). 
+If not, you need to locate the executables location and add them to your local path before using c2g: 
+```
+export PATH="/path/to/blast/bins/folder/:$PATH"` 
+export PATH="/path/to/R/bins/folder/:$PATH"` 
+```
 
-## Usage
+## Using the shell wrapper (recommended)
+
+### Install from github
+
+```
+git clone https://github.com/clemgoub/consensus2genome.git
+```
+
+### Usage and option
+#### Blastn databse
+You will need to make a blastn database for your reference genome
+```
+makeblastdb -in genome.fa -out genome.fa -dbtype 'nucl'
+```
+### Usage
+```
+ cd your/path/to/consensus2genome/
+ ./c2g.sh [-q|--query <query.TE.fa>] [-d|--blast-database <genome.fa>] [options]
+```
+
+#### Arguments
+
+Mendatory arguments:
+```
+    -q, --query                   TE consensus to blast (fasta file)
+    -d, --blast-database          Reference genome in blastn format database (makeblastdb -in genome.fa -out genome.fa -dbtype 'nucl')
+```
+- Optional arguments:
+```
+    -h, --help                    show this help message and exit
+
+    -o, --output                  output folder
+
+    -e, --e-value                 blastn: e-value threshold to keep hit (default: 10e-8)
+    -f, --full-length-threshold   blastn: min. proportion (hit_size)/(consensus_size) to be considered "full length" (0-1; default: 0.9)
+
+    -a, --alpha                   graphical: transparency value for blastn hit segments (0-1; default 0.3)
+    -F, --full-length-alpha       graphical: transparency value for full-length blastn hits segments (0-1; default 1)
+    -y, --auto-y                  graphical: manual override for y axis max value (default: TRUE; otherwise: -y NUM)
+```
+
+Tutorial coming soon!
+
+## Usage as R function
+
+Originaly, c2g was simply a R function. Below is the original tutorial using the R console
 
 ### 1. Load the function in R
 In R, simply copy and paste the content of consensus2genome.R into a R console and press Enter. Alternatively, you can 'source' the consensus2genome.R file:
@@ -48,11 +103,7 @@ consensus2genome(query, db, FL_thresh, alpha, full_alpha, auto_y)
 
 - **auto_y** T or 0 to N. auto adjustment of the y-axis. If true (default) the y-axis (% divergence of the hit to the consensus) is adjusted relative to the data. Can be manually adjusted by changing it with any value > 0 (in % divergence). 
 
-- **cover** Defaut = T. Display the coverage curve (in color, right y axis). Set to **F** (False) to remove. Represents the coverage in bp of the consensus sequence after the piling-up of the different hits.
-
-- **covcol** Color for the coverage curve.
-
-## Example
+### R Example
 
 - In this example we are going to map the Gypsy-2 and Jockey elements of ***Drosophila melanogaster*** over the reference genome. We assume that we start from the main folder of consensus2genome package. The consensus sequence is located in the 'Example' folder, and we will need to download the ***D. melanogaster*** reference genome and make a blast database out of it. Let's go!
 
