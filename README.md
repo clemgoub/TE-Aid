@@ -36,12 +36,13 @@ git clone https://github.com/clemgoub/consensus2genome.git
 ```
 
 ### Usage and option
+
 #### Blastn databse
 You will need to make a blastn database for your reference genome
 ```
 makeblastdb -in genome.fa -out genome.fa -dbtype 'nucl'
 ```
-### Usage
+#### Usage
 ```
  cd your/path/to/consensus2genome/
  ./c2g.sh [-q|--query <query.TE.fa>] [-d|--blast-database <genome.fa>] [options]
