@@ -154,4 +154,9 @@ echo "full length hits trsp.: $FULL_ALPHA"
 mkdir -p $OUTPUT
 Rscript Run-c2g.R $QUERY $GENOME_DB $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT
 echo "Done! The graph (.pdf) can be found in the output folder: $OUTPUT"
-
+dotmatcher -asequence $QUERY \
+           -bsequence $QUERY \
+           -graph png \
+           -windowsize 25 \
+           -threshold 50 \
+           -goutfile $OUTPUT/$QUERY"".dotplot.png
