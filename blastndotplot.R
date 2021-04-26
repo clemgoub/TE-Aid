@@ -1,9 +1,9 @@
 
 # self sequence db is being made by the shell script // or you need to make it to use in R
-blastdotplot=function(query = NULL, db = NULL, getorf = NULL, os = NULL){
+blastdotplot=function(query = NULL, db = NULL, getorf = NULL, blast = NULL, os = NULL){
   
   # run the selfblast
-  bl=read.table(text=system(paste("blastn -query", query, "-db", db, "-evalue 0.05 -outfmt 6 -word_size 11 -gapopen 5 -gapextend 2 -reward 2 -penalty -3 | cut -f 1,7-10 | sed 's/#/-g/'"),
+  bl=read.table(text=system(paste("blastn -query", query, "-db", db, "-evalue 0.05 -outfmt 6 -word_size 11 -gapopen 5 -gapextend 2 -reward 2 -penalty -3 | cut -f 1,7-10 | sed 's/#/-/g'"),
                             intern = TRUE)
                 )
   # order from left to right
@@ -11,6 +11,8 @@ blastdotplot=function(query = NULL, db = NULL, getorf = NULL, os = NULL){
 
   # test if there are orf detected; store in orf if TRUE
   test<-try(read.table(as.character(getorf)), T)
+   # test if there are TE prot detected; store in prot if TRUE
+  test2<-try(read.table(as.character(blast)), T)
   #print(test)
   #print(class(test))
   if(class(test) == "data.frame"){
@@ -56,10 +58,22 @@ blastdotplot=function(query = NULL, db = NULL, getorf = NULL, os = NULL){
     } else {
       orfs=read.table(as.character(getorf))
       for(i in seq(1:length(orfs$V1))){
-          rect(xleft = orfs$V1[i], xright = orfs$V2[i],
+          rect(xleft = orfs$V2[i], xright = orfs$V3[i],
                ybottom = -i-0.05, ytop = -i+0.05, lwd = 1)
-      }  # for each segment end
-    }# if orf not null
+    }  # for each segment end
+  } # if orf not null
+  
+  ## blastp graph
+  if(class(test) != "data.frame"){
+      prot=read.table(as.character(blast))
+               
+    } # If blast not empty
+          ###### open blastp table
+          ###### assign color for each class
+          ###### draw colored rectangle same way as orf
+          ###### print target name with text y = -i x = TE/2
+
+    
 } # function end
 
 

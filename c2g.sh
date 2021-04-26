@@ -8,6 +8,10 @@
 #
 # Author: Clément Goubert - goubert.clement@gmail.com
 
+# TO DOs'
+# - make emboss dotmatcher optional
+# - make makeblastdb quiet
+
 #########################################################################################
 #### PARSER: from https://medium.com/@Drew_Stokes/bash-argument-parsing-54f3b81a6a8f ####
 ##
@@ -140,8 +144,8 @@ eval set -- "$PARAMS"
 #########################################################################################
 #### MAIN:
 ##
-#
-
+# get script launch dir, from https://stackoverflow.com/a/246128
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 # asign default value and print parameters
 TENAME="$(echo "$QUERY" | sed 's/\//\t/g' | awk '{print $NF}')"
 EVALUE="${EVALUE:-10e-8}"
@@ -175,10 +179,25 @@ dotmatcher -asequence $QUERY \
 makeblastdb -in $QUERY -out $OUTPUT/TE.db -dbtype 'nucl'
 # run getorf
 getorf -sequence $QUERY --outseq $OUTPUT/TE.orfs -minsize $MINORF
-grep '>' $OUTPUT/TE.orfs | awk '{print $2"\t"$4}' | sed 's/\[//g;s/\]//g' > $OUTPUT/TE.orfs.R
+grep '>' $OUTPUT/TE.orfs | awk '{print $1"\t"$2"\t"$4}' | sed 's/\[//g;s/\]//g;s/#/--/g;s/>//g' > $OUTPUT/TE.orfs.R
+# run blastp orfs vs TE proteins
+if [ -e $DIR/db/RepeatPeps.lib.pdb ]
+then
+    echo "RepeatPeps is downloaded and formatted, blastp-ing..."
+    blastp -query $OUTPUT/TE.orfs -db $DIR/db/RepeatPeps.lib -outfmt 6 | sort -k1,1 -k12,12nr | sort -u -k1,1 | sed 's/#/--/g' > $OUTPUT/TE.blastp.out
+else
+    echo "RepeatPeps.lib is not found, downloading..."
+    curl -o $DIR/db/RepeatPeps.lib https://raw.githubusercontent.com/rmhubley/RepeatMasker/master/Libraries/RepeatPeps.lib
+    echo "Formating database"
+    makeblastdb -in $DIR/db/RepeatPeps.lib -out $DIR/db/RepeatPeps.lib -dbtype 'prot' 
+    echo "Blastp-ing..."
+    blastp -query $OUTPUT/TE.orfs -db $DIR/db/RepeatPeps.lib -outfmt 6 | sort -k1,1 -k12,12nr | sort -u -k1,1 | sed 's/#/--/g' > $OUTPUT/TE.blastp.out
+fi
+#join orfs with their prot hit
+join -a1 -11 -21 <(sort -k1,1 $OUTPUT/TE.orfs.R) <(sort -k1,1 $OUTPUT/TE.blastp.out) > $OUTPUT/orftetable
 # run R script with user-defined parameters
-Rscript Run-c2g.R $QUERY $GENOME_DB $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/TE.orfs.R $MINORF
+Rscript $DIR/Run-c2g.R $QUERY $GENOME_DB $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/TE.orfs.R $OUTPUT/TE.blastp.out $MINORF
 # clean-up
-rm $OUTPUT/TE.db*
+#rm $OUTPUT/TE.db* $OUTPUT/TE.orfs*
 
 echo "Done! The graph (.pdf) can be found in the output folder: $OUTPUT"

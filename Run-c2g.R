@@ -25,7 +25,8 @@ autoy		=	as.character(Args[12]) # TRUE or numeric value for y max
 output		=	as.character(Args[13])
 selfdb		=	as.character(Args[14]) # bool 
 orfs		=	as.character(Args[15])
-osize		=	as.numeric(Args[16])
+blastp      =   as.character(Args[16])
+osize		=	as.numeric(Args[17])
 
 print(query)
 
@@ -49,6 +50,7 @@ consensus2genome(query 		=	query,
 blastdotplot(query  =  query,
              db     =  selfdb,
              getorf =  orfs,
+             blast  =  blastp,
              os     =  osize)
 
 dev.off()
