@@ -22,7 +22,6 @@
 
 
 consensus2genome=function(query=NULL, db=NULL, evalue=10e-8, FL_thresh=0.9, alpha=0.3, full_alpha=1, auto_y=T){
-  par(mfrow=c(1,2)) # set window befor anything else
   if(is.null(query)){print('query not specified')}
   if(is.null(db)){print('db not specified')}
   #perform the blast

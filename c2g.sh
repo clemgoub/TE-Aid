@@ -34,6 +34,8 @@ function usage()
     -e, --e-value                 blastn: e-value threshold to keep hit (default: 10e-8)
     -f, --full-length-threshold   blastn: min. proportion (hit_size)/(consensus_size) to be considered "full length" (0-1; default: 0.9)
     
+    -m, --min-orf                 getorf: minimum ORF size (in bp)
+
     -a, --alpha                   graphical: transparency value for blastn hit (0-1; default 0.3)
     -F, --full-length-alpha       graphical: transparency value for full-length blastn hits (0-1; default 1)
     -y, --auto-y                  graphical: manual override for y lims (default: TRUE; otherwise: -y NUM)
@@ -103,7 +105,13 @@ while (( "$#" )); do
         AUTO_Y=$2
         shift 2
       fi
-      ;;   
+      ;;  
+      -m | --min-orf)
+      if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
+        MINORF=$2
+        shift 2
+      fi
+      ;; 
     -h | --help)
 	  usage
 	  exit 1
@@ -135,13 +143,16 @@ eval set -- "$PARAMS"
 #
 
 # asign default value and print parameters
+TENAME="$(echo "$QUERY" | sed 's/\//\t/g' | awk '{print $NF}')"
 EVALUE="${EVALUE:-10e-8}"
 FL="${FL:-0.9}"
 ALPHA="${ALPHA:-0.3}"
 FULL_ALPHA="${FULL_ALPHA:-0.9}"
 AUTO_Y="${AUTO_Y:-TRUE}"
 OUTPUT="${OUTPUT:-.}"
+MINORF="${MINORF:-300}"
 
+# param check
 echo "query:                  $QUERY"
 echo "genome db:              $GENOME_DB"
 echo "e-value:                $EVALUE"
@@ -150,13 +161,24 @@ echo "hits transparency:      $ALPHA"
 echo "full length hits trsp.: $FULL_ALPHA"
 
 
-# run script
+## run script
+# create output dir if non-existent
 mkdir -p $OUTPUT
-Rscript Run-c2g.R $QUERY $GENOME_DB $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT
-echo "Done! The graph (.pdf) can be found in the output folder: $OUTPUT"
+# create dotmatcher graph in outputs
 dotmatcher -asequence $QUERY \
            -bsequence $QUERY \
            -graph png \
            -windowsize 25 \
            -threshold 50 \
-           -goutfile $OUTPUT/$QUERY"".dotplot.png
+           -goutfile $OUTPUT/$TENAME"".dotmatcher.png
+# make temporary database for self-dotplot
+makeblastdb -in $QUERY -out $OUTPUT/TE.db -dbtype 'nucl'
+# run getorf
+getorf -sequence $QUERY --outseq $OUTPUT/TE.orfs -minsize $MINORF
+grep '>' $OUTPUT/TE.orfs | awk '{print $2"\t"$4}' | sed 's/\[//g;s/\]//g' > $OUTPUT/TE.orfs.R
+# run R script with user-defined parameters
+Rscript Run-c2g.R $QUERY $GENOME_DB $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/TE.orfs.R $MINORF
+# clean-up
+rm $OUTPUT/TE.db*
+
+echo "Done! The graph (.pdf) can be found in the output folder: $OUTPUT"

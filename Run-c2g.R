@@ -12,6 +12,7 @@
 #######################################################################################
 
 source("consensus2genome.R")
+source("blastndotplot.R")
 
 Args 		=	commandArgs()
 query		=	as.character(Args[6])
@@ -22,13 +23,15 @@ alpha 		=	as.numeric(Args[10])
 full_alpha  =	as.numeric(Args[11])
 autoy		=	as.character(Args[12]) # TRUE or numeric value for y max
 output		=	as.character(Args[13])
-#cover		=	as.character(Args[13]) # bool 
-#covcol		=	as.character(Args[14])
-#drops		=	as.numeric(Args[14])
+selfdb		=	as.character(Args[14]) # bool 
+orfs		=	as.character(Args[15])
+osize		=	as.numeric(Args[16])
 
 print(query)
 
-pdf(width = 16, height = 8, file = paste(output, "/", tail(strsplit(as.character(query), "/")[[1]],1), ".c2g.pdf", sep=""))
+pdf(width = 16, height = 16, file = paste(output, "/", tail(strsplit(as.character(query), "/")[[1]],1), ".c2g.pdf", sep=""))
+
+par(mfrow=c(2,2))
 
 consensus2genome(query 		=	query,
                  db 		=	database,
@@ -42,4 +45,10 @@ consensus2genome(query 		=	query,
 #                 cov_thresh	=	drops
 #                 ,
                  )
+
+blastdotplot(query  =  query,
+             db     =  selfdb,
+             getorf =  orfs,
+             os     =  osize)
+
 dev.off()
