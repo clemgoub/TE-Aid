@@ -21,13 +21,13 @@
 
 
 
-consensus2genome=function(query=NULL, db=NULL, evalue=10e-8, FL_thresh=0.9, alpha=0.3, full_alpha=1, auto_y=T){
+consensus2genome=function(query=NULL, db=NULL, evalue=10e-8, FL_thresh=0.9, alpha=0.3, full_alpha=1, auto_y=T, bins=NULL){
   if(is.null(query)){print('query not specified')}
   if(is.null(db)){print('db not specified')}
   #perform the blast
   blast=read.table(text=system(paste("blastn -query", query, "-db", db , "-evalue", evalue, "-outfmt 6 | sed 's/#/-/g'"), intern = TRUE))
   #TE consensus size
-  cons_len=as.numeric(system(paste("./getlength.sh ",query), intern = TRUE))
+  cons_len=as.numeric(system(paste(bins,"/getlength.sh ",query, sep = ""), intern = TRUE))
   print(cons_len)
   #list of almost full length fragments
   full=blast[abs(blast$V7-blast$V8) >= FL_thresh*as.numeric(cons_len),]

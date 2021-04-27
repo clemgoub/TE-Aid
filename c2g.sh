@@ -202,7 +202,7 @@ join -a1 -11 -21 <(sort -k1,1 $OUTPUT/TE.orfs.R) <(sort -k1,1 $OUTPUT/TE.blastp.
  sed > $OUTPUT/orftetable
 
 # run R script with user-defined parameters
-Rscript $DIR/Run-c2g.R $QUERY $GENOME_DB $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/TE.orfs.R $OUTPUT/TE.blastp.out $MINORF
+Rscript $DIR/Run-c2g.R $QUERY $GENOME_DB $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/TE.orfs.R $OUTPUT/TE.blastp.out $MINORF $DIR
 # clean-up
 #rm $OUTPUT/TE.db* $OUTPUT/TE.orfs*
 

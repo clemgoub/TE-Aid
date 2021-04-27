@@ -11,8 +11,7 @@
 ### db: path to blast db (blast formated nucleotide database)                       ###
 #######################################################################################
 
-source("consensus2genome.R")
-source("blastndotplot.R")
+
 
 Args 		=	commandArgs()
 query		=	as.character(Args[6])
@@ -27,10 +26,15 @@ selfdb		=	as.character(Args[14]) # bool
 orfs		=	as.character(Args[15])
 blastp      =   as.character(Args[16])
 osize		=	as.numeric(Args[17])
+wdir        =   as.character(Args[18]) # from the shell: path to running directory 
+
+source(paste(wdir, "/", "consensus2genome.R", sep = ""))
+source(paste(wdir, "/", "blastndotplot.R", sep = ""))
 
 print(query)
 
 pdf(width = 16, height = 16, file = paste(output, "/", tail(strsplit(as.character(query), "/")[[1]],1), ".c2g.pdf", sep=""))
+#pdf(width = 16, height = 16, file = paste(tail(strsplit(as.character(query), "/")[[1]],1), ".c2g.pdf", sep=""))
 
 par(mfrow=c(2,2))
 
@@ -40,7 +44,8 @@ consensus2genome(query 		=	query,
                  FL_thresh 	=	FLthresh,
                  alpha 		=	alpha,
                  full_alpha	=	full_alpha,
-                 auto_y 	=	autoy
+                 auto_y 	=	autoy,
+                 bins       =   wdir
 #                 ,
 #                 cover		=	cover,
 #                 cov_thresh	=	drops
