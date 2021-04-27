@@ -65,14 +65,13 @@ blastdotplot=function(query = NULL, db = NULL, getorf = NULL, blast = NULL, os =
   
   ## blastp graph
   if(class(test) != "data.frame"){
-      prot=read.table(as.character(blast))
-               
-    } # If blast not empty
-          ###### open blastp table
-          ###### assign color for each class
+     text(paste("no TE prot. hits", sep=""), x=bl$V3[1]/2, y=-max(length(orfs$V1),10)+1, cex = 2) 
+    } else { # If blast not empty
+      prot=read.table(as.character(blast)) # open blastp table
+      # assign color for each class
           ###### draw colored rectangle same way as orf
           ###### print target name with text y = -i x = TE/2
-
+    }
     
 } # function end
 

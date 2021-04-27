@@ -182,7 +182,7 @@ makeblastdb -in $QUERY -out $OUTPUT/TE.db -dbtype 'nucl'
 getorf -sequence $QUERY --outseq $OUTPUT/TE.orfs -minsize $MINORF
 grep '>' $OUTPUT/TE.orfs | awk '{print $1"\t"$2"\t"$4}' | sed 's/\[//g;s/\]//g;s/#/--/g;s/>//g' > $OUTPUT/TE.orfs.R
 # run blastp orfs vs TE proteins
-if [ -e $DIR/db/RepeatPeps.lib.pdb ]
+if [ -e $DIR/db/RepeatPeps.lib.phr ]
 then
     echo "RepeatPeps is downloaded and formatted, blastp-ing..."
     blastp -query $OUTPUT/TE.orfs -db $DIR/db/RepeatPeps.lib -outfmt 6 | sort -k1,1 -k12,12nr | sort -u -k1,1 | sed 's/#/--/g' > $OUTPUT/TE.blastp.out
