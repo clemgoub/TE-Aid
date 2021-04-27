@@ -11,6 +11,7 @@
 # TO DOs'
 # - make emboss dotmatcher optional
 # - make makeblastdb quiet
+# - blastp: translate the AA coordinates to nucleotides (orf$V2 + prot$V2  to orf$V2 + 3xprot$V3)
 
 #########################################################################################
 #### PARSER: from https://medium.com/@Drew_Stokes/bash-argument-parsing-54f3b81a6a8f ####
@@ -187,6 +188,7 @@ then
     blastp -query $OUTPUT/TE.orfs -db $DIR/db/RepeatPeps.lib -outfmt 6 | sort -k1,1 -k12,12nr | sort -u -k1,1 | sed 's/#/--/g' > $OUTPUT/TE.blastp.out
 else
     echo "RepeatPeps.lib is not found, downloading..."
+    mkdir -p $DIR/db
     curl -o $DIR/db/RepeatPeps.lib https://raw.githubusercontent.com/rmhubley/RepeatMasker/master/Libraries/RepeatPeps.lib
     echo "Formating database"
     makeblastdb -in $DIR/db/RepeatPeps.lib -out $DIR/db/RepeatPeps.lib -dbtype 'prot' 
