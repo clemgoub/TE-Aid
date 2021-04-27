@@ -196,7 +196,11 @@ else
     blastp -query $OUTPUT/TE.orfs -db $DIR/db/RepeatPeps.lib -outfmt 6 | sort -k1,1 -k12,12nr | sort -u -k1,1 | sed 's/#/--/g' > $OUTPUT/TE.blastp.out
 fi
 #join orfs with their prot hit
-join -a1 -11 -21 <(sort -k1,1 $OUTPUT/TE.orfs.R) <(sort -k1,1 $OUTPUT/TE.blastp.out) > $OUTPUT/orftetable
+join -a1 -11 -21 <(sort -k1,1 $OUTPUT/TE.orfs.R) <(sort -k1,1 $OUTPUT/TE.blastp.out)| \
+ sed 's/#/\t/g' | \
+ awk '{print $4"\t"(($2 + (3 * ($9-1)) ))"\t"(($2 + (3 * ($10-1)) ))}' | \
+ sed > $OUTPUT/orftetable
+
 # run R script with user-defined parameters
 Rscript $DIR/Run-c2g.R $QUERY $GENOME_DB $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/TE.orfs.R $OUTPUT/TE.blastp.out $MINORF
 # clean-up
