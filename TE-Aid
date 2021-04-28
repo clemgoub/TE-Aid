@@ -1,28 +1,49 @@
 #! /bin/bash
-
-################################################
-# c2g - consensus to genome R function wrapper #
-################################################
+#######################################
+#  _______ ______            _     _  #
+# |__   __|  ____|_    /\   (_)   | | #
+#    | |  | |__ _| |_ /  \   _  __| | #
+#    | |  |  __|_   _/ /\ \ | |/ _` | #
+#    | |  | |____|_|/ ____ \| | (_| | #
+#    |_|  |______| /_/    \_\_|\__,_| #
+#                                     #
+#######################################                                    
 #
-# V.0 | 04.19.21 - first version of the wrapper for test 
+# V.0 | 04.19.21 - development
 #
 # Author: Clément Goubert - goubert.clement@gmail.com
-
+#
 # TO DOs'
 # - make emboss dotmatcher optional
 # - add blastp stats (evalue maybe)
 
-#########################################################################################
-#### PARSER: from https://medium.com/@Drew_Stokes/bash-argument-parsing-54f3b81a6a8f ####
-##
-#
-
+###################################################################################
+# PARSER: from https://medium.com/@Drew_Stokes/bash-argument-parsing-54f3b81a6a8f #
+###################################################################################
 # usage function
 function usage()
 {
    cat << HEREDOC
 
-   Usage: c2g [-q|--query FILE] [-d|--blast-database FILE] [options]
+  _______  ______               _      _ 
+ |__   __||  ____| _     /\    (_)    | |
+    | |   | |__  _| |_  /  \    _   __| |
+    | |   |  __||_   _|/ /\ \  | | / _\` |
+    | |   | |____ |_| / ____ \ | || (_| |
+    |_|   |______|   /_/    \_\|_| \__,_|
+  
+                   v.0-dev
+
+   **************************************
+
+   TE+Aid is a tool to help the manual curation of transposable elements (TE).
+   It inputs a TE consensus sequence (fasta format) and require a reference genome formated as a blastn database
+
+   Full Documentation: https://github.com/clemgoub/TE-Aid                             
+                                      
+   ***************************************
+
+   Usage: ./TE-Aid [-q|--query FILE] [-d|--blast-database FILE] [options]
 
    mendatory arguments:
     
@@ -35,9 +56,9 @@ function usage()
     
     -o, --output                  output folder
     
-    -e, --e-value                 blastn: e-value threshold to keep hit (default: 10e-8)
-    -f, --full-length-threshold   blastn: min. proportion (hit_size)/(consensus_size) to be considered "full length" (0-1; default: 0.9)
-    
+    -e, --e-value                 genome blastn: e-value threshold to keep hit (default: 10e-8)
+    -f, --full-length-threshold   genome blastn: min. proportion (hit_size)/(consensus_size) to be considered "full length" (0-1; default: 0.9)
+        
     -m, --min-orf                 getorf: minimum ORF size (in bp)
 
     -a, --alpha                   graphical: transparency value for blastn hit (0-1; default 0.3)
