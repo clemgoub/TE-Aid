@@ -34,7 +34,7 @@ function usage()
     |_|   |______|   /_/    \_\|_| \__,_|
   
                    v.0-dev
-                   
+
 WARNING: This is a development version, the results may be incorrect
 
    **************************************
@@ -223,7 +223,7 @@ join -a1 -11 -21 <(sort -k1,1 $OUTPUT/TE.orfs.R) <(sort -k1,1 $OUTPUT/TE.blastp.
  sed 's/ /\t/g' | \
  sed 's/DNA\/Maverick/MAV\/Maverick/g;s/DNA\/Crypton/CRY\/Crypton/g;s/LINE\/Penelope/PLE\/Penelope/g;s/LTR\/DIRS/DIRS\/DIRS/g;s/DNA/TIR/g' | \
  awk '{if (NF == 3) {print $0"\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA"} else {print $0}}' | \
- awk '$NF != "NA" {if ($2 < $3) {print $1"\t"$2"\t"$3"\t"$4"\t"(($2 + (3 * ($9-1)) ))"\t"(($2 + (3 * ($10-1)) ))"\t+"} else {print $1"\t"$2"\t"$3"\t"$4"\t"(($3 + (3 * ($9-1)) ))"\t"(($3 + (3 * ($10-1)) ))"\t-"}}; $NF == "NA" {print $0}' | \
+ awk '$NF != "NA" {if ($2 < $3) {print $2"\t"$3"\t"$4"\t"(($2 + (3 * ($9-1)) ))"\t"(($2 + (3 * ($10-1)) ))"\t+"} else {print $2"\t"$3"\t"$4"\t"(($3 + (3 * ($9-1)) ))"\t"(($3 + (3 * ($10-1)) ))"\t-"}}; $NF == "NA" {print $0}' | \
  sed 's/--/\t/g' | \
  awk -v LINEcol="3399ff" \
   -v SINEcol="800080" \
@@ -251,7 +251,7 @@ join -a1 -11 -21 <(sort -k1,1 $OUTPUT/TE.orfs.R) <(sort -k1,1 $OUTPUT/TE.blastp.
 /CRY/ {print $0"\t"CRYcols} \
 /MAV/ {print $0"\t"MAVcols} \
 !/LINE\// && !/SINE\// && !/TIR\// && !/LTR\// && !/RC\// && !/Low_complexity/ && !/Satellite/ && !/Simple_repeat/ && !/Penelope/ && !/DIRS/ && !/CRY/ && !/MAV/ {print $0"\t"Unknowncol}' | \
-cut -f 2-10 | sort -k2,2n | awk '$NF != "NA" {print $0}; $NF == "NA" {if ($3 < $4) {sub(/NA\tNA\tNA\tNA\tNA\tNA/, "NO\tHIT\t0\t0\t+\tFFFFFF", $0); print $0} else {sub(/NA\tNA\tNA\tNA\tNA\tNA/, "NO\tHIT\t0\t0\t-\twhite", $0); print $0}}' > $OUTPUT/orftetable
+cut -f 1-9 | sort -k2,2n | awk '$NF != "NA" {print $0}; $NF == "NA" {if ($3 < $4) {sub(/NA\tNA\tNA\tNA\tNA\tNA/, "NO\tHIT\t0\t0\t+\tFFFFFF", $0); print $0} else {sub(/NA\tNA\tNA\tNA\tNA\tNA/, "NO\tHIT\t0\t0\t-\twhite", $0); print $0}}' > $OUTPUT/orftetable
 #awk '/LINE/ {print $0"\troyalblue"} /DNA/ {print $0"\tsalmon"} /LTR/ {print $0"\green3"} /!LTR/'
 
 # run R script with user-defined parameters

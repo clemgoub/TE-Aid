@@ -67,21 +67,21 @@ blastdotplot=function(query = NULL, db = NULL, blast = NULL, os = NULL){
      text(paste("no orf >",os," bp detected", sep=""), x=bl$V3[1]/2, y=-5, cex = 2)
     } else { # if ORF table, plot orfs
       for(i in seq(1:length(orfs$V1))){
-        if(orfs$V2[i] < orfs$V3[i]){ # checking ORF orientation
-          rect(xleft = orfs$V2[i], xright = orfs$V3[i], # draw a + ORF
+        if(orfs$V1[i] < orfs$V2[i]){ # checking ORF orientation
+          rect(xleft = orfs$V1[i], xright = orfs$V2[i], # draw a + ORF
                ybottom = -i-0.15, ytop = -i+0.15, lwd = 1, border = "black")
         } else {
-          rect(xleft = orfs$V2[i], xright = orfs$V3[i], # draw a - ORF
+          rect(xleft = orfs$V1[i], xright = orfs$V2[i], # draw a - ORF
                ybottom = -i-0.15, ytop = -i+0.15, lwd = 1, border = "red")  
         } # orientation
 
   ## TE protein hits (blastp) ##
-          rect(xleft = orfs$V6[i], xright = orfs$V7[i], 
-               ybottom = -i-0.15, ytop = -i+0.15, lwd = 1, col = as.character(paste("#",orfs$V9[i], sep="")), border = "white") # draw colored rectangle same way as orf
-          text(paste(orfs$V4[i], orfs$V5[i]), x = (min(orfs$V2[i],orfs$V3[i])+max(orfs$V2[i],orfs$V3[i]))/2, y = -i+0.15, pos = 3) # print hit name
+          rect(xleft = orfs$V5[i], xright = orfs$V6[i], 
+               ybottom = -i-0.15, ytop = -i+0.15, lwd = 1, col = as.character(paste("#",orfs$V8[i], sep="")), border = "white") # draw colored rectangle same way as orf
+          text(paste(orfs$V3[i], orfs$V4[i]), x = (min(orfs$V1[i],orfs$V2[i])+max(orfs$V1[i],orfs$V2[i]))/2, y = -i+0.15, pos = 3) # print hit name
       
       } # for each segment
-  names(orfs)<-c("ORF", "orf.start", "orf.end", "hit.TE.prot", "TE.Class", "hit.start", "hit.end", "strand", "color")
+  names(orfs)<-c("orf.start", "orf.end", "hit.TE.prot", "TE.Class", "hit.start", "hit.end", "strand", "color")
   print(orfs)
   } # if orf present plot orfs and prot hits
     
