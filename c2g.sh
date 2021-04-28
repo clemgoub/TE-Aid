@@ -10,7 +10,6 @@
 
 # TO DOs'
 # - make emboss dotmatcher optional
-# - make makeblastdb quiet
 # - add blastp stats (evalue maybe)
 
 #########################################################################################
@@ -177,9 +176,9 @@ dotmatcher -asequence $QUERY \
            -threshold 50 \
            -goutfile $OUTPUT/$TENAME"".dotmatcher.png
 # make temporary database for self-dotplot
-makeblastdb -in $QUERY -out $OUTPUT/TE.db -dbtype 'nucl'
+makeblastdb -in $QUERY -out $OUTPUT/TE.db -dbtype 'nucl' &>/dev/null
 # run getorf
-getorf -sequence $QUERY --outseq $OUTPUT/TE.orfs -minsize $MINORF
+getorf -sequence $QUERY --outseq $OUTPUT/TE.orfs -minsize $MINORF &>/dev/null
 grep '>' $OUTPUT/TE.orfs | awk '{print $1"\t"$2"\t"$4}' | sed 's/\[//g;s/\]//g;s/#/--/g;s/>//g' > $OUTPUT/TE.orfs.R
 # run blastp orfs vs TE proteins
 if [ -e $DIR/db/RepeatPeps.lib.phr ]
@@ -191,7 +190,7 @@ else
     mkdir -p $DIR/db
     curl -o $DIR/db/RepeatPeps.lib https://raw.githubusercontent.com/rmhubley/RepeatMasker/master/Libraries/RepeatPeps.lib
     echo "Formating database"
-    makeblastdb -in $DIR/db/RepeatPeps.lib -out $DIR/db/RepeatPeps.lib -dbtype 'prot' 
+    makeblastdb -in $DIR/db/RepeatPeps.lib -out $DIR/db/RepeatPeps.lib -dbtype 'prot' &>/dev/null
     echo "Blastp-ing..."
     blastp -query $OUTPUT/TE.orfs -db $DIR/db/RepeatPeps.lib -outfmt 6 | sort -k1,1 -k12,12nr | sort -u -k1,1 | sed 's/#/--/g' > $OUTPUT/TE.blastp.out
 fi
@@ -228,7 +227,7 @@ join -a1 -11 -21 <(sort -k1,1 $OUTPUT/TE.orfs.R) <(sort -k1,1 $OUTPUT/TE.blastp.
 /CRY/ {print $0"\t"CRYcols} \
 /MAV/ {print $0"\t"MAVcols} \
 !/LINE\// && !/SINE\// && !/TIR\// && !/LTR\// && !/RC\// && !/Low_complexity/ && !/Satellite/ && !/Simple_repeat/ && !/Penelope/ && !/DIRS/ && !/CRY/ && !/MAV/ {print $0"\t"Unknowncol}' | \
-cut -f 2-10 | sort -k2,2n | awk '$NF != "NA" {print $0}; $NF == "NA" {if ($3 < $4) {sub(/NA\tNA\tNA\tNA\tNA\tNA/, "NO\tHIT\t0\t0\t+\t000000", $0); print $0} else {sub(/NA\tNA\tNA\tNA\tNA\tNA/, "NO\tHIT\t0\t0\t-\twhite", $0); print $0}}' > $OUTPUT/orftetable
+cut -f 2-10 | sort -k2,2n | awk '$NF != "NA" {print $0}; $NF == "NA" {if ($3 < $4) {sub(/NA\tNA\tNA\tNA\tNA\tNA/, "NO\tHIT\t0\t0\t+\tFFFFFF", $0); print $0} else {sub(/NA\tNA\tNA\tNA\tNA\tNA/, "NO\tHIT\t0\t0\t-\twhite", $0); print $0}}' > $OUTPUT/orftetable
 #awk '/LINE/ {print $0"\troyalblue"} /DNA/ {print $0"\tsalmon"} /LTR/ {print $0"\green3"} /!LTR/'
 
 # run R script with user-defined parameters

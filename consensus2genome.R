@@ -28,7 +28,7 @@ consensus2genome=function(query=NULL, db=NULL, evalue=10e-8, FL_thresh=0.9, alph
   blast=read.table(text=system(paste("blastn -query", query, "-db", db , "-evalue", evalue, "-outfmt 6 | sed 's/#/-/g'"), intern = TRUE))
   #TE consensus size
   cons_len=as.numeric(system(paste(bins,"/getlength.sh ",query, sep = ""), intern = TRUE))
-  print(cons_len)
+  print(paste("consensus length: ", cons_len, "bp", sep = " "))
   #list of almost full length fragments
   full=blast[abs(blast$V7-blast$V8) >= FL_thresh*as.numeric(cons_len),]
   #graph
@@ -67,7 +67,7 @@ for(i in 1:length(blast$V1)){
     removator<-function(covM){
       as.data.frame(covM)->covMT
       covMT$bp=rownames(covMT)
-      plot(covM, type = "l", xlab = "TE consensus (bp)", ylab = "coverage (bp)")
+      plot(covM, type = "l", main = "TE consensus genomic coverage", xlab = "TE consensus (bp)", ylab = "coverage (bp)")
      } # removator function
     
     removator(colSums(coverage)) # makes the second graph

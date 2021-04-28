@@ -49,9 +49,10 @@ blastdotplot=function(query = NULL, db = NULL, blast = NULL, os = NULL){
   
   ## Arrows layer ##
 
-  plot(x = 1, type = "n", xlim = c(0,bl$V3[1]),ylim = c(-max(length(orfs$V1),10),length(bl$V1)), col = "white",
-       main = "TE consensus structure",
+  plot(x = 1, type = "n", xlim = c(0,bl$V3[1]),ylim = c(-max(length(orfs$V1),10),length(bl$V1)), col = "white", yaxt="n",
+       main = "TE consensus structure and protein hits",
        xlab = paste(as.character(bl$V1[1]), "(bp)", sep = " "),
+       ylab = ""
   )
   for(i in seq(1:length(bl$V1))){
     if(bl$V4[i] > bl$V2[i]){
@@ -76,10 +77,12 @@ blastdotplot=function(query = NULL, db = NULL, blast = NULL, os = NULL){
 
   ## TE protein hits (blastp) ##
           rect(xleft = orfs$V6[i], xright = orfs$V7[i], 
-               ybottom = -i-0.15, ytop = -i+0.15, lwd = 1, col = as.character(paste("#",orfs$V9[i], sep=""))) # draw colored rectangle same way as orf
-          text(paste(orfs$V4[i], orfs$V5[i]), x = (orfs$V6[i] + orfs$V7[i])/2, y = -i+0.15, pos = 3) # print hit name
+               ybottom = -i-0.15, ytop = -i+0.15, lwd = 1, col = as.character(paste("#",orfs$V9[i], sep="")), border = "white") # draw colored rectangle same way as orf
+          text(paste(orfs$V4[i], orfs$V5[i]), x = (min(orfs$V2[i],orfs$V3[i])+max(orfs$V2[i],orfs$V3[i]))/2, y = -i+0.15, pos = 3) # print hit name
       
       } # for each segment
+  names(orfs)<-c("ORF", "orf.start", "orf.end", "hit.TE.prot", "TE.Class", "hit.start", "hit.end", "strand", "color")
+  print(orfs)
   } # if orf present plot orfs and prot hits
     
 } # function end

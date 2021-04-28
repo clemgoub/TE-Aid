@@ -30,9 +30,7 @@ wdir        =   as.character(Args[17]) # from the shell: path to running directo
 source(paste(wdir, "/", "consensus2genome.R", sep = ""))
 source(paste(wdir, "/", "blastndotplot.R", sep = ""))
 
-print(query)
-
-pdf(width = 16, height = 16, file = paste(output, "/", tail(strsplit(as.character(query), "/")[[1]],1), ".c2g.pdf", sep=""))
+pdf(width = 12, height = 12, file = paste(output, "/", tail(strsplit(as.character(query), "/")[[1]],1), ".c2g.pdf", sep=""))
 #pdf(width = 16, height = 16, file = paste(tail(strsplit(as.character(query), "/")[[1]],1), ".c2g.pdf", sep=""))
 
 par(mfrow=c(2,2))
