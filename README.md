@@ -27,28 +27,26 @@ export PATH="/path/to/blast/bins/folder/:$PATH"`
 export PATH="/path/to/R/bins/folder/:$PATH"` 
 ```
 
-## Using the shell wrapper (recommended)
-
-### Install from github
+## Install from github
 
 ```
 git clone https://github.com/clemgoub/consensus2genome.git
 ```
 
-### Usage and option
+## Usage and option
 
-#### Blastn databse
+### Blastn databse
 You will need to make a blastn database for your reference genome
 ```
 makeblastdb -in genome.fa -out genome.fa -dbtype 'nucl'
 ```
-#### Usage
+### Usage
 ```
  cd your/path/to/consensus2genome/
  ./c2g.sh [-q|--query <query.TE.fa>] [-d|--blast-database <genome.fa>] [options]
 ```
 
-#### Arguments
+### Arguments
 
 Mendatory arguments:
 ```
@@ -71,9 +69,9 @@ Mendatory arguments:
 
 Tutorial coming soon!
 
-## Usage as R function
+## Tutorial
 
-Originaly, c2g was simply a R function. Below is the original tutorial using the R console
+Originaly, c2g was simply a R function. Below is the original tutorial using the R console -- will be updated ASAP 
 
 ### 1. Load the function in R
 In R, simply copy and paste the content of consensus2genome.R into a R console and press Enter. Alternatively, you can 'source' the consensus2genome.R file:
@@ -109,17 +107,21 @@ consensus2genome(query, db, FL_thresh, alpha, full_alpha, auto_y)
 - In this example we are going to map the Gypsy-2 and Jockey elements of ***Drosophila melanogaster*** over the reference genome. We assume that we start from the main folder of consensus2genome package. The consensus sequence is located in the 'Example' folder, and we will need to download the ***D. melanogaster*** reference genome and make a blast database out of it. Let's go!
 
 #### 1. Download the ***D. melanogaster*** genome and create a blast db
+
 ```shell
-cd Example
-wget ftp://ftp.flybase.net/genomes/Drosophila_melanogaster/current/fasta/dmel-all-chromosome-r6.17.fasta.gz
-gunzip dmel-all-chromosome-r6.17.fasta.gz
-makeblastdb -in dmel-all-chromosome-r6.17.fasta -out dmel-all-chromosome-r6.17.fasta -dbtype 'nucl'
+curl -o Example/dm6.fa.gz https://hgdownload.soe.ucsc.edu/goldenPath/dm6/bigZips/dm6.fa.gz
+gunzip Example/dm6.fa.gz
+makeblastdb -in Example/dm6.fa -out Example/dm6.fa -dbtype 'nucl'
 ```
 
-#### 2. Open R (type 'R' in the terminal then press Enter), load consensus2genome and run the function
-```Rscript
-source("../consensus2genone.R") # load the function
-consensus2genome("Gypsy2_DM.fasta", "dmel-all-chromosome-r6.17.fasta")
+Two *D. melanogaster* TE consensus are present in the folder `Examples`
+
+#### 2. Analyze *D. melanogaster* consensus TEs
+
+Let's start with Gypsy XXX, a famous LTR element.
+
+```shell
+./c2g.sh -q Examples/.fasta -d dm6.fa -o dm6_TEaid
 ```
 <img src=https://github.com/clemgoub/consensus2genome/blob/master/Example/Gypsy_example.jpeg width="550">
 
