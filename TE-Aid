@@ -9,6 +9,7 @@
 #                                     #
 #######################################                                    
 #
+# V.0 | 04.28.21 - create TE-Aid repos from conensus2genome
 # V.0 | 04.19.21 - development
 #
 # Author: Clément Goubert - goubert.clement@gmail.com
@@ -33,6 +34,8 @@ function usage()
     |_|   |______|   /_/    \_\|_| \__,_|
   
                    v.0-dev
+                   
+WARNING: This is a development version, the results may be incorrect
 
    **************************************
 
@@ -58,7 +61,7 @@ function usage()
     
     -e, --e-value                 genome blastn: e-value threshold to keep hit (default: 10e-8)
     -f, --full-length-threshold   genome blastn: min. proportion (hit_size)/(consensus_size) to be considered "full length" (0-1; default: 0.9)
-        
+
     -m, --min-orf                 getorf: minimum ORF size (in bp)
 
     -a, --alpha                   graphical: transparency value for blastn hit (0-1; default 0.3)
