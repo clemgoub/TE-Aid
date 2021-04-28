@@ -1,6 +1,6 @@
 
 # self sequence db is being made by the shell script // or you need to make it to use in R
-blastdotplot=function(query = NULL, db = NULL, getorf = NULL, blast = NULL, os = NULL){
+blastdotplot=function(query = NULL, db = NULL, blast = NULL, os = NULL){
   
   # run the selfblast
   bl=read.table(text=system(paste("blastn -query", query, "-db", db, "-evalue 0.05 -outfmt 6 -word_size 11 -gapopen 5 -gapextend 2 -reward 2 -penalty -3 | cut -f 1,7-10 | sed 's/#/-/g'"),
@@ -9,20 +9,26 @@ blastdotplot=function(query = NULL, db = NULL, getorf = NULL, blast = NULL, os =
   # order from left to right
   bl=bl[order(bl$V2, decreasing = F),]
 
-  # test if there are orf detected; store in orf if TRUE
-  test<-try(read.table(as.character(getorf)), T)
-   # test if there are TE prot detected; store in prot if TRUE
-  test2<-try(read.table(as.character(blast)), T)
-  #print(test)
-  #print(class(test))
+  # test if there are orf detected; will later store in orf if TRUE
+  test<-try(read.table(as.character(blast)), T)
+   # test if there are TE prot detected; will later store in prot if TRUE
+  #test2<-try(read.table(as.character(blast)), T)
+
   if(class(test) == "data.frame"){
-     orfs=read.table(as.character(getorf))
+     orfs=read.table(as.character(blast))
      }else{
      suppressWarnings(orfs$V1 <- as.data.frame(c(0,0))[,1])
    }
 
-  #
-  ## dot-plot (left)
+  # if(class(test2) == "data.frame"){
+  #    orfs=read.table(as.character(getorf))
+  #    }else{
+  #    suppressWarnings(prot$V1 <- as.data.frame(c(0,0))[,1])
+  #  }
+  ###########################
+  ## dot-plot (bottom left)##
+  ###########################
+
   plot(x = 1, type = "n", xlim = c(0,bl$V3[1]),ylim = c(0,bl$V3[1]), col = "white",
        main = "TE consensus self dotplot (blastn)",
        ylab = paste(as.character(bl$V1[1]), "(bp)", sep = " "),
@@ -37,10 +43,12 @@ blastdotplot=function(query = NULL, db = NULL, getorf = NULL, blast = NULL, os =
         # if orientation
     } # for each segment end
   
-  #
-  ## Annotation graph (right)
+  #####################################
+  ## Annotation graph (bottom right) ##
+  #####################################
+  
+  ## Arrows layer ##
 
-  ## Arrows graph
   plot(x = 1, type = "n", xlim = c(0,bl$V3[1]),ylim = c(-max(length(orfs$V1),10),length(bl$V1)), col = "white",
        main = "TE consensus structure",
        xlab = paste(as.character(bl$V1[1]), "(bp)", sep = " "),
@@ -52,26 +60,27 @@ blastdotplot=function(query = NULL, db = NULL, getorf = NULL, blast = NULL, os =
     } # if to draw (filter)
   } # for each segment end
 
-  ## orfs graphs
-  if(class(test) != "data.frame"){
+
+  ## Orfs layers ##
+  if(class(test) != "data.frame"){ # if orf table is empty
      text(paste("no orf >",os," bp detected", sep=""), x=bl$V3[1]/2, y=-5, cex = 2)
-    } else {
-      orfs=read.table(as.character(getorf))
+    } else { # if ORF table, plot orfs
       for(i in seq(1:length(orfs$V1))){
-          rect(xleft = orfs$V2[i], xright = orfs$V3[i],
-               ybottom = -i-0.05, ytop = -i+0.05, lwd = 1)
-    }  # for each segment end
-  } # if orf not null
-  
-  ## blastp graph
-  if(class(test) != "data.frame"){
-     text(paste("no TE prot. hits", sep=""), x=bl$V3[1]/2, y=-max(length(orfs$V1),10)+1, cex = 2) 
-    } else { # If blast not empty
-      prot=read.table(as.character(blast)) # open blastp table
-      # assign color for each class
-          ###### draw colored rectangle same way as orf
-          ###### print target name with text y = -i x = TE/2
-    }
+        if(orfs$V2[i] < orfs$V3[i]){ # checking ORF orientation
+          rect(xleft = orfs$V2[i], xright = orfs$V3[i], # draw a + ORF
+               ybottom = -i-0.15, ytop = -i+0.15, lwd = 1, border = "black")
+        } else {
+          rect(xleft = orfs$V2[i], xright = orfs$V3[i], # draw a - ORF
+               ybottom = -i-0.15, ytop = -i+0.15, lwd = 1, border = "red")  
+        } # orientation
+
+  ## TE protein hits (blastp) ##
+          rect(xleft = orfs$V6[i], xright = orfs$V7[i], 
+               ybottom = -i-0.15, ytop = -i+0.15, lwd = 1, col = as.character(paste("#",orfs$V9[i], sep=""))) # draw colored rectangle same way as orf
+          text(paste(orfs$V4[i], orfs$V5[i]), x = (orfs$V6[i] + orfs$V7[i])/2, y = -i+0.15, pos = 3) # print hit name
+      
+      } # for each segment
+  } # if orf present plot orfs and prot hits
     
 } # function end
 

@@ -11,7 +11,7 @@
 # TO DOs'
 # - make emboss dotmatcher optional
 # - make makeblastdb quiet
-# - blastp: translate the AA coordinates to nucleotides (orf$V2 + prot$V2  to orf$V2 + 3xprot$V3)
+# - add blastp stats (evalue maybe)
 
 #########################################################################################
 #### PARSER: from https://medium.com/@Drew_Stokes/bash-argument-parsing-54f3b81a6a8f ####
@@ -197,12 +197,42 @@ else
 fi
 #join orfs with their prot hit
 join -a1 -11 -21 <(sort -k1,1 $OUTPUT/TE.orfs.R) <(sort -k1,1 $OUTPUT/TE.blastp.out)| \
- sed 's/#/\t/g' | \
- awk '{print $4"\t"(($2 + (3 * ($9-1)) ))"\t"(($2 + (3 * ($10-1)) ))}' | \
- sed > $OUTPUT/orftetable
+ sed 's/ /\t/g' | \
+ sed 's/DNA\/Maverick/MAV\/Maverick/g;s/DNA\/Crypton/CRY\/Crypton/g;s/LINE\/Penelope/PLE\/Penelope/g;s/LTR\/DIRS/DIRS\/DIRS/g;s/DNA/TIR/g' | \
+ awk '{if (NF == 3) {print $0"\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA"} else {print $0}}' | \
+ awk '$NF != "NA" {if ($2 < $3) {print $1"\t"$2"\t"$3"\t"$4"\t"(($2 + (3 * ($9-1)) ))"\t"(($2 + (3 * ($10-1)) ))"\t+"} else {print $1"\t"$2"\t"$3"\t"$4"\t"(($3 + (3 * ($9-1)) ))"\t"(($3 + (3 * ($10-1)) ))"\t-"}}; $NF == "NA" {print $0}' | \
+ sed 's/--/\t/g' | \
+ awk -v LINEcol="3399ff" \
+  -v SINEcol="800080" \
+  -v TIRcol="ff6666" \
+  -v LTRcol="00cc44" \
+  -v RCcol="ff6600" \
+  -v Low_complexitycol="d1d1e0" \
+  -v Satellitecol="ff99ff" \
+  -v Simple_repeatcol="#8686ac" \
+  -v PLEcol="b2edba" \
+  -v DIRScols="fce7bd" \
+  -v CRYcols="8f1800" \
+  -v MAVcols="669999" \
+  -v Unknowncol="c9c9c9" \
+'/LINE\// {print $0"\t"LINEcol} \
+/SINE\// {print $0"\t"SINEcol} \
+/TIR\// {print $0"\t"TIRcol} \
+/LTR\// {print $0"\t"LTRcol} \
+/RC\// {print $0"\t"RCcol} \
+/Low_complexity/ {print $0"\t"Low_complexitycol} \
+/Satellite/ {print $0"\t"Satellitecol} \
+/Simple_repeat/ {print $0"\t"Simple_repeatcol} \
+/Penelope/ {print $0"\t"PLEcol} \
+/DIRS/ {print $0"\t"DIRScols} \
+/CRY/ {print $0"\t"CRYcols} \
+/MAV/ {print $0"\t"MAVcols} \
+!/LINE\// && !/SINE\// && !/TIR\// && !/LTR\// && !/RC\// && !/Low_complexity/ && !/Satellite/ && !/Simple_repeat/ && !/Penelope/ && !/DIRS/ && !/CRY/ && !/MAV/ {print $0"\t"Unknowncol}' | \
+cut -f 2-10 | sort -k2,2n | awk '$NF != "NA" {print $0}; $NF == "NA" {if ($3 < $4) {sub(/NA\tNA\tNA\tNA\tNA\tNA/, "NO\tHIT\t0\t0\t+\t000000", $0); print $0} else {sub(/NA\tNA\tNA\tNA\tNA\tNA/, "NO\tHIT\t0\t0\t-\twhite", $0); print $0}}' > $OUTPUT/orftetable
+#awk '/LINE/ {print $0"\troyalblue"} /DNA/ {print $0"\tsalmon"} /LTR/ {print $0"\green3"} /!LTR/'
 
 # run R script with user-defined parameters
-Rscript $DIR/Run-c2g.R $QUERY $GENOME_DB $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/TE.orfs.R $OUTPUT/TE.blastp.out $MINORF $DIR
+Rscript $DIR/Run-c2g.R $QUERY $GENOME_DB $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/orftetable $MINORF $DIR
 # clean-up
 #rm $OUTPUT/TE.db* $OUTPUT/TE.orfs*
 
