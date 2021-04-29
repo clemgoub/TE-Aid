@@ -1,4 +1,4 @@
-# TE-Aid
+# TE-Aid [![status: dev](https://img.shields.io/badge/status:-dev-orange)]()
 
 TE-Aid is a program aimed to help the manual curation of transposable elements (TE). It inputs a TE consensus sequence (fasta format) and require a reference genome formated as a blastn database. Using `R` and `ncbi blast+`, TE-Aid produces 4 figures reporting (1) the genomic hits with divergence to consensus, (2) the genomic coverage of the consensus, (3) a self dot-plot and (4) a structure analysis including: TIR and LTR suggestions, open reading frames (ORFs) and TE protein hits annotation.
 
