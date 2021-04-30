@@ -10,9 +10,9 @@
 	- Fig 1: genomic hits (horizontal lines) are represented relative to the query (TE consensus), the y axis represent the `blastn` divergence
 	- Fig 2: pileup of the genomic hits relative to position along the query (TE consensus)
 - The query is then blasted against itself in order to detect micro repeats and inversions (putative TIRs, LTRs)
-	- Fig 3: self dot-plot and Fig 4 (top): TIR and LTR are suggested suggestions (colored arrows)
+	- Fig 3: self dot-plot and Fig 4 (top): TIR and LTR are suggested (colored arrows)
 	- Bonus: a self dot-plot with `emboss dotmatcher` is also produced as an extra figure
-- Putative ORFs are searched with `emboss getorf` and the peptides queried against a freely available TE protein database (ref details to add)
+- Putative ORFs are searched with `emboss getorf` and the peptides queried against a TE protein database (distributed with [`RepeatMasker`](https://github.com/rmhubley/RepeatMasker))
 	- Fig 4: ORFs (black rectangles: + orientation; red rectangles: - orientation), TE protein hits 
 
 The consensus size, number of fragments (hits) and full length copies (according to user-defined threshold) are automatically printed on the graph.
@@ -56,10 +56,7 @@ makeblastdb -in genome.fa -out genome.fa -dbtype 'nucl'
 ```
 <user-path>/TE-Aid [-q|--query <query.TE.fa>] [-d|--blast-database <genome.fa>] [options]
 ```
----
-**NOTE**
-replace `<user-path>` with the path of the downloaded `TE-Aid` folder.
----
+**NOTE:** replace `<user-path>` with the path of the downloaded `TE-Aid` folder.
 
 ### Arguments
 
