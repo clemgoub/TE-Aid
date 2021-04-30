@@ -1,18 +1,18 @@
-# TE-Aid [![status: dev](https://img.shields.io/badge/status:-dev-orange)]()
+# TE-Aid [![status: test](https://img.shields.io/badge/status:-test-yellow)]()
 
-TE-Aid is a program aimed to help the manual curation of transposable elements (TE). It inputs a TE consensus sequence (fasta format) and require a reference genome formated as a blastn database. Using `R` and `ncbi blast+`, TE-Aid produces 4 figures reporting (1) the genomic hits with divergence to consensus, (2) the genomic coverage of the consensus, (3) a self dot-plot and (4) a structure analysis including: TIR and LTR suggestions, open reading frames (ORFs) and TE protein hits annotation.
+**TE-Aid** is a `shell`+`R` program aimed to help the manual curation of transposable elements (TE). It inputs a TE consensus sequence (fasta format) and requires a reference genome formated as a `blastn` database. Using `R` and the `NCBI blast+ suite`, TE-Aid produces 4 figures reporting (1 - top left) the genomic hits with divergence to consensus, (2 - top right) the genomic coverage of the consensus, (3 - bottom left) a self dot-plot and (4 - bottom right) a structure analysis including: TIR and LTR suggestions, open reading frames (ORFs) and TE protein hit annotation.
 
 *include figure here* <img src=https://github.com/clemgoub/TE-Aid/blob/master/Example/TE1.jpeg width="900">
 
-**Pipeline:**
+**Pipeline overview:**
 
-- The TE (idealy, candidate consensus sequence) is searched against the provided reference genome with `blastn` 
+- The TE (ideally, candidate consensus sequence) is searched against the provided reference genome with `blastn` 
 	- Fig 1: genomic hits (horizontal lines) are represented relative to the query (TE consensus), the y axis represent the `blastn` divergence
 	- Fig 2: pileup of the genomic hits relative to position along the query (TE consensus)
-- The query is then blasted agaisnt itself in order to detect micro repeats and inversions (putative TIRs, LTRs)
+- The query is then blasted against itself in order to detect micro repeats and inversions (putative TIRs, LTRs)
 	- Fig 3: self dot-plot and Fig 4 (top): TIR and LTR are suggested suggestions (colored arrows)
 	- Bonus: a self dot-plot with `emboss dotmatcher` is also produced as an extra figure
-- Putative ORFs are searched with `emboss getorf` and the peptides queried against a freely available TE protein databse (ref details to add)
+- Putative ORFs are searched with `emboss getorf` and the peptides queried against a freely available TE protein database (ref details to add)
 	- Fig 4: ORFs (black rectangles: + orientation; red rectangles: - orientation), TE protein hits 
 
 The consensus size, number of fragments (hits) and full length copies (according to user-defined threshold) are automatically printed on the graph.
@@ -20,7 +20,7 @@ If any ORFs and protein hits are found, their locations relative to the consensu
 
 support: click the "issues" tab on github or [email me](mailto:goubert.clement@gmail.com)
 
-TE-Aid comes from `consensus2genome` that will be soon deprecated
+**TE-Aid** comes from `consensus2genome` that is now soon deprecated
 
 ## Install
 
@@ -29,14 +29,14 @@ TE-Aid comes from `consensus2genome` that will be soon deprecated
 - [R (Rscript)](https://cran.r-project.org/mirrors.html)
 - [NCBI Blast suite](https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download)
 
-TE-Aid calls blastn and R from the command line with 'blastn', 'blastp', 'makeblastdb' and 'Rscript' commands. Both `blastn` and `Rscript` must be in the user path (usually the case following the default install of these progams). 
-If not, you need to locate the executables location and add them to your local path before using c2g: 
+TE-Aid calls **NCBI blast** and **R** from the command line with `blastn`, `blastp`, `makeblastdb` and `Rscript` commands. All these executable must be accessible in the user path (usually the case following the default install). 
+If not, you need to locate the executables location and add them to your local path before using TE-Aid: 
 ```
 export PATH="/path/to/blast/bins/folder/:$PATH"` 
 export PATH="/path/to/R/bins/folder/:$PATH"` 
 ```
 
-### Instal from github
+### Instal **TE-Aid** from github
 ```
 git clone https://github.com/clemgoub/TE-Aid.git
 ```
@@ -45,7 +45,7 @@ git clone https://github.com/clemgoub/TE-Aid.git
 
 ### Blastn databse
 
-You will need to create a blastn database for your reference genome
+You first need to create a blastn database for your reference genome
 
 ```
 makeblastdb -in genome.fa -out genome.fa -dbtype 'nucl'
@@ -56,7 +56,10 @@ makeblastdb -in genome.fa -out genome.fa -dbtype 'nucl'
 ```
 <user-path>/TE-Aid [-q|--query <query.TE.fa>] [-d|--blast-database <genome.fa>] [options]
 ```
-replace `<user-path` with the path of the downloaded `TE-Aid` folder.
+---
+**NOTE**
+replace `<user-path>` with the path of the downloaded `TE-Aid` folder.
+---
 
 ### Arguments
 
