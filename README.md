@@ -56,7 +56,7 @@ makeblastdb -in genome.fa -out genome.fa -dbtype 'nucl'
 ```
 <user-path>/TE-Aid [-q|--query <query.TE.fa>] [-d|--blast-database <genome.fa>] [options]
 ```
-**NOTE:** replace `<user-path>` with the path of the downloaded `TE-Aid` folder.
+>**Note.** replace `<user-path>` with the path of the downloaded `TE-Aid` folder.
 
 ### Arguments
 
