@@ -18,7 +18,7 @@ blastdotplot=function(query = NULL, db = NULL, blast = NULL, os = NULL){
      orfs=read.table(as.character(blast))
      } else {
      print("no orf to plot...")
-     orfs <- as.data.frame(0)
+     orfs <- suppressWarnings(as.data.frame(0))
      names(orfs)<-"V1"
    }
 

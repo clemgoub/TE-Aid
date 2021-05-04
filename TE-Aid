@@ -190,6 +190,13 @@ echo "full length hits trsp.: $FULL_ALPHA"
 
 
 ## run script
+# clean working from possible parasitic orftables
+if [ -s $OUTPUT/TE.blastp.out ]
+  then
+    rm $OUTPUT/TE.orfs*
+    rm $OUTPUT/TE.blastp.out
+    rm $OUTPUT/orftetable
+fi
 # create output dir if non-existent
 mkdir -p $OUTPUT
 # create dotmatcher graph in outputs
@@ -262,6 +269,10 @@ fi
 # run R script with user-defined parameters
 Rscript $DIR/Run-c2g.R $QUERY $GENOME_DB $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/orftetable $MINORF $DIR
 # clean-up
-#rm $OUTPUT/TE.db* $OUTPUT/TE.orfs*
-
+rm $OUTPUT/TE.db* 
+if [ -s $OUTPUT/TE.orfs ]
+  then
+    rm $OUTPUT/TE.orfs* 
+    mv $OUTPUT/orftetable $OUTPUT/$TENAME.orftable.txt
+fi
 echo "Done! The graph (.pdf) can be found in the output folder: $OUTPUT"
