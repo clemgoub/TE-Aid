@@ -178,7 +178,7 @@ ALPHA="${ALPHA:-0.3}"
 FULL_ALPHA="${FULL_ALPHA:-0.9}"
 AUTO_Y="${AUTO_Y:-TRUE}"
 OUTPUT="${OUTPUT:-.}"
-MINORF="${MINORF:-300}"
+MINORF="${MINORF:-400}"
 
 # param check
 echo "query:                         $QUERY"
