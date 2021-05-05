@@ -63,7 +63,7 @@ makeblastdb -in genome.fa -out genome.fa -dbtype 'nucl'
 Mendatory arguments:
 ```
     -q, --query                   TE consensus to blast (fasta file)
-    -d, --blast-database          Reference genome in blastn format database (makeblastdb -in genome.fa -out genome.fa -dbtype 'nucl')
+    -g, --genome                  Reference genome (fasta file)
 ```
 - Optional arguments:
 ```
