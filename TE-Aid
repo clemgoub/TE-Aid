@@ -51,7 +51,7 @@ WARNING: This is a development version, the results may be incorrect
    mendatory arguments:
     
     -q, --query                   TE consensus to blast (fasta file)
-    -d, --blast-database          Reference genome in blastn format database (makeblastdb -in genome.fa -out genome.fa -dbtype 'nucl')
+    -g, --genome                  Reference genome (fasta file)
 
    optional arguments:
     
@@ -94,12 +94,12 @@ while (( "$#" )); do
         exit 1
       fi
       ;;
-	-d|--blast-database)
+	-g|--genome)
       if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
-        GENOME_DB=$2
+        GENOME=$2
         shift 2
       else
-        echo "Error: No genome datablase provided (blastn database)" >&2
+        echo "Error: No reference genome provided" >&2
         usage
         exit 1
       fi
@@ -181,17 +181,20 @@ OUTPUT="${OUTPUT:-.}"
 MINORF="${MINORF:-300}"
 
 # param check
-echo "query:                  $QUERY"
-echo "genome db:              $GENOME_DB"
-echo "e-value:                $EVALUE"
-echo "full length min ratio:  $FL"
-echo "hits transparency:      $ALPHA"
-echo "full length hits trsp.: $FULL_ALPHA"
+echo "query:                         $QUERY"
+echo "ref genome:                    $GENOME"
+echo "TE -> genome blastn e-value:   $EVALUE"
+echo "full length min ratio:         $FL"
+echo "hits transparency:             $ALPHA"
+echo "full length hits transparency: $FULL_ALPHA"
 
 
 ## run script
+# make a genome blastn database, supress warnings if altrady exist
+makeblastdb -in $GENOME -out $GENOME -dbtype 'nucl' &>/dev/null
+
 # clean working from possible parasitic orftables
-if [ -s $OUTPUT/TE.blastp.out ]
+if [ -f $OUTPUT/TE.blastp.out ]
   then
     rm $OUTPUT/TE.orfs*
     rm $OUTPUT/TE.blastp.out
@@ -267,7 +270,7 @@ if [ -s $OUTPUT/TE.orfs ]
     echo "no ORF detected, skipping blastp..."
 fi
 # run R script with user-defined parameters
-Rscript $DIR/Run-c2g.R $QUERY $GENOME_DB $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/orftetable $MINORF $DIR
+Rscript $DIR/Run-c2g.R $QUERY $GENOME $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/orftetable $MINORF $DIR
 # clean-up
 rm $OUTPUT/TE.db* 
 if [ -s $OUTPUT/TE.orfs ]

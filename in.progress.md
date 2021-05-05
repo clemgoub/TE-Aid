@@ -1,6 +1,6 @@
 ## Tutorial
 
-In this example we are going to map the Gypsy-2 and Jockey elements of ***Drosophila melanogaster*** over the reference genome. We assume that we start from the main folder of consensus2genome package. The consensus sequence is located in the 'Example' folder, and we will need to download the ***D. melanogaster*** reference genome and make a blast database out of it. Let's go!
+In this example we are going to some transposable elements of ***Drosophila melanogaster***. The consensus sequences for this tutorial are located in the `Example/` folder, and you will need to download the ***D. melanogaster*** reference genome (dm6) and make a blast database out of it. Let's go!
 
 #### 1. Download the ***D. melanogaster*** genome and create a blast db
 
