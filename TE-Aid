@@ -156,11 +156,11 @@ while (( "$#" )); do
       ;;
 # boolean flags         	
     -t | --tables)
-        TABLES="TRUE"
+        TABLES=TRUE
         shift
       ;; 
     -T | --all-Tables)
-        ALLTAB="TRUE"
+        ALLTAB=TRUE
         shift
        ;;       
     -*|--*=) # unsupported flags
@@ -285,7 +285,7 @@ if [ -s $OUTPUT/TE.orfs ]
     echo "no ORF detected, skipping blastp..."
 fi
 # run R script with user-defined parameters
-Rscript $DIR/Run-c2g.R $QUERY $GENOME $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/orftetable $MINORF $DIR
+Rscript $DIR/Run-c2g.R $QUERY $GENOME $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/orftetable $MINORF $DIR $TABLES
 
 # clean-up
 if [ $TABLES == "TRUE" ]
@@ -293,6 +293,7 @@ if [ $TABLES == "TRUE" ]
     rm $OUTPUT/TE.db* 
     rm $OUTPUT/TE.orfs* &>/dev/null
     mv $OUTPUT/orftetable $OUTPUT/$TENAME.orftable.txt &>/dev/null
+    mv $OUTPUT/TE.self-blast.txt $OUTPUT/$TENAME.self-blast.pairs.txt
     rm $OUTPUT/TE.blastp.out &>/dev/null
   else
     rm $OUTPUT/TE.db* 

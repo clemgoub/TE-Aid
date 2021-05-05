@@ -26,6 +26,7 @@ selfdb		=	as.character(Args[14]) # bool
 blastp      =   as.character(Args[15]) # includes orfs position
 osize		=	as.numeric(Args[16])
 wdir        =   as.character(Args[17]) # from the shell: path to running directory 
+tables      =   as.character(Args[18])
 
 source(paste(wdir, "/", "consensus2genome.R", sep = ""))
 source(paste(wdir, "/", "blastndotplot.R", sep = ""))
@@ -52,6 +53,8 @@ consensus2genome(query 		=	query,
 blastdotplot(query  =  query,
              db     =  selfdb,
              blast  =  blastp,
-             os     =  osize)
+             os     =  osize,
+             tables =  tables,
+             output =  output)
 
 dev.off()

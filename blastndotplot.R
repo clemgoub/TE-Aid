@@ -1,6 +1,6 @@
 
 # self sequence db is being made by the shell script // or you need to make it to use in R
-blastdotplot=function(query = NULL, db = NULL, blast = NULL, os = NULL){
+blastdotplot=function(query = NULL, db = NULL, blast = NULL, os = NULL, tables = NULL, output = NULL){
   
   # run the selfblast
   bl=read.table(text=system(paste("blastn -query", query, "-db", db, "-evalue 0.05 -outfmt 6 -word_size 11 -gapopen 5 -gapextend 2 -reward 2 -penalty -3 | cut -f 1,7-10 | sed 's/#/-/g'"),
@@ -8,7 +8,11 @@ blastdotplot=function(query = NULL, db = NULL, blast = NULL, os = NULL){
                 )
   # order from left to right
   bl=bl[order(bl$V2, decreasing = F),]
-
+  
+  #print(tables)
+  if(tables == "TRUE"){
+    write.table(bl, file = paste(output, "/TE.self-blast.txt", sep = ""), quote = F, row.names = F)
+  }
   # test if there are orf detected; will later store in orf if TRUE
   test<-try(read.table(as.character(blast)), T)
    # test if there are TE prot detected; will later store in prot if TRUE
