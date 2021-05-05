@@ -24,4 +24,4 @@ Next is Gypsy-2, from the **LTR** lineage
 ```shell
 ./TE-Aid -q Example/Gypsy2_DM.fasta -g Example/dm6.fa -o ../dm6example
 ```
-<img src=https://github.com/clemgoub/TE-Aid/blob/master/Example/Gypsy.TEaid.png width="1024">
+<img src=https://github.com/clemgoub/TE-Aid/blob/master/Example/Gypsy2.TEaid.png width="1024">
