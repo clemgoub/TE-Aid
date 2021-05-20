@@ -290,11 +290,12 @@ Rscript $DIR/Run-c2g.R $QUERY $GENOME $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OU
 # clean-up
 if [ $TABLES == "TRUE" ]
   then
-    rm $OUTPUT/TE.db* 
-    rm $OUTPUT/TE.orfs* &>/dev/null
-    mv $OUTPUT/orftetable $OUTPUT/$TENAME.orftable.txt &>/dev/null
+    #rm $OUTPUT/TE.db* 
+    #rm $OUTPUT/TE.orfs* &>/dev/null
+    cat <(echo -e "orf_start\torf_end\thit_TE_prot\tTE_Class\thit_start\thit_end\tstrand\tcolor") $OUTPUT/orftetable > $OUTPUT/$TENAME.orftable.txt #&>/dev/null
+    #rm $OUTPUT/orftetable &>/dev/null
     mv $OUTPUT/TE.self-blast.txt $OUTPUT/$TENAME.self-blast.pairs.txt
-    rm $OUTPUT/TE.blastp.out &>/dev/null
+    #rm $OUTPUT/TE.blastp.out &>/dev/null
   else
     rm $OUTPUT/TE.db* 
     rm $OUTPUT/TE.orfs* &>/dev/null

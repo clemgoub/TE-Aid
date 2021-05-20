@@ -36,6 +36,8 @@ pdf(width = 12, height = 12, file = paste(output, "/", tail(strsplit(as.characte
 
 par(mfrow=c(2,2))
 
+print("R: ploting genome blastn results and computing coverage...")
+
 consensus2genome(query 		=	query,
                  db 		=	database,
                  evalue 	=	evalue,
@@ -49,6 +51,8 @@ consensus2genome(query 		=	query,
 #                 cov_thresh	=	drops
 #                 ,
                  )
+
+print("R: ploting self dot-plot and orf/protein hits...")
 
 blastdotplot(query  =  query,
              db     =  selfdb,

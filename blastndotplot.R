@@ -9,13 +9,9 @@ blastdotplot=function(query = NULL, db = NULL, blast = NULL, os = NULL, tables =
   # order from left to right
   bl=bl[order(bl$V2, decreasing = F),]
   
-  #print(tables)
-  if(tables == "TRUE"){
-    write.table(bl, file = paste(output, "/TE.self-blast.txt", sep = ""), quote = F, row.names = F)
-  }
   # test if there are orf detected; will later store in orf if TRUE
   test<-try(read.table(as.character(blast)), T)
-   # test if there are TE prot detected; will later store in prot if TRUE
+  # test if there are TE prot detected; will later store in prot if TRUE
   #test2<-try(read.table(as.character(blast)), T)
 
   if(class(test) == "data.frame"){
@@ -87,10 +83,16 @@ blastdotplot=function(query = NULL, db = NULL, blast = NULL, os = NULL, tables =
           text(paste(orfs$V3[i], orfs$V4[i]), x = (min(orfs$V1[i],orfs$V2[i])+max(orfs$V1[i],orfs$V2[i]))/2, y = -i+0.15, pos = 3) # print hit name
       
         } # for each segment
-      names(orfs)<-c("orf.start", "orf.end", "hit.TE.prot", "TE.Class", "hit.start", "hit.end", "strand", "color")
-      print(orfs)
+      #names(orfs)<-c("orf.start", "orf.end", "hit.TE.prot", "TE.Class", "hit.start", "hit.end", "strand", "color")
+      #print(orfs)
   } # if orf present plot orfs and prot hits
     
+  #print(tables)
+  if(tables == "TRUE"){
+    names(bl)<-c("TE", "from.1", "to.1", "from.2", "to.2")
+    write.table(bl, file = paste(output, "/TE.self-blast.txt", sep = ""), quote = F, row.names = F)
+  } # if tables to print
+  
 } # function end
 
 
