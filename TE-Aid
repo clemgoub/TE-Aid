@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/bin/bash
 #######################################
 #  _______ ______            _     _  #
 # |__   __|  ____|_    /\   (_)   | | #
@@ -247,7 +247,7 @@ if [ -s $OUTPUT/TE.orfs ]
     fi
 
   #join orfs with their prot hit
-  join -a1 -11 -21 <(sort -k1,1 $OUTPUT/TE.orfs.R) <(sort -k1,1 $OUTPUT/TE.blastp.out)| \
+  join -a1 -11 -21 <(sort -k1,1 $OUTPUT/TE.orfs.R) <(sort -k1,1 $OUTPUT/TE.blastp.out) | \
    sed 's/ /\t/g' | \
    sed 's/DNA\/Maverick/MAV\/Maverick/g;s/DNA\/Crypton/CRY\/Crypton/g;s/LINE\/Penelope/PLE\/Penelope/g;s/LTR\/DIRS/DIRS\/DIRS/g;s/DNA/TIR/g' | \
    awk '{if (NF == 3) {print $0"\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA"} else {print $0}}' | \
