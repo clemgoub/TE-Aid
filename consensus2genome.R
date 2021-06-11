@@ -26,6 +26,7 @@ consensus2genome=function(query=NULL, db=NULL, evalue=10e-8, FL_thresh=0.9, alph
   if(is.null(db)){print('db not specified')}
   #perform the blast
   blast=read.table(text=system(paste("blastn -query", query, "-db", db , "-evalue", evalue, "-outfmt 6 | sed 's/#/-/g'"), intern = TRUE))
+  write.table(blast, file = "blastn.txt",  quote = F, row.names = F)
   #TE consensus size
   cons_len=as.numeric(system(paste(bins,"/getlength.sh ",query, sep = ""), intern = TRUE))
   print(paste("consensus length: ", cons_len, "bp", sep = " "))

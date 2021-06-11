@@ -22,6 +22,8 @@
 The consensus size, number of fragments (hits) and full length copies (according to user-defined threshold) are automatically printed on the graph.
 If any ORFs and protein hits are found, their locations relative to the consensus are printed in the `stdout`
 
+
+TE-Aid has been tested on MacOSX (shell, sh, zsh) and Linux (shell, sh)
 support: click the "issues" tab on github or [email me](mailto:goubert.clement@gmail.com)
 
 **TE-Aid** comes from `consensus2genome` that is now deprecated
@@ -65,17 +67,22 @@ git clone https://github.com/clemgoub/TE-Aid.git
 
 ```
     -h, --help                    show this help message and exit
-
-    -o, --output                  output folder. Default = "."
-
+    
+    -o, --output                  output folder (default "./")
+    -t, --tables                  write features coordinates in tables (self dot-plot, ORFs and protein hits coordinates)
+    -T, --all-Tables              same as -t plus write the genomic blastn table. 
+                                  Warning: can be very large if your TE is highly repetitive!
+    
     -e, --e-value                 genome blastn: e-value threshold to keep hit (default: 10e-8)
     -f, --full-length-threshold   genome blastn: min. proportion (hit_size)/(consensus_size) to be considered "full length" (0-1; default: 0.9)
 
-    -m, --min-orf                 getorf: minimum ORF size (in bp). Default: 400 bp
+    -m, --min-orf                 getorf: minimum ORF size (in bp)
 
-    -a, --alpha                   graphical: transparency value for blastn hit segments (0-1; default 0.3)
-    -F, --full-length-alpha       graphical: transparency value for full-length blastn hits segments (0-1; default 1)
-    -y, --auto-y                  graphical: manual override for y axis max value (default: TRUE; otherwise: -y NUM)
+    -a, --alpha                   graphical: transparency value for blastn hit (0-1; default 0.3)
+    -F, --full-length-alpha       graphical: transparency value for full-length blastn hits (0-1; default 1)
+    -y, --auto-y                  graphical: manual override for y lims (default: TRUE; otherwise: -y NUM)
+
+    -D | --emboss-dotmatcher      Produce a dotplot with EMBOSS dotmatcher
 ```
 
 ## Tutorial
