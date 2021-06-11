@@ -1,6 +1,6 @@
 # TE+Aid [![status](https://img.shields.io/badge/status:-test-yellow)]() [![support](https://img.shields.io/badge/support:-yes-green)]()
 
-**TE-Aid** is a `shell`+`R` program aimed to help the manual curation of transposable elements (TE). It inputs a TE consensus sequence (fasta format) and requires a reference genome formated as a `blastn` database. Using `R` and the `NCBI blast+ suite`, TE-Aid produces 4 figures reporting:
+**TE-Aid** is a `shell`+`R` program aimed to help the manual curation of transposable elements (TE). It inputs a TE consensus sequence (fasta format) and requires a reference genome (in fasta as well). Using `R` and the `NCBI blast+ suite`, TE-Aid produces 4 figures reporting:
  1. (top left) the genomic hits with divergence to consensus
  2. (top right) the genomic coverage of the consensus
  3. (bottom left) a self dot-plot 
