@@ -295,7 +295,9 @@ if [ $TABLES == "TRUE" ]
   then
     #rm $OUTPUT/TE.db* 
     #rm $OUTPUT/TE.orfs* &>/dev/null
-    cat <(echo -e "orf_start\torf_end\thit_TE_prot\tTE_Class\thit_start\thit_end\tstrand\tcolor") $OUTPUT/orftetable > $OUTPUT/$TENAME.orftable.txt #&>/dev/null
+    echo -e "orf_start\torf_end\thit_TE_prot\tTE_Class\thit_start\thit_end\tstrand\tcolor" > header
+    cat header $OUTPUT/orftetable > $OUTPUT/$TENAME.orftable.txt #&>/dev/null
+    rm header
     #rm $OUTPUT/orftetable &>/dev/null
     mv $OUTPUT/TE.self-blast.txt $OUTPUT/$TENAME.self-blast.pairs.txt
     #rm $OUTPUT/TE.blastp.out &>/dev/null
