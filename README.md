@@ -34,6 +34,7 @@ support: click the "issues" tab on github or [email me](mailto:goubert.clement@g
 
 - [R (Rscript)](https://cran.r-project.org/mirrors.html)
 - [NCBI Blast+ suite](https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/)
+- [EMBOSS `getorf`](http://emboss.sourceforge.net/download/)
 
 TE-Aid calls **NCBI blast** and **R** from the command line with `blastn`, `blastp`, `makeblastdb` and `Rscript` commands. All these executables must be accessible in the user path (usually the case following the default install). 
 If not, you need to locate the executables' location and add them to your local path before using TE-Aid.
