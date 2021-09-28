@@ -88,7 +88,7 @@ git clone https://github.com/clemgoub/TE-Aid.git
 
 ## Tutorial
 
-In this example we are going to analyze some transposable elements of *Drosophila melanogaster*. The consensus sequences for this tutorial are located in the `Example/` folder, and you will need to download the *D. melanogaster* reference genome (dm6) and make a blast database out of it. Let's go!
+In this example we are going to analyze some transposable elements of *Drosophila melanogaster*. The consensus sequences for this tutorial are located in the `Example/` folder, and you will need to download the *D. melanogaster* reference genome (dm6). Let's go!
 
 #### 1. Download the *D. melanogaster* genome
 
