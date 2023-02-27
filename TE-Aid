@@ -14,10 +14,12 @@
 # V.0 | 04.19.21 - development
 #
 # Author: Clément Goubert - goubert.clement@gmail.com
+# Forked by: Artem Ilin - liartom2@gmail.com
 #
 # TO DOs'
 # - make emboss dotmatcher optional
 # - add blastp stats (evalue maybe)
+# - make script run for all the identified insertions
 
 ###################################################################################
 # PARSER: from https://medium.com/@Drew_Stokes/bash-argument-parsing-54f3b81a6a8f #
@@ -79,9 +81,9 @@ HEREDOC
 
 # if no parameter given, output help and qui
 if [[ $# -eq 0 ]] ; then
-    echo '   **********************************'
-    echo '   Error! No mendatory argument given'
-    echo '   **********************************'
+    echo '   ***********************************'
+    echo '   Error! No mandatory arguments given'
+    echo '   ***********************************'
     usage
     exit 0
 fi
