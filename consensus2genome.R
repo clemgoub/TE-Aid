@@ -29,7 +29,7 @@ consensus2genome=function(query=NULL, db=NULL, evalue=10e-8, FL_thresh=0.9, alph
   write.table(blast, file = "blastn.txt",  quote = F, row.names = F)
   #TE consensus size
   cons_len=as.numeric(system(paste(bins,"/getlength.sh ",query, sep = ""), intern = TRUE))
-  print(paste("consensus length: ", cons_len, "bp", sep = " "))
+  print(paste("consensus length:", cons_len, "bp", sep = " "))
   #list of almost full length fragments
   full=blast[abs(blast$V7-blast$V8) >= FL_thresh*as.numeric(cons_len),]
   #graph
@@ -53,9 +53,10 @@ consensus2genome=function(query=NULL, db=NULL, evalue=10e-8, FL_thresh=0.9, alph
     }}
   
 #make the coverage matrix and graph
-coverage=matrix(rep(0, length(blast$V1)*as.numeric(cons_len)), byrow = T, ncol = as.numeric(cons_len))
-for(i in 1:length(blast$V1)){
-    coverage[i,]<-c(rep(0,blast$V7[i]-1),rep(1,abs(blast$V8[i]-blast$V7[i])+1), rep(0,as.numeric(cons_len)-blast$V8[i]))
+coverage=matrix(rep(0, (length(blast$V1)*as.numeric(cons_len))), byrow = T, ncol = as.numeric(cons_len))
+print(dim(coverage))
+for(i in 1:nrow(blast)){
+    coverage[i, blast$V7[i]:blast$V8[i]] <- 1
 }
 
     # TO FIX: trace the coverage on the left graph
