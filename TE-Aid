@@ -12,6 +12,9 @@
 #
 # V.0 | 04.28.21 - create TE-Aid repos from conensus2genome
 # V.0 | 04.19.21 - development
+# V1.1 | 24.03.05 - fixed redundant fragment count for genome blastn results
+# Now TE-Aid requires Rcpp library for loading reduce.cpp primitive which I wrote
+# in order to avoid loading GRanges library. Still works fast!
 #
 # Author: Clément Goubert - goubert.clement@gmail.com
 # Forked by: Artem Ilin - liartom2@gmail.com
@@ -36,14 +39,15 @@ function usage()
     | |   | |____ |_| / ____ \ | || (_| |
     |_|   |______|   /_/    \_\|_| \__,_|
   
-                   v.0-dev
+                   v.1.1-dev
 
-WARNING: This is a development version, please report bugs to goubert.clement@gmail.com
+   This is a modified version of TE-Aid, forked by https://github.com/foriin.
+   If you have questions specific for this version, contact Artem at liartom2@gmail.com
 
    **************************************
 
    TE+Aid is a tool to help the manual curation of transposable elements (TE).
-   It inputs a TE consensus sequence (fasta format) and require a reference genome formated as a blastn database
+   It requires a TE consensus sequence and a reference genome both in fasta format.
 
    Full Documentation: https://github.com/clemgoub/TE-Aid                             
                                       
@@ -51,7 +55,7 @@ WARNING: This is a development version, please report bugs to goubert.clement@gm
 
    Usage: ./TE-Aid [-q|--query <TE.fasta>] [-g|--genome <genome.fasta>] [options]
 
-   mendatory arguments:
+   mandatory arguments:
     
     -q, --query                   TE consensus to blast (fasta file)
     -g, --genome                  Reference genome (fasta file)
@@ -215,7 +219,7 @@ echo "full length hits transparency: $FULL_ALPHA"
 
 ## MAIN WRAPPER
 
-# make a genome blastn database, supress warnings if altrady exist
+# make a genome blastn database, supress warnings if already exists
 makeblastdb -in $GENOME -out $GENOME -dbtype 'nucl' &>/dev/null
 
 # clean working from possible parasitic orftables
