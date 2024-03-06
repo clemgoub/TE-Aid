@@ -23,7 +23,7 @@
 
 consensus2genome=function(query=NULL, db=NULL, evalue=10e-8,
                           FL_thresh=0.9, alpha=0.3, full_alpha=1,
-                          auto_y=T, wdir=NULL){
+                          auto_y=T, wdir=NULL, nored=NULL){
   if(!requireNamespace("Biostrings", quietly = T)){
     stop("Biostrings not installed")
   } else if (!requireNamespace("Rcpp", quietly = T)){
@@ -37,17 +37,41 @@ consensus2genome=function(query=NULL, db=NULL, evalue=10e-8,
   colnames(blast) <- c("query", "subject", "pident", "length", "mismatch", "gapopen", "qstart", "qend", "sstart", "send", "evalue", "score")
   # Load reduce_blast function
   Rcpp::sourceCpp(file.path(wdir, "reduce.cpp"))
-  blast_red <- reduce_blastn_results(blast)
-  write.table(blast_red, file = "blastn.txt",  quote = F, row.names = F, col.names = F)
   #TE consensus size
   cons_len <- Biostrings::fasta.seqlengths(query)
   print(paste("consensus length:", cons_len, "bp", sep = " "))
-  #list of almost full length fragments
-  full=blast_red[abs(blast_red$qend-blast_red$qstart) >= FL_thresh*as.numeric(cons_len),]
+  
+  if (nored == "TRUE"){
+    blast_red <- reduce_blastn_results(blast)
+    # Export the reduced table
+    write.table(blast_red, file = "blastn.txt",  quote = F, row.names = F, col.names = F)
+    #list of almost full length fragments
+    full=blast_red[abs(blast_red$qend-blast_red$qstart) >= FL_thresh*as.numeric(cons_len),]
+    plot_main <- c(
+      TE = as.character(blast_red[1,1]),
+      ConsLength = as.character(cons_len),
+      Fragments = length(blast_red$query),
+      FullLength = length(full$query),
+      LenThreshold = as.character(as.numeric(FL_thresh)*cons_len)
+    )
+  } else {
+    write.table(blast, file = "blastn.txt",  quote = F, row.names = F, col.names = F)
+    #list of almost full length fragments
+    full=blast[abs(blast$qend-blast$qstart) >= FL_thresh*as.numeric(cons_len),]
+    plot_main <- c(
+      TE = as.character(blast[1,1]),
+      ConsLength = as.character(cons_len),
+      Fragments = length(blast$query),
+      FullLength = length(full$query),
+      LenThreshold = as.character(as.numeric(FL_thresh)*cons_len)
+    )
+  }
+  
+  
   #graph
   if(auto_y == T){
     #par(mar=c(2,2,2,2))
-    plot(range(0, cons_len), range(0, max(100-blast$pident)), type = "n", main=paste("TE: ", as.character(blast_red[1,1]), "\n consensus size: ", as.character(cons_len), "bp; fragments: ", as.character(length(blast_red$query)), "; full length: ", as.character(length(full$query))," (>=",as.character(as.numeric(FL_thresh)*cons_len),"bp)", sep = ""), cex.main = 0.9, xlab = "TE consensus (bp)", ylab = "divergence to consensus (%)")
+    plot(range(0, cons_len), range(0, max(100-blast$pident)), type = "n", main=paste("TE: ", plot_main[["TE"]], "\n consensus size: ", plot_main[["ConsLength"]], "bp; fragments: ", plot_main[["Fragments"]], "; full length: ", plot_main[["FullLength"]]," ( >= ", plot_main[["LenThreshold"]]," bp )", sep = ""), cex.main = 0.9, xlab = "TE consensus (bp)", ylab = "divergence to consensus (%)")
     for(i in 1:nrow(blast)){
       segments(blast$qstart[i], 100-blast$pident[i], blast$qend[i], 100-blast$pident[i], col=rgb(0,0,0,alpha=alpha))
     }
@@ -56,7 +80,7 @@ consensus2genome=function(query=NULL, db=NULL, evalue=10e-8,
     }}
   else{
     #par(mar=c(2,2,2,2))
-    plot(range(0, cons_len), range(0, auto_y), type = "n", main=paste("TE: ", as.character(blast_red[1,1]), "\n consensus size: ", as.character(cons_len), "bp; fragments: ", as.character(length(blast_red$query)), "; full length: ", as.character(length(full$query))," (>=",as.character(as.numeric(FL_thresh)*cons_len),"bp)", sep = ""), cex.main = 0.9, xlab = "TE consensus (bp)", ylab = "divergence to consensus (%)")
+    plot(range(0, cons_len), range(0, auto_y), type = "n", main=paste("TE: ", plot_main[["TE"]], "\n consensus size: ", plot_main[["ConsLength"]], "bp; fragments: ", plot_main[["Fragments"]], "; full length: ", plot_main[["FullLength"]]," ( >= ", plot_main[["LenThreshold"]]," bp )", sep = ""), cex.main = 0.9, xlab = "TE consensus (bp)", ylab = "divergence to consensus (%)")
     for(i in 1:length(blast$query)){
       segments(blast$qstart[i], 100-blast$pident[i], blast$qend[i], 100-blast$pident[i], col=rgb(0,0,0,alpha=alpha))
     }

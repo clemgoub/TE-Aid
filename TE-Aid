@@ -68,11 +68,13 @@ function usage()
     -t, --tables                  write features coordinates in tables (self dot-plot, ORFs and protein hits coordinates)
     -T, --all-Tables              same as -t plus write the genomic blastn table. 
                                   Warning: can be very large if your TE is highly repetitive!
+    -r, --remove-redundant        remove redundant hits from genomic blastn table and a title of the first plot
     
     -e, --e-value                 genome blastn: e-value threshold to keep hit (default: 10e-8)
     -f, --full-length-threshold   genome blastn: min. proportion (hit_size)/(consensus_size) to be considered "full length" (0-1; default: 0.9)
 
     -m, --min-orf                 getorf: minimum ORF size (in bp)
+    -R, --no-reverse-orfs         getorf: don't use ORFs in ther reverse complement of your sequence
 
     -a, --alpha                   graphical: transparency value for blastn hit (0-1; default 0.3)
     -F, --full-length-alpha       graphical: transparency value for full-length blastn hits (0-1; default 1)
@@ -176,6 +178,14 @@ while (( "$#" )); do
         DOTMA=TRUE
         shift
        ;;         
+    -r | --remove-redundant)
+        BLASTNORED=TRUE
+        shift
+        ;;
+    -R | --no-reverse-orfs)
+        NOREV=TRUE
+        shift
+        ;;
     -*|--*=) # unsupported flags
       echo "Error: Unsupported argument $1" >&2
       usage
@@ -208,7 +218,8 @@ MINORF="${MINORF:-400}"
 TABLES="${TABLES:-FALSE}"
 ALLTAB="${ALLTAB:-FALSE}"
 DOTMA="${DOTMA:-FALSE}"
-
+NOREV="${NOREV:-FALSE}"
+BLASTNORED="${BLASTNORED:-FALSE}"
 # param check
 echo "query:                         $QUERY"
 echo "ref genome:                    $GENOME"
@@ -247,7 +258,15 @@ fi
 # make temporary database for self-dotplot
 makeblastdb -in $QUERY -out $OUTPUT/TE.db -dbtype 'nucl' &>/dev/null
 # run getorf
-getorf -sequence $QUERY --outseq $OUTPUT/TE.orfs -minsize $MINORF &>/dev/null
+# Check what to do with ORFs from reverse complement
+if [ $NOREV == "TRUE" ]
+then
+RUNREV="-noreverse"
+else
+RUNREV="-reverse"
+fi
+
+getorf -sequence $QUERY --outseq $OUTPUT/TE.orfs -minsize $MINORF $RUNREV &>/dev/null
 grep '>' $OUTPUT/TE.orfs | awk '{print $1"\t"$2"\t"$4}' | sed 's/\[//g;s/\]//g;s/#/--/g;s/>//g' > $OUTPUT/TE.orfs.R
 # run blastp orfs vs TE proteins
 if [ -s $OUTPUT/TE.orfs ]
@@ -309,9 +328,9 @@ fi
 # run R script with user-defined parameters
 if [ $ALLTAB == "TRUE" ]
   then
-  Rscript $DIR/Run-c2g.R $QUERY $GENOME $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/orftetable $MINORF $DIR $ALLTAB
+  Rscript $DIR/Run-c2g.R $QUERY $GENOME $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/orftetable $MINORF $DIR $ALLTAB $BLASTNORED
   else
-  Rscript $DIR/Run-c2g.R $QUERY $GENOME $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/orftetable $MINORF $DIR $TABLES
+  Rscript $DIR/Run-c2g.R $QUERY $GENOME $EVALUE $FL $ALPHA $FULL_ALPHA $AUTO_Y $OUTPUT $OUTPUT/TE.db $OUTPUT/orftetable $MINORF $DIR $TABLES $BLASTNORED
 fi
 
 # clean-up
