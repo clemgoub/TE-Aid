@@ -26,8 +26,6 @@ consensus2genome=function(query=NULL, db=NULL, evalue=10e-8,
                           auto_y=T, wdir=NULL, nored=NULL){
   if(!requireNamespace("Biostrings", quietly = T)){
     stop("Biostrings not installed")
-  } else if (!requireNamespace("Rcpp", quietly = T)){
-    stop("Rcpp not installed, quitting...")
   } else {
   if(is.null(query)){print('query not specified')}
   if(is.null(db)){print('db not specified')}
@@ -35,13 +33,16 @@ consensus2genome=function(query=NULL, db=NULL, evalue=10e-8,
   getwd()
   blast=read.table(text=system(paste("blastn -query", query, "-db", db , "-evalue", evalue, "-outfmt 6 | sed 's/#/-/g'"), intern = TRUE), colClasses = c("character", "character", "numeric", rep("integer", 7), "numeric", "numeric"))
   colnames(blast) <- c("query", "subject", "pident", "length", "mismatch", "gapopen", "qstart", "qend", "sstart", "send", "evalue", "score")
-  # Load reduce_blast function
-  Rcpp::sourceCpp(file.path(wdir, "reduce.cpp"))
   #TE consensus size
   cons_len <- Biostrings::fasta.seqlengths(query)
   print(paste("consensus length:", cons_len, "bp", sep = " "))
   
   if (nored == "TRUE"){
+    if (!requireNamespace("Rcpp", quietly = T)){
+      stop("Rcpp not installed, quitting...")
+    }
+    # Load reduce_blast function
+    Rcpp::sourceCpp(file.path(wdir, "reduce.cpp"))
     blast_red <- reduce_blastn_results(blast)
     # Export the reduced table
     write.table(blast_red, file = "blastn.txt",  quote = F, row.names = F, col.names = F)
