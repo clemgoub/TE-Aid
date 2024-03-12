@@ -12,17 +12,16 @@
 #
 # V.0 | 04.28.21 - create TE-Aid repos from conensus2genome
 # V.0 | 04.19.21 - development
-# V1.1 | 24.03.05 - fixed redundant fragment count for genome blastn results
-# Now TE-Aid requires Rcpp library for loading reduce.cpp primitive which I wrote
-# in order to avoid loading GRanges library. Still works fast!
-#
+# V1.1 | 24.03.05 - added options to exclude redundant fragment counts
+# for genome blastn results and to use only ORFs from sense strand of consensus
+# Now TE-Aid requires Rcpp library if used with -r option
 # Author: Clément Goubert - goubert.clement@gmail.com
-# Forked by: Artem Ilin - liartom2@gmail.com
 #
 # TO DOs'
 # - make emboss dotmatcher optional
 # - add blastp stats (evalue maybe)
 # - make script run for all the identified insertions
+# - fix blastp plot output when there are too many ORFs
 
 ###################################################################################
 # PARSER: from https://medium.com/@Drew_Stokes/bash-argument-parsing-54f3b81a6a8f #
@@ -41,8 +40,7 @@ function usage()
   
                    v.1.1-dev
 
-   This is a modified version of TE-Aid, forked by https://github.com/foriin.
-   If you have questions specific for this version, contact Artem at liartom2@gmail.com
+   This is a developmental version, please report bugs to goubert.clement@gmail.com
 
    **************************************
 

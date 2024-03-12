@@ -1,8 +1,9 @@
 #! /bin/Rscript
 #######################################################################################
-### consensus2genome - v2.1 - Artem Ilin (2023) - liartom2@gmail.com      ###
+### consensus2genome - v2 - Clement Goubert (2020) - goubert.clement@gmail.com      ###
+### consensus2genome - v2.1 - Artem Ilin (2023) - liartom2@gmail.com                ###
 ### ------------------------------------------------------------------------------- ###
-### This R function blasts a TE consensus against a reference genome and then plots  ###
+### This R function blasts a TE consensus against a reference genome and then plots ###
 ### the genomic fragments found relative to the consensus sequence                  ###
 ### see https://github.com/clemgoub/consensus2genome for the full documentation     ###
 ### to use, copy and paste the following code into a R console                      ###
@@ -11,7 +12,7 @@
 ### db: path to blast db (blast formated nucleotide database)                       ###
 #######################################################################################
 # Changelog V2 --> V3 | 04.19.2021
-# - Fit for shell wrapper, remove regions highlight from usused trim script
+# - Fit for shell wrapper, remove regions highlight from used trim script
 # Changelog V1 --> V2 | 03.13.2020
 # - Add a second graph with suggested cut points
 # 
