@@ -7,7 +7,7 @@
  3. (bottom left) a self dot-plot 
  4. (bottom right) a structure analysis including: TIR and LTR suggestions, open reading frames (ORFs) and TE protein hit annotation.
 
-*include figure here* <img src=https://github.com/clemgoub/TE-Aid/blob/master/Example/TE1.jpeg width="900">
+<img src=https://github.com/clemgoub/TE-Aid/blob/master/Example/TE1.jpeg width="900">
 
 **Pipeline overview:**
 
@@ -34,6 +34,8 @@ support: click the "issues" tab on github or [email me](mailto:goubert.clement@g
 ### Dependencies
 
 - [R (Rscript)](https://cran.r-project.org/mirrors.html)
+  - Biostrings
+  - Rcpp (when using -r option)
 - [NCBI Blast+ suite](https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/)
 - [EMBOSS `getorf`](http://emboss.sourceforge.net/download/)
 
@@ -60,9 +62,9 @@ git clone https://github.com/clemgoub/TE-Aid.git
 ```
 >**Note.** replace `<user-path>` with the path of the downloaded `TE-Aid` folder.
 
-### Mendatory arguments:
+### Mandatory arguments:
 ```
-    -q, --query                   TE consensus to blast (fasta file)
+    -q, --query                   TE consensus (fasta file)
     -g, --genome                  Reference genome (fasta file)
 ```
 ### Optional arguments:
@@ -74,11 +76,13 @@ git clone https://github.com/clemgoub/TE-Aid.git
     -t, --tables                  write features coordinates in tables (self dot-plot, ORFs and protein hits coordinates)
     -T, --all-Tables              same as -t plus write the genomic blastn table. 
                                   Warning: can be very large if your TE is highly repetitive!
+    -r, --remove-redundant        remove redundant hits from genomic blastn table and a title of the first plot
     
     -e, --e-value                 genome blastn: e-value threshold to keep hit (default: 10e-8)
     -f, --full-length-threshold   genome blastn: min. proportion (hit_size)/(consensus_size) to be considered "full length" (0-1; default: 0.9)
 
     -m, --min-orf                 getorf: minimum ORF size (in bp)
+    -R, --no-reverse-orfs         getorf: don't use ORFs in ther reverse complement of your sequence
 
     -a, --alpha                   graphical: transparency value for blastn hit (0-1; default 0.3)
     -F, --full-length-alpha       graphical: transparency value for full-length blastn hits (0-1; default 1)
@@ -97,7 +101,7 @@ In this example we are going to analyze some transposable elements of *Drosophil
 curl -o Example/dm6.fa.gz https://hgdownload.soe.ucsc.edu/goldenPath/dm6/bigZips/dm6.fa.gz
 gunzip Example/dm6.fa.gz
 ```
-*D. melanogaster* TE consensus are present in the folder `Examples`
+A couple of *D. melanogaster* TE consensus sequences are present in the folder `Examples`
 
 #### 2. Analyze the TE consensus
 
