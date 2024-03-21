@@ -53,9 +53,9 @@ consensus2genome=function(query=NULL, db=NULL, evalue=10e-8, FL_thresh=0.9, alph
     }}
   
 #make the coverage matrix and graph
-coverage=matrix(rep(0, length(blast$V1)*as.numeric(cons_len)), byrow = T, ncol = as.numeric(cons_len))
+coverage=matrix(rep(FALSE, length(blast$V1)*as.numeric(cons_len)), byrow = T, ncol = as.numeric(cons_len))
 for(i in 1:length(blast$V1)){
-    coverage[i,]<-c(rep(0,blast$V7[i]-1),rep(1,abs(blast$V8[i]-blast$V7[i])+1), rep(0,as.numeric(cons_len)-blast$V8[i]))
+    coverage[i,]<-c(rep(FALSE,blast$V7[i]-1),rep(TRUE,abs(blast$V8[i]-blast$V7[i])+1), rep(FALSE,as.numeric(cons_len)-blast$V8[i]))
 }
 
     # TO FIX: trace the coverage on the left graph
