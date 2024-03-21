@@ -29,6 +29,12 @@ support: click the "issues" tab on github or [email me](mailto:goubert.clement@g
 
 **TE-Aid** comes from `consensus2genome` that is now deprecated
 
+## Version and branches
+
+TE+Aid is a fully open software and is being integrated in a growing number of projects (thank you! ❤️). In order to track project-specific modifications of the base code, I have created specific branches based on the pull requests of developpers. Do not hesitate to check them out!
+
+The main branch may not includes all these modifications, but I am happy to consider any request to modify the main branch. If you think your changes should make it to the main branch but are only available in a parallel branch, please let me know, and when time allows, I'll be happy to review and merge!
+
 ## Install
 
 ### Dependencies
