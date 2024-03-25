@@ -7,7 +7,7 @@
  3. (bottom left) a self dot-plot 
  4. (bottom right) a structure analysis including: TIR and LTR suggestions, open reading frames (ORFs) and TE protein hit annotation.
 
-<img src=https://github.com/clemgoub/TE-Aid/blob/master/Example/TE1.jpeg width="900">
+<img src=https://github.com/clemgoub/TE-Aid/blob/main/Example/TE1.jpeg width="900">
 
 **Pipeline overview:**
 
@@ -116,13 +116,13 @@ Let's start with Jockey, a recent **LINE** element in the *D. melanogaster* geno
 ```shell
 ./TE-Aid -q Example/Jockey_DM.fasta -g Example/dm6.fa -o ../dm6example
 ```
-<img src=https://github.com/clemgoub/TE-Aid/blob/master/Example/Jockey.TEaid.png width="1024">
+<img src=https://github.com/clemgoub/TE-Aid/blob/main/Example/Jockey.TEaid.png width="1024">
 
 Next is Gypsy-2, from the **LTR** lineage
 
 ```shell
 ./TE-Aid -q Example/Gypsy2_DM.fasta -g Example/dm6.fa -o ../dm6example
 ```
-<img src=https://github.com/clemgoub/TE-Aid/blob/master/Example/Gypsy2.TEaid.png width="1024">
+<img src=https://github.com/clemgoub/TE-Aid/blob/main/Example/Gypsy2.TEaid.png width="1024">
 
 
