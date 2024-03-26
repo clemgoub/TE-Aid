@@ -91,10 +91,10 @@ consensus2genome=function(query=NULL, db=NULL, evalue=10e-8,
     }}
   
 #make the coverage matrix and graph
-
-coverage=matrix(rep(FALSE, length(blast$V1)*as.numeric(cons_len)), byrow = T, ncol = as.numeric(cons_len))
-for(i in 1:length(blast$V1)){
-    coverage[i,]<-c(rep(FALSE,blast$V7[i]-1),rep(TRUE,abs(blast$V8[i]-blast$V7[i])+1), rep(FALSE,as.numeric(cons_len)-blast$V8[i]))
+coverage=matrix(rep(0, (length(blast$query)*as.numeric(cons_len))), byrow = T, ncol = as.numeric(cons_len))
+# print(dim(coverage))
+for(i in 1:nrow(blast)){
+    coverage[i, blast$qstart[i]:blast$qend[i]] <- 1
 }
 
     # TO FIX: trace the coverage on the left graph
