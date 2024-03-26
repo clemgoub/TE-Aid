@@ -1,4 +1,4 @@
-# TE+Aid [![support](https://img.shields.io/badge/support:-yes-green)]()
+# TE+Aid [![support](https://img.shields.io/badge/support:-yes-green)]() [![publication](https://img.shields.io/badge/publication:-Mobile_DNA-blue)](https://doi.org/10.1186/s13100-021-00259-7)
 <img src=https://i.imgur.com/pxxR3Ec.png width="500">
 
 **TE-Aid** is a `shell`+`R` program aimed to help the manual curation of transposable elements (TE). It inputs a TE consensus sequence (fasta format) and requires a reference genome (in fasta as well). Using `R` and the `NCBI blast+ suite`, TE-Aid produces 4 figures reporting:
@@ -6,6 +6,8 @@
  2. (top right) the genomic coverage of the consensus
  3. (bottom left) a self dot-plot 
  4. (bottom right) a structure analysis including: TIR and LTR suggestions, open reading frames (ORFs) and TE protein hit annotation.
+
+🗞️ TE-Aid is presented in ["A beginner’s guide to manual curation of transposable elements"](https://doi.org/10.1186/s13100-021-00259-7) by Clement Goubert, Rory J. Craig, Agustin F. Bilat, Valentina Peona, Aaron A. Vogan & Anna V. Protasio, published in Mobile DNA (2022)
 
 <img src=https://github.com/clemgoub/TE-Aid/blob/main/Example/TE1.jpeg width="900">
 
