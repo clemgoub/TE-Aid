@@ -7,7 +7,7 @@
  3. (bottom left) a self dot-plot 
  4. (bottom right) a structure analysis including: TIR and LTR suggestions, open reading frames (ORFs) and TE protein hit annotation.
 
-*include figure here* <img src=https://github.com/clemgoub/TE-Aid/blob/master/Example/TE1.jpeg width="900">
+<img src=https://github.com/clemgoub/TE-Aid/blob/main/Example/TE1.jpeg width="900">
 
 **Pipeline overview:**
 
@@ -29,15 +29,23 @@ support: click the "issues" tab on github or [email me](mailto:goubert.clement@g
 
 **TE-Aid** comes from `consensus2genome` that is now deprecated
 
+## Version and branches
+
+TE+Aid is a fully open software and is being integrated in a growing number of projects (thank you! ❤️). In order to track project-specific modifications of the base code, I have created specific branches based on the pull requests of developpers. Do not hesitate to check them out!
+
+The main branch may not includes all these modifications, but I am happy to consider any request to modify the main branch. If you think your changes should make it to the main branch but are only available in a parallel branch, please let me know, and when time allows, I'll be happy to review and merge!
+
 ## Install
 
 ### Dependencies
 
 - [R (Rscript)](https://cran.r-project.org/mirrors.html)
+  - Biostrings
+  - Rcpp (when using -r option)
 - [NCBI Blast+ suite](https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/)
 - [EMBOSS `getorf`](http://emboss.sourceforge.net/download/)
 
-TE-Aid calls **NCBI blast** and **R** from the command line with `blastn`, `blastp`, `makeblastdb` and `Rscript` commands. All these executables must be accessible in the user path (usually the case following the default install). 
+TE-Aid calls **NCBI blast** and **R** from the command line with `blastn`, `blastp`, `makeblastdb` and `Rscript` commands. All these executables must be accessible in the user path (usually the case following the default install). You can also set up a conda environment specifically for TE-Aid (see below).
 If not, you need to locate the executables' location and add them to your local path before using TE-Aid.
 For instance: 
 ```
@@ -51,6 +59,18 @@ These lines can be added to the user `~/.bashrc` (Linux) or `~/.zshrc` (macOS) t
 git clone https://github.com/clemgoub/TE-Aid.git
 ```
 
+### Setting a conda environment with all dependencies
+
+You can set a conda environment for running TE-Aid after you cloned the repository with this command (use [mamba](https://anaconda.org/conda-forge/mamba) instead of conda because it's way faster):
+```
+cd TE-Aid
+mamba env create -f TE_AID.yml
+```
+After that, you'll have all the dependencies ready once you activate the environment:
+```
+mamba activate TE_AID
+```
+
 ## Usage and options
 
 ### Minimal command line
@@ -60,9 +80,9 @@ git clone https://github.com/clemgoub/TE-Aid.git
 ```
 >**Note.** replace `<user-path>` with the path of the downloaded `TE-Aid` folder.
 
-### Mendatory arguments:
+### Mandatory arguments:
 ```
-    -q, --query                   TE consensus to blast (fasta file)
+    -q, --query                   TE consensus (fasta file)
     -g, --genome                  Reference genome (fasta file)
 ```
 ### Optional arguments:
@@ -74,11 +94,13 @@ git clone https://github.com/clemgoub/TE-Aid.git
     -t, --tables                  write features coordinates in tables (self dot-plot, ORFs and protein hits coordinates)
     -T, --all-Tables              same as -t plus write the genomic blastn table. 
                                   Warning: can be very large if your TE is highly repetitive!
+    -r, --remove-redundant        remove redundant hits from genomic blastn table and a title of the first plot
     
     -e, --e-value                 genome blastn: e-value threshold to keep hit (default: 10e-8)
     -f, --full-length-threshold   genome blastn: min. proportion (hit_size)/(consensus_size) to be considered "full length" (0-1; default: 0.9)
 
     -m, --min-orf                 getorf: minimum ORF size (in bp)
+    -R, --no-reverse-orfs         getorf: don't use ORFs in ther reverse complement of your sequence
 
     -a, --alpha                   graphical: transparency value for blastn hit (0-1; default 0.3)
     -F, --full-length-alpha       graphical: transparency value for full-length blastn hits (0-1; default 1)
@@ -97,7 +119,7 @@ In this example we are going to analyze some transposable elements of *Drosophil
 curl -o Example/dm6.fa.gz https://hgdownload.soe.ucsc.edu/goldenPath/dm6/bigZips/dm6.fa.gz
 gunzip Example/dm6.fa.gz
 ```
-*D. melanogaster* TE consensus are present in the folder `Examples`
+A couple of *D. melanogaster* TE consensus sequences are present in the folder `Examples`
 
 #### 2. Analyze the TE consensus
 
@@ -106,13 +128,13 @@ Let's start with Jockey, a recent **LINE** element in the *D. melanogaster* geno
 ```shell
 ./TE-Aid -q Example/Jockey_DM.fasta -g Example/dm6.fa -o ../dm6example
 ```
-<img src=https://github.com/clemgoub/TE-Aid/blob/master/Example/Jockey.TEaid.png width="1024">
+<img src=https://github.com/clemgoub/TE-Aid/blob/main/Example/Jockey.TEaid.png width="1024">
 
 Next is Gypsy-2, from the **LTR** lineage
 
 ```shell
 ./TE-Aid -q Example/Gypsy2_DM.fasta -g Example/dm6.fa -o ../dm6example
 ```
-<img src=https://github.com/clemgoub/TE-Aid/blob/master/Example/Gypsy2.TEaid.png width="1024">
+<img src=https://github.com/clemgoub/TE-Aid/blob/main/Example/Gypsy2.TEaid.png width="1024">
 
 

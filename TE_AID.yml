@@ -1,0 +1,11 @@
+name: TE_AID
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - blast=2.15.0
+  - r-base=4.3.3
+  - r-rcpp=1.0.12
+  - bioconductor-biostrings=2.70.1
+  - emboss=6.6.0
+
