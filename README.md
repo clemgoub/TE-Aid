@@ -7,7 +7,7 @@
  3. (bottom left) a self dot-plot 
  4. (bottom right) a structure analysis including: TIR and LTR suggestions, open reading frames (ORFs) and TE protein hit annotation.
 
-<img src=https://github.com/clemgoub/TE-Aid/blob/master/Example/TE1.jpeg width="900">
+<img src=https://github.com/clemgoub/TE-Aid/blob/main/Example/TE1.jpeg width="900">
 
 **Pipeline overview:**
 
@@ -45,7 +45,7 @@ The main branch may not includes all these modifications, but I am happy to cons
 - [NCBI Blast+ suite](https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/)
 - [EMBOSS `getorf`](http://emboss.sourceforge.net/download/)
 
-TE-Aid calls **NCBI blast** and **R** from the command line with `blastn`, `blastp`, `makeblastdb` and `Rscript` commands. All these executables must be accessible in the user path (usually the case following the default install). 
+TE-Aid calls **NCBI blast** and **R** from the command line with `blastn`, `blastp`, `makeblastdb` and `Rscript` commands. All these executables must be accessible in the user path (usually the case following the default install). You can also set up a conda environment specifically for TE-Aid (see below).
 If not, you need to locate the executables' location and add them to your local path before using TE-Aid.
 For instance: 
 ```
@@ -57,6 +57,18 @@ These lines can be added to the user `~/.bashrc` (Linux) or `~/.zshrc` (macOS) t
 ### Install **TE-Aid** from github
 ```
 git clone https://github.com/clemgoub/TE-Aid.git
+```
+
+### Setting a conda environment with all dependencies
+
+You can set a conda environment for running TE-Aid after you cloned the repository with this command (use [mamba](https://anaconda.org/conda-forge/mamba) instead of conda because it's way faster):
+```
+cd TE-Aid
+mamba env create -f TE_AID.yml
+```
+After that, you'll have all the dependencies ready once you activate the environment:
+```
+mamba activate TE_AID
 ```
 
 ## Usage and options
@@ -116,13 +128,13 @@ Let's start with Jockey, a recent **LINE** element in the *D. melanogaster* geno
 ```shell
 ./TE-Aid -q Example/Jockey_DM.fasta -g Example/dm6.fa -o ../dm6example
 ```
-<img src=https://github.com/clemgoub/TE-Aid/blob/master/Example/Jockey.TEaid.png width="1024">
+<img src=https://github.com/clemgoub/TE-Aid/blob/main/Example/Jockey.TEaid.png width="1024">
 
 Next is Gypsy-2, from the **LTR** lineage
 
 ```shell
 ./TE-Aid -q Example/Gypsy2_DM.fasta -g Example/dm6.fa -o ../dm6example
 ```
-<img src=https://github.com/clemgoub/TE-Aid/blob/master/Example/Gypsy2.TEaid.png width="1024">
+<img src=https://github.com/clemgoub/TE-Aid/blob/main/Example/Gypsy2.TEaid.png width="1024">
 
 
