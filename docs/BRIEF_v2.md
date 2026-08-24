@@ -61,7 +61,8 @@ opinion. Do not add a "predicted class" line.
 | Protein library | Curated Pfam accession list ∪ RepeatPeps as single-sequence pHMMs |
 | Nucleotide library | Dfam FamDB only requirement; user-supplied merged famdb works via the same path |
 | Benchmark set | ~20 goby families stratified by order **plus** a Dfam-curated subset for recall |
-| Panel 4 | Split into stacked sub-panels: structure ∥ homology evidence |
+| Sheet layout | **v1's 2×2 quadrant grid is load-bearing and must be preserved** — the whole sheet readable at a glance, with the dot-plot at a true 1:1 aspect. This is a large part of why v1 is used. Do not replace it with a vertical stack. |
+| Panel 4 | Split into stacked sub-panels *within the bottom-right quadrant*: structure ∥ homology evidence |
 | Package naming | Importable `teaid`; CLI entry point `teaid` **plus** a `TE-Aid` alias that prints a one-line notice pointing at the new name |
 | Third-party branches (`Jiangzhao`, `simonorozcoarias`) | Left alone — independent active projects |
 | RepeatAfterMe | Out of scope |
@@ -99,16 +100,35 @@ divergence as zero** — leave the point out and say so in the axis label.
 
 ## 4. Panels
 
-**Default sheet:**
+**Default sheet — v1's 2×2 quadrant grid, preserved:**
+
+```
++---------------------------+---------------------------+
+| 1  copies vs divergence   | 2  consensus coverage     |
++---------------------------+---------------------------+
+|                           | 4  structure              |
+| 3  self dot-plot (square) +---------------------------+
+|                           | 5  homology evidence      |
++---------------------------+---------------------------+
+```
 
 1. Genomic hits vs divergence (from the annotation / seed / blastn).
 2. Consensus coverage pileup.
-3. Self dot-plot (see §5.2).
+3. Self dot-plot (see §5.2), at a **true 1:1 data aspect** — both axes are
+   consensus base pairs, and the square is what makes an off-diagonal repeat
+   read as parallel to the main diagonal.
 4. **Structure** — TIR/LTR suggestions, ORFs.
 5. **Homology evidence** — best protein hits, best nucleotide hits (§5.1).
 
-Panels 4 and 5 are the split of v1's single crowded structure panel, sharing
-one consensus-coordinate x-axis so features line up vertically.
+Panels 4 and 5 are the split of v1's single crowded structure quadrant. They
+occupy that quadrant stacked, sharing one consensus x-axis so features line up
+vertically; the quadrant grid itself is not disturbed. Until there is homology
+evidence to draw, panel 4 takes the whole quadrant rather than leaving a hole.
+
+**The grid is the product, not a styling choice.** Everything visible at once,
+in fixed positions, is how curators read these sheets; a vertical stack that
+forces scrolling loses it. Any layout change must keep the four quadrants and
+the square dot-plot.
 
 **`--seed-qc` adds:**
 
@@ -288,8 +308,16 @@ slice.
      `Annotation.fragment_groups()` exposes this. It is the direct fix for the
      fragment inflation that motivates v2, and panel 1 should use it once
      panels 4–5 land.
-3. Interactive HTML sheet + static export.
-4. Panels 4–5 split; `getorf` ORF track; self-blastn dot-plot per §5.2.
+3. ~~Interactive HTML sheet + static export.~~ **Done** (Plotly HTML + kaleido
+   PNG/PDF/SVG, light and dark themes).
+4. ~~Panels 4–5 split; `getorf` ORF track; self-blastn dot-plot per §5.2.~~
+   **Done except panel 5's content**, which needs BATH (step 6). Panel 4 draws
+   the ORF track and terminal-repeat candidates. Note on detection: anchoring
+   an LTR candidate on "first arm within 10% of position 0" was tried and is
+   too strict — RepeatModeler consensuses often carry extra sequence past the
+   true 5' boundary, which pushes a real LTR pair inward. Detection now keys on
+   the bracketed span (≥50% of the consensus) with non-overlapping arms, and
+   collapses blastn's reciprocal duplicate reporting.
 5. `--stk` reader + `--seed-qc` panels 6–8 + `TP` mismatch flag.
    **This is the join point with the seed-building pipeline (§7).**
 6. `te_domains.tsv` draft → maintainer review; RepeatPeps → pHMMs via

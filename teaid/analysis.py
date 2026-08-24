@@ -159,19 +159,30 @@ def self_blast(
 
 
 def terminal_repeats(
-    hits: list[SelfHit], consensus_length: int, *, margin: float = 0.1
+    hits: list[SelfHit], consensus_length: int, *, min_span: float = 0.5
 ) -> dict[str, list[SelfHit]]:
-    """Split self-hits into LTR- and TIR-like candidates near the termini.
+    """Split self-hits into LTR- and TIR-like candidates.
 
-    A same-strand off-diagonal hit with one copy near the 5' end and the other
-    near the 3' end is an LTR candidate; the equivalent opposite-strand hit is a
-    TIR candidate. ``margin`` is the fraction of the consensus at each end that
-    counts as terminal.
+    A terminal repeat is a pair of copies of the same sequence at opposite ends
+    of the element: same-strand for an LTR, opposite-strand for a TIR. The test
+    used here is that the two arms do not overlap and that the region they
+    bracket covers at least ``min_span`` of the consensus — if a repeated pair
+    brackets most of the element, its arms are near the termini by construction.
 
-    These are suggestions for a curator to judge, never assertions: a segmental
-    duplication inside an element produces the same signature as an LTR.
+    Anchoring instead on "the first arm starts within x% of position 0" was
+    tried and is too strict on real data: RepeatModeler consensuses frequently
+    carry extra sequence beyond the element's true 5' boundary, which pushes a
+    genuine LTR pair inward and hides it.
+
+    blastn reports every off-diagonal repeat twice, once per direction, so the
+    reciprocal duplicate is collapsed here; a two-LTR element yields one
+    candidate, not two.
+
+    These are suggestions for a curator to judge, never assertions: an internal
+    segmental duplication produces the same signature as an LTR.
     """
-    window = max(1, int(round(margin * consensus_length)))
+    minimum = min_span * consensus_length
+    seen: set[tuple[int, int, bool]] = set()
     ltr: list[SelfHit] = []
     tir: list[SelfHit] = []
 
@@ -179,10 +190,16 @@ def terminal_repeats(
         if hit.is_trivial_diagonal:
             continue
         s_lo, s_hi = sorted((hit.s_start, hit.s_end))
-        starts_at_5p = hit.q_start <= window
-        ends_at_3p = s_hi >= consensus_length - window
-        if not (starts_at_5p and ends_at_3p):
+        # Overlapping arms are one region matching itself, not a repeat pair.
+        if min(hit.q_end, s_hi) > max(hit.q_start, s_lo):
             continue
+        span = max(hit.q_end, s_hi) - min(hit.q_start, s_lo)
+        if span < minimum:
+            continue
+        key = (min(hit.q_start, s_lo), max(hit.q_end, s_hi), hit.is_reverse)
+        if key in seen:
+            continue
+        seen.add(key)
         (tir if hit.is_reverse else ltr).append(hit)
 
     return {"LTR": ltr, "TIR": tir}

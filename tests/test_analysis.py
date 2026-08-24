@@ -138,6 +138,45 @@ class TestSelfBlast:
         assert terminal["TIR"], "a 120 bp inverted terminal repeat should be found"
         assert not terminal["LTR"]
 
+    def test_reciprocal_duplicates_are_collapsed(self, ltr_element):
+        """blastn reports each off-diagonal repeat twice, once per direction."""
+        try:
+            hits = analysis.self_blast(ltr_element)
+        except analysis.BlastNotFound:
+            pytest.skip("blastn not installed")
+        off_diagonal = [h for h in hits if not h.is_trivial_diagonal and not h.is_reverse]
+        assert len(off_diagonal) >= 2, "expected the pair to be reported both ways"
+        assert len(analysis.terminal_repeats(hits, len(ltr_element))["LTR"]) == 1
+
+    def test_a_repeat_pair_off_the_termini_is_still_found(self):
+        """A genuine LTR pair can sit inward when the consensus carries extra
+        5' sequence, so detection keys on the bracketed span, not on proximity
+        to position 0."""
+        consensus_length = 10_000
+        inward = analysis.SelfHit(
+            q_start=3_000, q_end=3_500, s_start=9_000, s_end=9_500,
+            identity=98.0, evalue=1e-40, bitscore=800.0,
+        )
+        found = analysis.terminal_repeats([inward], consensus_length)
+        assert len(found["LTR"]) == 1
+
+    def test_a_short_internal_repeat_is_not_a_terminal_repeat(self):
+        local = analysis.SelfHit(
+            q_start=4_000, q_end=4_200, s_start=4_500, s_end=4_700,
+            identity=95.0, evalue=1e-20, bitscore=300.0,
+        )
+        found = analysis.terminal_repeats([local], 10_000)
+        assert found["LTR"] == [] and found["TIR"] == []
+
+    def test_overlapping_arms_are_not_a_repeat_pair(self):
+        """One region matching itself is not two copies of anything."""
+        overlapping = analysis.SelfHit(
+            q_start=0, q_end=9_000, s_start=500, s_end=9_500,
+            identity=99.0, evalue=0.0, bitscore=9000.0,
+        )
+        found = analysis.terminal_repeats([overlapping], 10_000)
+        assert found["LTR"] == []
+
     def test_reverse_hits_keep_their_descending_orientation(self, tir_element):
         try:
             hits = analysis.self_blast(tir_element)

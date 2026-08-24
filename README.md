@@ -32,11 +32,16 @@ The working brief for this rewrite, including every settled design decision, is
 |---|---|
 | Package skeleton, CLI, annotation readers (`.out` / GFF3 / BED16) | ✅ done |
 | Panels 1–3 (copies vs divergence · coverage · self dot-plot) | ✅ done |
-| Interactive HTML sheet + static export | ✅ basic; refinement pending |
-| Panels 4–5 (structure · homology evidence) | ⬜ next |
+| Interactive HTML sheet + static export, light and dark | ✅ done |
+| Panel 4 (structure: ORFs, TIR/LTR candidates) | ✅ done |
+| Panel 5 (homology evidence) | ⬜ needs BATH |
 | `--stk` reader and `--seed-qc` panels | ⬜ |
-| BATH protein row, Dfam nucleotide row | ⬜ |
 | `--blastn` legacy path | ⬜ |
+
+The sheet keeps **v1's 2×2 quadrant layout** — copies vs divergence and coverage
+on top, the self dot-plot (square, 1:1) and structure below — so the whole family
+is readable at a glance. Panel 5 will split the bottom-right quadrant with panel
+4 once there is homology evidence to draw.
 
 ## Install
 
@@ -47,9 +52,13 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e .              # add '[static]' for PNG/PDF export via kaleido
 ```
 
-Requires Python ≥ 3.10. `blastn` ([NCBI BLAST+](https://blast.ncbi.nlm.nih.gov/))
-must be on `PATH` for the self dot-plot; without it every other panel still
-renders and the dot-plot reports why it is missing.
+Requires Python ≥ 3.10, plus two external tools on `PATH`:
+
+- `blastn` ([NCBI BLAST+](https://blast.ncbi.nlm.nih.gov/)) for the self dot-plot
+- `getorf` ([EMBOSS](https://emboss.sourceforge.net/)) for the ORF track
+
+Either may be absent: the sheet still renders, and the affected quadrant says
+what is missing rather than disappearing.
 
 ## Usage
 

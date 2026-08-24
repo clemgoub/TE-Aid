@@ -11,7 +11,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import __version__, analysis, readers, report, theme
+from . import __version__, analysis, orfs, readers, report, theme
 from .records import DivergenceKind
 from .sequences import read_fasta
 
@@ -106,6 +106,22 @@ def build_parser() -> argparse.ArgumentParser:
     tuning.add_argument(
         "--no-dotplot", action="store_true", help="skip the self dot-plot (no blastn call)"
     )
+    tuning.add_argument(
+        "-m",
+        "--min-orf",
+        type=int,
+        default=400,
+        metavar="BP",
+        help="minimum ORF length in nucleotides (default 400, as in v1)",
+    )
+    tuning.add_argument(
+        "--no-reverse-orfs",
+        action="store_true",
+        help="only report ORFs on the forward strand (getorf -noreverse)",
+    )
+    tuning.add_argument(
+        "--no-orfs", action="store_true", help="skip the ORF track (no getorf call)"
+    )
 
     parser.add_argument("--version", action="version", version=f"teaid {__version__}")
     return parser
@@ -178,6 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     full = analysis.full_length(subset, consensus_length, args.full_length_threshold)
 
     self_hits = []
+    terminal: dict[str, list] = {}
     if not args.no_dotplot:
         try:
             self_hits = analysis.self_blast(
@@ -186,8 +203,22 @@ def main(argv: list[str] | None = None) -> int:
                 word_size=args.word_size,
                 evalue=args.self_evalue,
             )
+            terminal = analysis.terminal_repeats(self_hits, consensus_length)
         except (analysis.BlastNotFound, RuntimeError) as exc:
             notes.append(f"dot-plot skipped: {exc}")
+            print(f"teaid: warning: {exc}", file=sys.stderr)
+
+    found_orfs = []
+    if not args.no_orfs:
+        try:
+            found_orfs = orfs.find_orfs(
+                consensus.sequence,
+                name=consensus.bare_name,
+                min_size=args.min_orf,
+                reverse=not args.no_reverse_orfs,
+            )
+        except (orfs.GetorfNotFound, RuntimeError) as exc:
+            notes.append(f"ORF track skipped: {exc}")
             print(f"teaid: warning: {exc}", file=sys.stderr)
 
     data = report.SheetData(
@@ -197,6 +228,9 @@ def main(argv: list[str] | None = None) -> int:
         full_length=full,
         coverage=coverage,
         self_hits=self_hits,
+        terminal_repeats=terminal,
+        orfs=found_orfs,
+        orf_min_size=args.min_orf,
         class_label=consensus.class_label,
         full_length_threshold=args.full_length_threshold,
         source_format=annotation.source_format,
@@ -233,13 +267,14 @@ def main(argv: list[str] | None = None) -> int:
         f"{consensus.bare_name}: {len(subset):,} copies, {len(full):,} full length, "
         f"consensus {consensus_length:,} bp"
     )
-    if self_hits:
-        terminal = analysis.terminal_repeats(self_hits, consensus_length)
-        if terminal["LTR"] or terminal["TIR"]:
-            summary += (
-                f", terminal-repeat candidates: {len(terminal['LTR'])} LTR-like, "
-                f"{len(terminal['TIR'])} TIR-like"
-            )
+    if terminal.get("LTR") or terminal.get("TIR"):
+        summary += (
+            f", terminal-repeat candidates: {len(terminal.get('LTR', []))} LTR-like, "
+            f"{len(terminal.get('TIR', []))} TIR-like"
+        )
+    if found_orfs:
+        longest = max(o.length_aa for o in found_orfs)
+        summary += f", {len(found_orfs)} ORFs (longest {longest:,} aa)"
     print(summary)
     return EXIT_OK
 
