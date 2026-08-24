@@ -61,12 +61,40 @@ class TestQuadrantGrid:
         # would widen the data range instead, and because the quadrants share a
         # consensus scale that would desynchronise them.
         assert y.constrain == "domain"
-        assert tuple(y.range) == (0, 1000)
+        # Both axes shrink their domain rather than floating their range, so the
+        # box is square while the x-range still matches the other panels.
+        assert fig.layout.xaxis3.constrain == "domain"
+        assert tuple(y.range) == tuple(report._padded_span(1000))
 
-    def test_every_panel_spans_the_full_consensus(self):
+    def test_every_panel_shares_one_identical_x_range(self):
+        """The grid is only comparable if the four quadrants agree exactly. The
+        range carries a margin so a feature drawn at a terminus is not clipped:
+        without it the built range ends at the consensus length, an arrowhead
+        there is half outside the plot, and the only cure is autoscaling that
+        one panel — which is what breaks the shared scale."""
         fig = report.build_figure(make_data(), theme.LIGHT)
+        expected = tuple(report._padded_span(1000))
         for name in ("xaxis", "xaxis2", "xaxis3", "xaxis4"):
-            assert tuple(fig.layout[name].range) == (0, 1000), name
+            assert tuple(fig.layout[name].range) == expected, name
+        assert expected[0] < 0 and expected[1] > 1000
+
+    def test_sheet_height_is_derived_so_quadrants_are_square(self):
+        """A square quadrant is what lets the dot-plot be square *and* the same
+        pixel width as the panel above it. With a non-square quadrant you get one
+        or the other: either the dot-plot's box narrows (breaking the vertical
+        alignment between panel 1 and panel 3) or its data range widens
+        (breaking the shared consensus scale)."""
+        cell_w = (report.SHEET_WIDTH - report._MARGIN_L - report._MARGIN_R) * (
+            1 - report._H_SPACING
+        ) / 2
+        cell_h = (report.SHEET_HEIGHT - report._MARGIN_T - report._MARGIN_B) * (
+            1 - report._V_SPACING
+        ) / 2
+        assert abs(cell_w - cell_h) < 1.0
+
+        fig = report.build_figure(make_data(), theme.LIGHT)
+        assert fig.layout.width == report.SHEET_WIDTH
+        assert fig.layout.height == report.SHEET_HEIGHT
 
     def test_empty_panels_keep_their_axes(self):
         """Plotly renders a subplot's axes only if a trace references them, so an
@@ -102,16 +130,17 @@ class TestResetControl:
             "yaxis", "yaxis2", "yaxis3", "yaxis4",
         }
 
-    def test_x_axes_reset_to_the_consensus_span(self, tmp_path):
+    def test_x_axes_reset_to_the_shared_consensus_span(self, tmp_path):
         payload = self._reset_payload(tmp_path, make_data())
+        expected = report._padded_span(1000)
         for name in ("xaxis", "xaxis2", "xaxis3", "xaxis4"):
-            assert payload[f"{name}.range"] == [0, 1000]
+            assert payload[f"{name}.range"] == expected
 
     def test_data_dependent_y_axes_autoscale_rather_than_guess(self, tmp_path):
         payload = self._reset_payload(tmp_path, make_data())
         assert payload["yaxis.autorange"] is True  # divergence
         assert payload["yaxis2.autorange"] is True  # coverage
-        assert payload["yaxis3.range"] == [0, 1000]  # dot-plot, square
+        assert payload["yaxis3.range"] == report._padded_span(1000)  # square
 
     def test_page_wires_the_button_to_the_plot_div(self, tmp_path):
         data = make_data()
@@ -139,16 +168,47 @@ class TestStructurePanel:
         assert len(arrowheads) == 2
         assert {str(t.marker.symbol) for t in arrowheads} == {"triangle-right"}
 
-    def test_inverted_repeat_arrows_point_at_each_other(self):
+    @staticmethod
+    def _arrowheads(fig) -> list[tuple[float, str]]:
+        """(tip position, symbol) for every arrowhead in the structure panel."""
+        return sorted(
+            (t.x[0], str(t.marker.symbol))
+            for t in fig.data
+            if t.mode == "markers" and str(t.marker.symbol).startswith("triangle")
+        )
+
+    def test_inverted_repeat_arms_point_inward(self):
+        """The left arm points right and the right arm points left, so an
+        inverted pair reads as the palindrome it is."""
         inverted = SelfHit(100, 200, 900, 800, 98.0, 1e-30, 400.0)
         fig = report.build_figure(
             make_data(terminal_repeats={"LTR": [], "TIR": [inverted]}), theme.LIGHT
         )
-        symbols = [
-            str(t.marker.symbol) for t in fig.data
-            if t.mode == "markers" and str(t.marker.symbol).startswith("triangle")
+        assert self._arrowheads(fig) == [(200, "triangle-right"), (800, "triangle-left")]
+
+    def test_inward_orientation_survives_blastn_reporting_either_reciprocal(self):
+        """blastn reports a pair in whichever direction it found it, and
+        deduplication keeps an arbitrary one of the two. Drawing straight from
+        its coordinate order therefore pointed some inverted pairs outward."""
+        forward = SelfHit(100, 200, 900, 800, 98.0, 1e-30, 400.0)
+        reciprocal = SelfHit(800, 900, 200, 100, 98.0, 1e-30, 400.0)
+        drawn = [
+            self._arrowheads(
+                report.build_figure(
+                    make_data(terminal_repeats={"LTR": [], "TIR": [hit]}), theme.LIGHT
+                )
+            )
+            for hit in (forward, reciprocal)
         ]
-        assert sorted(symbols) == ["triangle-left", "triangle-right"]
+        assert drawn[0] == drawn[1]
+        assert drawn[0] == [(200, "triangle-right"), (800, "triangle-left")]
+
+    def test_direct_repeat_arms_both_point_the_same_way(self):
+        direct = SelfHit(100, 200, 800, 900, 98.0, 1e-30, 400.0)
+        fig = report.build_figure(
+            make_data(terminal_repeats={"LTR": [direct], "TIR": []}), theme.LIGHT
+        )
+        assert self._arrowheads(fig) == [(200, "triangle-right"), (900, "triangle-right")]
 
     def test_reverse_strand_orf_points_left(self):
         fig = report.build_figure(

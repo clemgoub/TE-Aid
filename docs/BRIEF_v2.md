@@ -117,11 +117,29 @@ divergence as zero** — leave the point out and say so in the axis label.
 3. Self dot-plot (see §5.2), at a **true 1:1 data aspect** — both axes are
    consensus base pairs, and the square is what makes an off-diagonal repeat
    read as parallel to the main diagonal.
+
+**Three geometry rules make the grid comparable, and they interlock:**
+
+- **Every quadrant is square.** The sheet's height is derived from its width to
+  make it so, exactly as v1 used a 12×12 in page for a 2×2 grid of 6×6 in
+  panels. Without it the dot-plot can be square *or* the same pixel width as the
+  panel above it, never both.
+- **Every panel carries the identical x-range**, so a consensus position lands
+  at the same screen x in all four. The dot-plot satisfies its 1:1 aspect by
+  shrinking its *domain* (`constrain="domain"` on both axes), never by widening
+  its range — the default behaviour makes it silently wider than its neighbours.
+- **That range is padded 2.5% past each end of the consensus.** A feature at a
+  terminus is otherwise clipped, because an arrowhead is a fixed-size marker
+  centred on its coordinate. Autoscaling the panel un-clips it but gives that
+  panel its own range, which breaks the first two rules.
 4. **Structure** — TIR/LTR suggestions, ORFs. Both are drawn as **arrows**,
    carrying over v1's good idea: a repeat pair's two arms point the same way
    when direct (`→ … →`, LTR-like) and at each other when inverted
    (`→ … ←`, TIR-like), so orientation is readable from shape rather than from
-   a colour key. Lanes are labelled `direct`/`inverted` — what was measured —
+   a colour key. **Inverted pairs always point inward**, decided from the arms'
+   positions rather than from blastn's coordinate order — blastn reports a pair
+   in whichever direction it found it, so drawing it verbatim made some inverted
+   pairs point outward. Lanes are labelled `direct`/`inverted` — what was measured —
    with the LTR/TIR reading offered in the legend, because on an internally
    repetitive consensus the same signature is a tandem unit and naming the lane
    `LTR` would assert a class (§1).

@@ -16,9 +16,12 @@ one consensus x-axis so features line up vertically. Until there is homology
 evidence to show, panel 4 takes the whole bottom-right quadrant rather than
 leaving a visible hole in the grid.
 
-The dot-plot holds a true 1:1 data aspect via ``scaleanchor`` with
-``constrain="domain"``: Plotly shrinks the plotting area to fit the aspect
-instead of widening the data range, so the square survives any figure size.
+Every quadrant is square and every panel carries the *same* x-range, so a
+consensus position lands at the same screen x in all four. The dot-plot holds a
+true 1:1 data aspect via ``scaleanchor`` with ``constrain="domain"`` on both of
+its axes: Plotly shrinks the plotting box to fit the aspect rather than widening
+the data range, which would have made the dot-plot silently wider than its
+neighbours.
 
 Segments are drawn as a *single* trace per series, with ``None`` separating each
 segment, rather than one trace per copy. A family with 10,000 copies otherwise
@@ -42,6 +45,37 @@ from .theme import FONT_FAMILY, Theme
 # quadrant is a quarter of the sheet; past a handful of lanes the arrows are too
 # thin to read, and the dot-plot already shows every self-match.
 MAX_REPEAT_LANES = 4
+
+# Fraction of the consensus added beyond each end of every x-axis.
+#
+# Without it the axis stops exactly at 0 and at the consensus length, and any
+# feature drawn at a terminus is clipped: an arrowhead is a fixed-size marker
+# centred on its coordinate, so half of it falls outside the plot. Autoscaling
+# the panel fixes the clipping but gives that panel its own range, which is
+# worse — the four quadrants are meant to be read against one shared consensus
+# scale. Building the margin into the range keeps every panel identical *and*
+# uncropped, on load and after a reset alike.
+#
+# 2.5% clears a 12px arrowhead comfortably at any usable figure width, and sits
+# just under the 4% padding R applies by default, which is what v1's panels had.
+X_PAD_FRACTION = 0.025
+
+# Sheet geometry. The height is derived, not chosen: it is whatever makes each
+# quadrant square.
+#
+# The dot-plot needs a square plotting box to hold a 1:1 data aspect, and it
+# needs the same pixel width as the panel above it or a feature at a given
+# consensus position lands at a different screen x in the two panels, which is
+# exactly the vertical comparison the grid exists for. Both hold only when the
+# quadrant itself is square, so the figure is sized to make it so — the same
+# reason v1 used a 12x12 inch page with a 2x2 grid of 6x6 inch panels.
+_MARGIN_L, _MARGIN_R, _MARGIN_T, _MARGIN_B = 68, 26, 96, 128
+_H_SPACING, _V_SPACING = 0.10, 0.085
+
+SHEET_WIDTH = 1180
+_PLOT_WIDTH = SHEET_WIDTH - _MARGIN_L - _MARGIN_R
+_CELL = _PLOT_WIDTH * (1 - _H_SPACING) / 2
+SHEET_HEIGHT = round(2 * _CELL / (1 - _V_SPACING) + _MARGIN_T + _MARGIN_B)
 
 
 @dataclass(slots=True)
@@ -108,8 +142,8 @@ def build_figure(data: SheetData, theme: Theme) -> go.Figure:
             specs=[[{}, {}], [{"rowspan": 2}, {}], [None, {}]],
             row_heights=[0.5, 0.27, 0.23],
             column_widths=[0.5, 0.5],
-            horizontal_spacing=0.10,
-            vertical_spacing=0.085,
+            horizontal_spacing=_H_SPACING,
+            vertical_spacing=_V_SPACING,
             subplot_titles=titles + ["5 · Homology evidence"],
         )
         structure_row, homology_row = 2, 3
@@ -120,8 +154,8 @@ def build_figure(data: SheetData, theme: Theme) -> go.Figure:
             specs=[[{}, {}], [{}, {}]],
             row_heights=[0.5, 0.5],
             column_widths=[0.5, 0.5],
-            horizontal_spacing=0.10,
-            vertical_spacing=0.085,
+            horizontal_spacing=_H_SPACING,
+            vertical_spacing=_V_SPACING,
             subplot_titles=titles,
         )
         structure_row, homology_row = 2, None
@@ -334,20 +368,30 @@ def _panel_structure(fig: go.Figure, data: SheetData, theme: Theme, row: int, co
                 f"(showing the {MAX_REPEAT_LANES} strongest)"
             )
         for hit in hits:
-            # blastn always reports the query interval ascending, so the query
-            # arm points right; the subject arm follows its own coordinate
-            # order, which is descending exactly when the match is inverted.
             arm_hover = (
                 f"{label}<br>arms %{{x:,.0f}} bp<br>identity {hit.identity:.1f}%"
             )
-            _arrow(
-                fig, hit.q_start, hit.q_end, y, colour, arm_hover, row, col,
-                show_legend=label not in seen_types,
-                legend_name=f"{label} (n={len(all_hits)})",
-            )
+            # Arrow direction is decided from the arms' positions, not from
+            # blastn's coordinate order. blastn reports a repeat pair in
+            # whichever direction it happened to find it, so an inverted pair
+            # came out pointing inward or outward depending on which reciprocal
+            # survived deduplication. Inverted repeats always point inward here:
+            # that is the palindrome the curator is looking for, and it makes
+            # the two types distinguishable at a glance even in grayscale.
+            left_arm, right_arm = _ordered_arms(hit)
+            inverted = hit.is_reverse
+            for index, (tail, head) in enumerate(
+                (
+                    (left_arm[0], left_arm[1]),
+                    (right_arm[1], right_arm[0]) if inverted else (right_arm[0], right_arm[1]),
+                )
+            ):
+                _arrow(
+                    fig, tail, head, y, colour, arm_hover, row, col,
+                    show_legend=index == 0 and label not in seen_types,
+                    legend_name=f"{label} (n={len(all_hits)})",
+                )
             seen_types.add(label)
-            _arrow(fig, hit.s_start, hit.s_end, y, colour, arm_hover, row, col,
-                   legend_name=f"{label} (n={len(all_hits)})")
             tickvals.append(y)
             ticktext.append(lane_label)
             y -= 1.0
@@ -402,6 +446,14 @@ def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col
     _empty_note(fig, "homology evidence pending", theme, row, col)
     fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False, row=row, col=col)
     fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
+
+
+def _ordered_arms(hit: SelfHit) -> tuple[tuple[int, int], tuple[int, int]]:
+    """The hit's two arms as ascending intervals, ordered left to right."""
+    query = (hit.q_start, hit.q_end)
+    subject = tuple(sorted((hit.s_start, hit.s_end)))
+    left, right = sorted((query, subject))
+    return left, right  # type: ignore[return-value]
 
 
 def _arrow(
@@ -524,8 +576,8 @@ def _layout(
             yanchor="top",
             font=dict(size=18, color=theme.text_primary, family=FONT_FAMILY),
         ),
-        width=1180,
-        height=1180,
+        width=SHEET_WIDTH,
+        height=SHEET_HEIGHT,
         paper_bgcolor=theme.paper,
         plot_bgcolor=theme.surface,
         font=dict(family=FONT_FAMILY, color=theme.text_secondary, size=11),
@@ -541,7 +593,7 @@ def _layout(
             bgcolor="rgba(0,0,0,0)",
             font=dict(color=theme.text_secondary, size=11),
         ),
-        margin=dict(l=68, r=26, t=96, b=128),
+        margin=dict(l=_MARGIN_L, r=_MARGIN_R, t=_MARGIN_T, b=_MARGIN_B),
         hovermode="closest",
         dragmode="pan",
     )
@@ -555,7 +607,7 @@ def _layout(
         tickcolor=theme.axis,
         tickfont=dict(color=theme.muted, size=10),
         title_font=dict(color=theme.text_secondary, size=11),
-        range=[0, data.consensus_length],
+        range=_padded_span(data.consensus_length),
     )
     fig.update_yaxes(
         showgrid=True,
@@ -573,14 +625,22 @@ def _layout(
     # read as parallel to the main diagonal. constrain='domain' shrinks the
     # plotting box to honour it instead of widening the range.
     dotplot_axis = fig.get_subplot(2, 1)
+    span = _padded_span(data.consensus_length)
     fig.update_yaxes(
-        range=[0, data.consensus_length],
+        range=span,
         scaleanchor=dotplot_axis.xaxis.anchor.replace("y", "x"),
         scaleratio=1,
         constrain="domain",
         row=2,
         col=1,
     )
+    # Both axes of the dot-plot carry the same padded span, and both satisfy the
+    # 1:1 constraint by shrinking their domain. That keeps the plotting box
+    # square while leaving the *ranges* untouched, so the dot-plot's x-axis
+    # still matches the other three exactly. Letting the range float instead —
+    # Plotly's default — makes the dot-plot silently wider than its neighbours
+    # and destroys the alignment the grid exists for.
+    fig.update_xaxes(range=span, constrain="domain", row=2, col=1)
 
     # Panels 4 and 5 share one consensus x-axis so features line up vertically.
     if homology_row is not None:
@@ -743,6 +803,12 @@ def write_html(fig: go.Figure, path, data: SheetData, theme: Theme) -> None:
                 div_id=div_id,
             )
         )
+
+
+def _padded_span(consensus_length: int) -> list[float]:
+    """The shared x-range: the consensus plus a margin at each end."""
+    pad = consensus_length * X_PAD_FRACTION
+    return [-pad, consensus_length + pad]
 
 
 def _alpha(hex_colour: str, alpha: float) -> str:
