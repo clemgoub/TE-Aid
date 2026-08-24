@@ -88,6 +88,25 @@ SHEET_HEIGHT = sheet_height(2)
 # line. Both must stay inside the bottom margin.
 _LEGEND_OFFSET_PX = 62
 _NOTE_OFFSET_PX = 104
+# Height of one wrapped legend row; the notes line is pushed down by this much
+# per extra row so a long legend cannot land on top of it.
+_LEGEND_ROW_PX = 22
+
+
+def _legend_rows(fig: go.Figure) -> int:
+    """How many rows the horizontal legend will wrap onto.
+
+    Plotly wraps a horizontal legend silently, and the extra row lands on top of
+    the notes line beneath it. Estimating the wrap from the labels' own width is
+    cheaper and more reliable than reserving space for a worst case that usually
+    is not there.
+    """
+    labels = [t.name for t in fig.data if t.name and t.showlegend is not False]
+    if not labels:
+        return 0
+    # ~6.2px per character at 11px, plus the swatch and padding per entry.
+    width = sum(len(label) * 6.2 + 46 for label in labels)
+    return max(1, int(width / _PLOT_WIDTH) + 1)
 
 
 def _plot_height(cell_rows: float) -> float:
@@ -130,6 +149,10 @@ class SheetData:
     # Seed-QC (--seed-qc): per-consensus-position alignment depth from the
     # Stockholm seed, and the externally supplied expected classification.
     seed_depth: np.ndarray | None = None
+    # Sequences *spanning* each position (internal deletions included), the same
+    # quantity panel 2 plots. Carried so panel 6 can draw it faintly behind the
+    # base-level depth and make the difference between the two visible.
+    seed_span: np.ndarray | None = None
     expected_class: str | None = None
     seed_sequence_count: int | None = None
 
@@ -322,7 +345,11 @@ def _panel_coverage(fig: go.Figure, data: SheetData, theme: Theme, row: int, col
         row=row,
         col=col,
     )
-    fig.update_yaxes(title_text="copies overlapping", rangemode="tozero", row=row, col=col)
+    # 'Spanning', not 'covering'. A copy spans every position between its first
+    # and last aligned base, internal deletions included. Panel 6 counts only
+    # positions where a sequence actually contributes a base, so the two axes
+    # are deliberately named for different quantities — see _panel_seed_depth.
+    fig.update_yaxes(title_text="copies spanning", rangemode="tozero", row=row, col=col)
     fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
 
 
@@ -505,21 +532,38 @@ def _panel_structure(fig: go.Figure, data: SheetData, theme: Theme, row: int, co
 
 
 def _panel_seed_depth(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: int) -> None:
-    """Panel 6: how many seed sequences align at each consensus position.
+    """Panel 6: how many seed sequences contribute a base at each position.
 
     Dfam requires at least three sequences in a seed. The floor is drawn as a
-    rule with the region beneath it shaded, so 'does this seed qualify' and
-    'where is it thin' are both answerable at a glance rather than by reading
-    numbers off an axis.
+    rule with the shortfall shaded, so 'does this seed qualify' and 'where is it
+    thin' are both answerable at a glance rather than by reading numbers off an
+    axis.
+
+    **This is not panel 2 restated.** Panel 2 counts copies that *span* a
+    position — everything between a copy's first and last aligned base, internal
+    deletions included. This panel counts sequences that actually *contribute a
+    base* there. A copy carrying a 200 bp internal deletion is present in panel
+    2 across the whole span and absent from this one inside the deletion.
+
+    The gap between the two is therefore the seed's internal deletion structure,
+    and it is large in practice: across the 409 GenomeArk seeds for one
+    assembly, 362 differ, by as many as 37 sequences at a single position. So
+    when both curves come from the same seed the spanning curve is drawn here
+    too, faintly, and the area between them shaded — the divergence is the
+    signal, not an artefact to be explained away in a caption.
     """
     depth = data.seed_depth
     if depth is None or not len(depth):
         _empty_note(fig, "no seed alignment", theme, row, col)
-        fig.update_yaxes(title_text="sequences aligned", row=row, col=col)
+        fig.update_yaxes(title_text="sequences with a base", row=row, col=col)
         fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
         return
 
-    ceiling = max(int(depth.max()), DFAM_SEQUENCE_FLOOR) + 1
+    ceiling = max(
+        int(depth.max()),
+        int(data.seed_span.max()) if data.seed_span is not None and len(data.seed_span) else 0,
+        DFAM_SEQUENCE_FLOOR,
+    ) + 1
 
     fig.add_trace(
         go.Scatter(
@@ -533,17 +577,43 @@ def _panel_seed_depth(fig: go.Figure, data: SheetData, theme: Theme, row: int, c
         row=row,
         col=col,
     )
+    positions = np.arange(len(depth))
+    span = data.seed_span
+    if span is not None and len(span) == len(depth) and not np.array_equal(span, depth):
+        fig.add_trace(
+            go.Scattergl(
+                x=positions,
+                y=span,
+                mode="lines",
+                name="sequences spanning",
+                line=dict(color=theme.muted, width=1.5, dash="dot"),
+                fill="tonexty" if False else None,
+                hovertemplate=(
+                    "consensus %{x:,.0f} bp<br>%{y:,.0f} spanning"
+                    "<extra></extra>"
+                ),
+            ),
+            row=row,
+            col=col,
+        )
+        deleted = int((span - depth).sum())
+        if deleted:
+            data.notes.append(
+                f"{deleted:,} sequence-positions fall inside internal deletions "
+                f"(the gap between spanning and aligned)"
+            )
+
     fig.add_trace(
         go.Scattergl(
-            x=np.arange(len(depth)),
+            x=positions,
             y=depth,
             mode="lines",
-            name="seed depth",
-            showlegend=False,
+            name="sequences with a base",
+            showlegend=span is not None and len(span) == len(depth),
             line=dict(color=theme.base, width=2),
             fill="tozeroy",
             fillcolor=_alpha(theme.base, 0.18),
-            hovertemplate="consensus %{x:,.0f} bp<br>%{y:,.0f} sequences<extra></extra>",
+            hovertemplate="consensus %{x:,.0f} bp<br>%{y:,.0f} with a base<extra></extra>",
         ),
         row=row,
         col=col,
@@ -578,7 +648,7 @@ def _panel_seed_depth(fig: go.Figure, data: SheetData, theme: Theme, row: int, c
         )
 
     fig.update_yaxes(
-        title_text="sequences aligned",
+        title_text="sequences with a base",
         range=[0, ceiling],
         rangemode="tozero",
         row=row,
@@ -770,6 +840,9 @@ def _layout(
     seed_row: int | None = None,
     cell_rows: int = 2,
 ) -> None:
+    # A wrapped legend needs the space it takes, or it lands on the notes line.
+    _extra_bottom = max(0, _legend_rows(fig) - 1) * _LEGEND_ROW_PX
+
     subtitle_bits = [f"{data.consensus_length:,} bp", f"{data.n_copies:,} copies"]
     if data.full_length:
         subtitle_bits.append(
@@ -795,7 +868,7 @@ def _layout(
             font=dict(size=18, color=theme.text_primary, family=FONT_FAMILY),
         ),
         width=SHEET_WIDTH,
-        height=sheet_height(cell_rows),
+        height=sheet_height(cell_rows) + _extra_bottom,
         paper_bgcolor=theme.paper,
         plot_bgcolor=theme.surface,
         font=dict(family=FONT_FAMILY, color=theme.text_secondary, size=11),
@@ -815,7 +888,9 @@ def _layout(
             bgcolor="rgba(0,0,0,0)",
             font=dict(color=theme.text_secondary, size=11),
         ),
-        margin=dict(l=_MARGIN_L, r=_MARGIN_R, t=_MARGIN_T, b=_MARGIN_B),
+        margin=dict(
+            l=_MARGIN_L, r=_MARGIN_R, t=_MARGIN_T, b=_MARGIN_B + _extra_bottom
+        ),
         hovermode="closest",
         dragmode="pan",
     )
@@ -884,7 +959,7 @@ def _layout(
             xref="paper",
             yref="paper",
             x=0,
-            y=-_NOTE_OFFSET_PX / _plot_height(cell_rows),
+            y=-(_NOTE_OFFSET_PX + _extra_bottom) / _plot_height(cell_rows),
             xanchor="left",
             yanchor="top",
             showarrow=False,

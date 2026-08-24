@@ -113,7 +113,7 @@ divergence as zero** — leave the point out and say so in the axis label.
 ```
 
 1. Genomic hits vs divergence (from the annotation / seed / blastn).
-2. Consensus coverage pileup.
+2. Consensus coverage pileup — copies **spanning** each position.
 3. Self dot-plot (see §5.2), at a **true 1:1 data aspect** — both axes are
    consensus base pairs, and the square is what makes an off-diagonal repeat
    read as parallel to the main diagonal.
@@ -161,6 +161,30 @@ the square dot-plot.
    seed, with the **Dfam ≥3-sequences floor drawn as a horizontal rule**.
    Curators need to see instantly whether the seed meets the requirement and
    where it is thin.
+
+   **Panel 6 is not panel 2 restated, and the difference is load-bearing.**
+   Panel 2 counts copies that *span* a position — everything between a copy's
+   first and last aligned base, internal deletions included. Panel 6 counts
+   sequences that actually *contribute a base* there. A copy with a 200 bp
+   internal deletion is present in panel 2 across its whole span and absent
+   from panel 6 inside the deletion, so the gap between the two curves *is* the
+   family's internal deletion structure.
+
+   This is not a corner case: across the 409 GenomeArk seeds for
+   `GCA_963082875.1`, **362 differ**, by as many as 37 sequences at a single
+   position (`rnd-1_family-137` position 179: 44 copies span it, 21 of them
+   have a deletion there, so the depth is 23). Panel 6 therefore draws the
+   spanning curve faintly behind the base-level one, and the axes are named for
+   different quantities (`copies spanning` vs `sequences with a base`).
+
+   **Consequence for the pipeline's G2 gate.** VGP_TEbed gate G2 is "MSA depth
+   ≥3 over ≥99% of the consensus", computed as *per-position copy depth from
+   consensus coordinates* — i.e. the spanning quantity. The Dfam requirement is
+   really about how many sequences supply a base at a column, which is the
+   base-level quantity. **G2 is therefore optimistic:** a family can pass it and
+   still have fewer than three real bases at positions inside common deletions.
+   Either tighten G2 to base-level depth, or treat panel 6 as the authority and
+   expect some gate-passing families to show a shortfall.
 7. **Consensus vs contributing library entries** — the rebuilt consensus
    aligned against each source library entry: end extension means a truncation
    was fixed; mid-sequence disagreement is a chimera warning.
@@ -358,7 +382,11 @@ slice.
    Still open:
    - **Panel 7** (consensus vs contributing library entries) needs the source
      entries, which only the pipeline has. The input hook is not yet defined —
-     agree it when `TEbed-seeds` exists.
+     agree it when `TEbed-seeds` exists. Note the pipeline's deposition unit is
+     a *cross-tool cluster*, not one program's family, so "contributing entries"
+     means every cluster member's library sequence; the cluster membership is
+     already in `report/data/dfam_shortlist_clusters.tsv` but the sequences are
+     not carried anywhere yet.
    - **The `TP` flag itself** needs panel 5. The label is displayed and the
      comparison is drawn as *pending* rather than guessed at, since flagging
      against anything but homology evidence would be the sheet forming an
@@ -378,6 +406,24 @@ join.
 ---
 
 ## 7. Context: the companion seed-building pipeline
+
+**Two seed use cases, both supported and both expected in production:**
+
+1. **Raw seed evaluation** — a `.stk` straight out of a RepeatModeler2 run,
+   judged on its own merits before anyone invests curation effort in it.
+2. **QC of a pipeline-built seed** — the "low hanging fruits" seeds the VGP
+   pipeline produces, checked before a curator approves or rejects.
+
+They differ in what is trustworthy, not in what is drawn. In (1) the seed is the
+only artefact and its sampling is RepeatModeler's; in (2) the seed was built
+deliberately from a chosen copy set and the question is whether that choice was
+sound. Both are better served with an annotation supplied alongside the seed, so
+**`--stk` and `--annot` are not alternatives**: given both, panels 1–2 show every
+annotated genomic copy while panel 6 shows the seed's own sampling, and the
+comparison ("the seed used 12 of 340 copies") is the QC signal. The seed stays
+primary — it supplies the consensus and the seed-QC panels — regardless of the
+standalone priority order. A family absent from the annotation warns and falls
+back to the seed's sequences rather than failing.
 
 TE-Aid v2 will be pinned as a **git submodule** of a separate pipeline repo
 (planned name `TEbed-seeds`) that screens candidate TE families from a

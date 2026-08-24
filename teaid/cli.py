@@ -190,8 +190,13 @@ def _seed_qc_fields(seed, enabled: bool) -> dict:
         return {}
     import numpy as np
 
+    depth = np.asarray(seed.depth(), dtype=np.int64)
     return {
-        "seed_depth": np.asarray(seed.depth(), dtype=np.int64),
+        "seed_depth": depth,
+        # The same positions counted the way panel 2 counts them, so panel 6 can
+        # show both and make the difference between 'spans' and 'has a base'
+        # visible rather than leaving it to be inferred across two panels.
+        "seed_span": analysis.coverage(seed.to_annotation(), len(depth)),
         "expected_class": seed.expected_class,
         "seed_sequence_count": len(seed),
     }
@@ -206,6 +211,40 @@ class _Loaded:
     annotation: Annotation
     notes: list[str] = dataclass_field(default_factory=list)
     seed: object | None = None
+    # All annotated genomic copies of this family, when an annotation was
+    # supplied alongside a seed. Drives panels 1-2 so they show the family as it
+    # exists in the genome, leaving panel 6 to show the seed's own sampling.
+    genomic: Annotation | None = None
+
+
+def _load_genomic_context(args, family: str) -> Annotation | int | None:
+    """Annotated genomic copies of ``family``, for seed QC against the genome.
+
+    Returns None — not a failure — when the annotation simply has no rows for
+    this family. A seed whose family is absent from the annotation is itself
+    worth knowing about, but it is not a reason to refuse the sheet.
+    """
+    annot_path = Path(args.annot)
+    if not annot_path.exists():
+        return fail(EXIT_NO_INPUT, f"annotation not found: {annot_path}")
+
+    kwargs = {}
+    if args.divergence_kind:
+        kwargs["divergence_kind"] = DivergenceKind(args.divergence_kind)
+    try:
+        annotation = readers.read(annot_path, fmt=args.annot_format, **kwargs)
+    except readers.FormatDetectionError as exc:
+        return fail(EXIT_NO_INPUT, str(exc))
+
+    subset = annotation.for_family(family, exact=False)
+    if not len(subset):
+        print(
+            f"teaid: warning: no copies of {family!r} in {annot_path}; "
+            f"panels 1-2 fall back to the seed's own sequences",
+            file=sys.stderr,
+        )
+        return None
+    return subset
 
 
 def _load_annotation(args) -> _Loaded | int:
@@ -329,9 +368,32 @@ def main(argv: list[str] | None = None) -> int:
     if chosen is None:
         parser.error("give an input: --annot or --stk (--blastn is not implemented yet)")
 
+    # The priority above settles which source *drives* the sheet when only one
+    # can. A seed given together with an annotation is not that contest: the
+    # seed is the thing being QC'd, so it supplies the consensus and the seed-QC
+    # panels while the annotation supplies genomic context for panels 1-2.
+    if args.stk and args.annot:
+        chosen = "stk"
+
     loaded = (_load_seed if chosen == "stk" else _load_annotation)(args)
     if isinstance(loaded, int):
         return loaded
+
+    # --stk and --annot are not alternatives when both are given. The seed says
+    # which copies were *chosen* to build the family; the annotation says which
+    # copies *exist* in the genome. Showing both is the point of seed QC: a seed
+    # built from 12 of 340 copies may be perfectly good or may have sampled one
+    # corner of the family, and only the comparison distinguishes them.
+    if chosen == "stk" and args.annot:
+        genomic = _load_genomic_context(args, loaded.family)
+        if isinstance(genomic, int):
+            return genomic
+        if genomic is not None:
+            loaded.genomic = genomic
+            loaded.notes.append(
+                f"panels 1-2 show {len(genomic):,} annotated genomic copies; "
+                f"the seed uses {len(loaded.annotation):,}"
+            )
 
     family = loaded.family
     consensus = loaded.consensus
@@ -339,8 +401,12 @@ def main(argv: list[str] | None = None) -> int:
     notes = loaded.notes
     seed = loaded.seed
     consensus_length = len(consensus)
-    coverage = analysis.coverage(subset, consensus_length)
-    full = analysis.full_length(subset, consensus_length, args.full_length_threshold)
+    # Panels 1-2 describe the family in the genome. With an annotation supplied
+    # alongside a seed that is every annotated copy; otherwise it is whatever
+    # the single source gave us.
+    shown = loaded.genomic if loaded.genomic is not None else subset
+    coverage = analysis.coverage(shown, consensus_length)
+    full = analysis.full_length(shown, consensus_length, args.full_length_threshold)
 
     self_hits = []
     terminal: dict[str, list] = {}
@@ -373,7 +439,7 @@ def main(argv: list[str] | None = None) -> int:
     data = report.SheetData(
         family=consensus.bare_name,
         consensus_length=consensus_length,
-        copies=list(subset),
+        copies=list(shown),
         full_length=full,
         coverage=coverage,
         self_hits=self_hits,
@@ -382,7 +448,7 @@ def main(argv: list[str] | None = None) -> int:
         orf_min_size=args.min_orf,
         class_label=consensus.class_label,
         full_length_threshold=args.full_length_threshold,
-        source_format=subset.source_format,
+        source_format=shown.source_format,
         notes=notes,
         **_seed_qc_fields(seed, args.seed_qc),
     )
@@ -409,7 +475,7 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     summary = (
-        f"{consensus.bare_name}: {len(subset):,} copies, {len(full):,} full length, "
+        f"{consensus.bare_name}: {len(shown):,} copies, {len(full):,} full length, "
         f"consensus {consensus_length:,} bp"
     )
     if terminal.get("LTR") or terminal.get("TIR"):

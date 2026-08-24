@@ -139,16 +139,49 @@ class TestSeedInput:
         assert "Seed depth" in with_qc
         assert "#=GF TP" in with_qc
 
-    def test_pipeline_mode_prefers_the_seed(self, seed_file, inputs, tmp_path, capsys):
-        """--pipeline reverses the standalone priority to seed-first."""
+    def test_pipeline_mode_prefers_the_seed(self, seed_file, inputs, tmp_path):
+        """--pipeline reverses the standalone priority to seed-first, so the
+        seed supplies the consensus and the seed-QC panels."""
         fasta, annot = inputs
         code = run([
             "--pipeline", "--stk", seed_file, "--annot", annot, "-c", fasta,
-            "-f", "fam1", "-o", tmp_path, "--no-dotplot", "--no-orfs",
+            "-f", "fam1", "-o", tmp_path, "--seed-qc", "--no-dotplot", "--no-orfs",
         ])
         assert code == cli.EXIT_OK
-        # fam1 exists only in the seed; the annotation has fam1/fam2 of its own.
-        assert "3 copies" in capsys.readouterr().out
+        assert "Seed depth" in (tmp_path / "fam1.teaid.html").read_text()
+
+    def test_seed_and_annotation_together_are_not_alternatives(
+        self, seed_file, inputs, tmp_path, capsys
+    ):
+        """The seed says which copies were *chosen*; the annotation says which
+        *exist*. Given both, panels 1-2 show the genome and panel 6 shows the
+        seed's sampling — the comparison is the whole point of seed QC."""
+        fasta, annot = inputs
+        code = run([
+            "--stk", seed_file, "--annot", annot, "-f", "fam1",
+            "-o", tmp_path, "--seed-qc", "--no-dotplot", "--no-orfs",
+        ])
+        assert code == cli.EXIT_OK
+        # The .out fixture holds 2 rows for fam1; the seed holds 3 sequences.
+        out = capsys.readouterr().out
+        assert "2 copies" in out
+        html = (tmp_path / "fam1.teaid.html").read_text()
+        assert "2 annotated genomic copies" in html
+        assert "the seed uses 3" in html
+
+    def test_a_family_absent_from_the_annotation_still_renders(
+        self, seed_file, inputs, tmp_path, capsys
+    ):
+        """Worth warning about, not worth refusing the sheet for."""
+        fasta, annot = inputs
+        seed = tmp_path / "other.stk"
+        seed.write_text(SEED.replace("fam1", "orphan"))
+        code = run([
+            "--stk", seed, "--annot", annot, "-f", "orphan",
+            "-o", tmp_path, "--no-dotplot", "--no-orfs",
+        ])
+        assert code == cli.EXIT_OK
+        assert "fall back to the seed" in capsys.readouterr().err
 
     def test_consensus_is_ignored_with_a_seed(self, seed_file, inputs, tmp_path, capsys):
         """A FASTA passed alongside would silently disagree with the alignment
