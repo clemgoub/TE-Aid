@@ -216,6 +216,7 @@ class _Loaded:
     consensus: Consensus
     annotation: Annotation
     notes: list[str] = dataclass_field(default_factory=list)
+    sources: list[str] = dataclass_field(default_factory=list)
     seed: object | None = None
     # All annotated genomic copies of this family, when an annotation was
     # supplied alongside a seed. Drives panels 1-2 so they show the family as it
@@ -304,7 +305,11 @@ def _load_annotation(args) -> _Loaded | int:
     notes = []
     if annotation.skipped:
         notes.append(f"{len(annotation.skipped):,} unparsable rows skipped")
-    return _Loaded(consensus.bare_name, consensus, subset, notes)
+    sources = [
+        f"annotation <b>{annot_path.name}</b> ({annotation.source_format})",
+        f"consensus <b>{consensus_path.name}</b>",
+    ]
+    return _Loaded(consensus.bare_name, consensus, subset, notes, sources)
 
 
 def _load_seed(args) -> _Loaded | int:
@@ -356,7 +361,10 @@ def _load_seed(args) -> _Loaded | int:
         notes.append(f"#=GF SQ declares {declared} sequences but {len(seed)} are present")
 
     name = seed.identifier or "seed"
-    return _Loaded(name, Consensus(name, sequence), annotation, notes, seed=seed)
+    sources = [f"seed <b>{seed_path.name}</b> (Stockholm, {len(seed)} sequences)"]
+    return _Loaded(
+        name, Consensus(name, sequence), annotation, notes, sources, seed=seed
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -396,6 +404,10 @@ def main(argv: list[str] | None = None) -> int:
             return genomic
         if genomic is not None:
             loaded.genomic = genomic
+            loaded.sources.append(
+                f"annotation <b>{Path(args.annot).name}</b> "
+                f"({genomic.source_format})"
+            )
             loaded.notes.append(
                 f"panels 1-2 show {len(genomic):,} annotated genomic copies; "
                 f"the seed uses {len(loaded.annotation):,}"
@@ -455,6 +467,7 @@ def main(argv: list[str] | None = None) -> int:
         class_label=consensus.class_label,
         full_length_threshold=args.full_length_threshold,
         source_format=shown.source_format,
+        sources=loaded.sources,
         notes=notes,
         **_seed_qc_fields(seed, args.seed_qc),
     )
@@ -471,7 +484,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.static:
         static_path = out_dir / f"{stem}.teaid.{args.static}"
         try:
-            figure.write_image(static_path, scale=2)
+            report.strip_help_markers(figure).write_image(static_path, scale=2)
             print(f"wrote {static_path}")
         except Exception as exc:  # kaleido raises a variety of types
             print(

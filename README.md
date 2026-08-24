@@ -74,10 +74,21 @@ teaid --annot genome.fa.out \
 This writes `sheets/rnd-1_family-257.teaid.html`. Add `--static png` (or `pdf`,
 `svg`) for a publication figure alongside it, and `--theme dark` for a dark sheet.
 
+The sheet states its own provenance under the title — which inputs built it, and
+the **detected** annotation format, so a misdetection is visible rather than
+silent:
+
+```
+from  seed families.stk (Stockholm, 44 sequences)  +  annotation genome.fa.out (rmout)
+```
+
 In the HTML sheet you can drag to pan, scroll to zoom, and double-click a panel
 to autoscale it. **Reset view** returns all four quadrants to the full consensus
 span at once — unlike Plotly's built-in reset, which autoscales each panel
-independently and so leaves them on different x-ranges.
+independently and so leaves them on different x-ranges. Each panel title carries
+a faded **?**: hover it for what the panel shows and the trap it exists to avoid.
+The markers are dropped from static exports, where a question mark would have no
+answer.
 
 The annotation format is detected from the file's content, not its extension —
 `.bed` files converted from `.out` are common enough that extensions cannot be

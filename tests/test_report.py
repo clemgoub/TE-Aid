@@ -279,3 +279,78 @@ class TestThemes:
     def test_unknown_theme_is_rejected(self):
         with pytest.raises(ValueError):
             theme.get("solarized")
+
+
+class TestProvenance:
+    """A sheet outlives the shell that produced it."""
+
+    def test_sources_are_shown_under_the_title(self):
+        data = make_data(sources=["seed <b>a.stk</b>", "annotation <b>b.out</b> (rmout)"])
+        fig = report.build_figure(data, theme.LIGHT)
+        assert "a.stk" in fig.layout.title.text
+        assert "b.out" in fig.layout.title.text
+
+    def test_no_provenance_line_when_there_is_nothing_to_say(self):
+        fig = report.build_figure(make_data(), theme.LIGHT)
+        assert "from" not in fig.layout.title.text
+
+    def test_the_line_gets_its_own_room(self):
+        """Otherwise it lands on the first row of panel titles."""
+        plain = report.build_figure(make_data(), theme.LIGHT)
+        sourced = report.build_figure(make_data(sources=["seed <b>a.stk</b>"]), theme.LIGHT)
+        assert sourced.layout.margin.t > plain.layout.margin.t
+        assert sourced.layout.height > plain.layout.height
+
+
+class TestPanelHelp:
+    @staticmethod
+    def _markers(fig):
+        return [a for a in fig.layout.annotations if a.text == report.HELP_MARKER]
+
+    def test_every_drawn_panel_gets_a_marker(self):
+        fig = report.build_figure(make_data(), theme.LIGHT)
+        assert len(self._markers(fig)) == 4  # panels 1-4
+
+    def test_seed_qc_panels_get_markers_too(self):
+        data = make_data(seed_depth=np.ones(50, dtype=np.int64), seed_sequence_count=1)
+        fig = report.build_figure(data, theme.LIGHT)
+        assert len(self._markers(fig)) == 6  # panels 1-4, 6, 8
+
+    def test_markers_carry_the_help_text_and_capture_hover(self):
+        fig = report.build_figure(make_data(), theme.LIGHT)
+        for marker in self._markers(fig):
+            assert marker.captureevents is True
+            assert len(marker.hovertext) > 50
+
+    def test_marker_sits_to_the_right_of_its_title(self):
+        fig = report.build_figure(make_data(), theme.LIGHT)
+        titles = {
+            report._panel_number(a.text): a
+            for a in fig.layout.annotations
+            if report._panel_number(a.text)
+        }
+        for marker in self._markers(fig):
+            nearest = min(titles.values(), key=lambda t: abs(t.x - marker.x))
+            assert marker.x > nearest.x
+
+    def test_help_text_is_wrapped(self):
+        """Plotly hover labels do not wrap; an unwrapped paragraph covers the
+        panels it is meant to explain."""
+        for text in report.PANEL_HELP.values():
+            wrapped = report._wrap_help(text)
+            for line in wrapped.replace("<br><br>", "<br>").split("<br>"):
+                assert len(re.sub(r"<[^>]+>", "", line)) <= report._HELP_WRAP + 20
+
+    def test_wrapping_never_breaks_inside_a_tag(self):
+        wrapped = report._wrap_help(report.PANEL_HELP[2])
+        for line in wrapped.split("<br>"):
+            assert line.count("<") == line.count(">")
+
+    def test_markers_are_stripped_for_static_export(self):
+        """A question mark in a PDF has no answer, and PDFs go into papers."""
+        fig = report.build_figure(make_data(), theme.LIGHT)
+        assert self._markers(fig)
+        report.strip_help_markers(fig)
+        assert not self._markers(fig)
+        # The panel titles themselves survive.
+        assert any(report._panel_number(a.text) for a in fig.layout.annotations)

@@ -91,6 +91,11 @@ _NOTE_OFFSET_PX = 104
 # Height of one wrapped legend row; the notes line is pushed down by this much
 # per extra row so a long legend cannot land on top of it.
 _LEGEND_ROW_PX = 22
+# Extra top margin for the provenance line under the subtitle.
+_SOURCE_LINE_PX = 17
+# Average glyph width of a 12px subplot title, and the gap before its '?'.
+_TITLE_CHAR_PX = 6.6
+_HELP_GAP_PX = 7
 
 
 def _legend_rows(fig: go.Figure) -> int:
@@ -133,6 +138,67 @@ MAX_PILEUP_LANES = 40
 # always ships with the label naming the floor -- colour alone carries nothing.
 STATUS_BELOW_FLOOR = "#d03b3b"
 
+# What each panel is, and the trap it exists to avoid. Shown on hovering the '?'
+# beside a panel title. These are the things a curator would otherwise have to
+# take on trust or read the docs for — especially where two panels look alike.
+PANEL_HELP = {
+    1: (
+        "One horizontal line per annotated copy, drawn across the stretch of "
+        "consensus it matches, at its divergence.<br><br>"
+        "Copies whose source reports <b>no</b> divergence are left out entirely "
+        "rather than drawn at zero — zero here would read as a pristine, very "
+        "recent insertion, the opposite of 'unknown'. Any omitted are counted in "
+        "the axis label.<br><br>"
+        "Highlighted copies span at least the full-length threshold of the "
+        "consensus."
+    ),
+    2: (
+        "How many copies <b>span</b> each consensus position: everything between "
+        "a copy's first and last aligned base, internal deletions included."
+        "<br><br>"
+        "This is not the same quantity as panel 6, which counts only sequences "
+        "that contribute an actual base. Where the two differ, the difference is "
+        "internal deletion."
+    ),
+    3: (
+        "The consensus aligned against itself, at a true 1:1 aspect — so an "
+        "off-diagonal repeat reads as parallel to the main diagonal.<br><br>"
+        "Same-strand matches near both termini suggest LTRs; opposite-strand "
+        "matches suggest TIRs. An internal segmental duplication produces the "
+        "same signature, so these are suggestions for you to judge, never calls."
+    ),
+    4: (
+        "Terminal-repeat candidates and ORFs, on the consensus axis.<br><br>"
+        "Arrowheads carry orientation: a <b>direct</b> pair points the same way "
+        "(→ … →), an <b>inverted</b> pair points inward (→ … ←).<br><br>"
+        "Lanes are labelled by what was measured — direct or inverted — not by a "
+        "class. On an internally repetitive consensus the same signature is a "
+        "tandem unit, not a terminal repeat."
+    ),
+    5: (
+        "Best protein and nucleotide homology hits.<br><br>"
+        "Not yet drawn: this needs the frameshift-aware translated pHMM search "
+        "(BATH), which is not installed."
+    ),
+    6: (
+        "The seed alignment, in the shape of Dfam's own seed track.<br><br>"
+        "<b>Above:</b> coverage split into sequences that match the consensus and "
+        "sequences that differ. Depth alone flatters a seed — a column with 43 "
+        "sequences of which 25 disagree is not 43 sequences of support.<br><br>"
+        "<b>Below:</b> one lane per seed sequence, drawn as its aligned runs, so "
+        "an internal deletion is a gap rather than being smoothed over.<br><br>"
+        "The rule marks Dfam's 3-sequence minimum; stretches falling short are "
+        "shaded. This counts <b>bases</b>, where panel 2 counts spans."
+    ),
+    8: (
+        "The <code>#=GF TP</code> classification carried by the seed.<br><br>"
+        "This label arrives <b>with the seed</b> — TE-Aid did not derive it and "
+        "never asserts a classification of its own. The deliverable is whether "
+        "the evidence on this sheet disagrees with it, which only means something "
+        "because the rest of the sheet has no opinion."
+    ),
+}
+
 
 @dataclass(slots=True)
 class SheetData:
@@ -150,6 +216,12 @@ class SheetData:
     class_label: str | None = None
     full_length_threshold: float = 0.9
     source_format: str | None = None
+    # Where the evidence came from, one entry per input, shown under the title.
+    # A sheet outlives the shell that produced it, and a curator looking at one
+    # weeks later needs to know whether it was built from an annotation, a seed
+    # or both, and which files. It also surfaces the *detected* annotation
+    # format, which is otherwise chosen silently.
+    sources: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     # Panel 5 content; empty until the BATH protein row and Dfam nucleotide row
     # land (work order steps 6 and 8).
@@ -917,13 +989,22 @@ def _layout(
     if data.class_label:
         subtitle_bits.append(data.class_label)
 
+    title_text = (
+        f"<b>{data.family}</b><br>"
+        f"<span style='font-size:12px;color:{theme.text_secondary}'>"
+        f"{' &nbsp;·&nbsp; '.join(subtitle_bits)}</span>"
+    )
+    if data.sources:
+        title_text += (
+            f"<br><span style='font-size:11px;color:{theme.muted}'>"
+            f"from &nbsp;{' &nbsp;+&nbsp; '.join(data.sources)}</span>"
+        )
+    # The provenance line needs its own room in the top margin.
+    top_margin = _MARGIN_T + (_SOURCE_LINE_PX if data.sources else 0)
+
     fig.update_layout(
         title=dict(
-            text=(
-                f"<b>{data.family}</b><br>"
-                f"<span style='font-size:12px;color:{theme.text_secondary}'>"
-                f"{' &nbsp;·&nbsp; '.join(subtitle_bits)}</span>"
-            ),
+            text=title_text,
             x=0.012,
             xanchor="left",
             yref="container",
@@ -932,7 +1013,7 @@ def _layout(
             font=dict(size=18, color=theme.text_primary, family=FONT_FAMILY),
         ),
         width=SHEET_WIDTH,
-        height=sheet_height(cell_rows) + _extra_bottom,
+        height=sheet_height(cell_rows) + _extra_bottom + (top_margin - _MARGIN_T),
         paper_bgcolor=theme.paper,
         plot_bgcolor=theme.surface,
         font=dict(family=FONT_FAMILY, color=theme.text_secondary, size=11),
@@ -953,7 +1034,7 @@ def _layout(
             font=dict(color=theme.text_secondary, size=11),
         ),
         margin=dict(
-            l=_MARGIN_L, r=_MARGIN_R, t=_MARGIN_T, b=_MARGIN_B + _extra_bottom
+            l=_MARGIN_L, r=_MARGIN_R, t=top_margin, b=_MARGIN_B + _extra_bottom
         ),
         hovermode="closest",
         dragmode="pan",
@@ -1030,21 +1111,22 @@ def _layout(
             font=dict(size=10, color=theme.muted, family=FONT_FAMILY),
         )
 
+    titles = []
     for annotation in fig.layout.annotations:
-        if annotation.text in {
-            "1 · Annotated copies vs divergence",
-            "2 · Consensus coverage",
-            "3 · Self dot-plot",
-            "4 · Structure",
-            "5 · Homology evidence",
-            "6 · Seed depth",
-            "8 · Expected class",
-        }:
-            annotation.update(
-                font=dict(size=12, color=theme.text_primary, family=FONT_FAMILY),
-                x=annotation.x,
-                xanchor="center",
-            )
+        number = _panel_number(annotation.text)
+        if number is None:
+            continue
+        annotation.update(
+            font=dict(size=12, color=theme.text_primary, family=FONT_FAMILY),
+            x=annotation.x,
+            xanchor="center",
+        )
+        titles.append((number, annotation))
+
+    for number, annotation in titles:
+        help_text = PANEL_HELP.get(number)
+        if help_text:
+            _add_help_marker(fig, annotation, help_text, theme)
 
 
 _HTML_TEMPLATE = """<!doctype html>
@@ -1178,6 +1260,93 @@ def _runs_below(values: np.ndarray, floor: int) -> list[tuple[int, int]]:
     starts = np.flatnonzero(edges == 1)
     ends = np.flatnonzero(edges == -1)
     return list(zip(starts.tolist(), ends.tolist()))
+
+
+HELP_MARKER = "?"
+
+# Visible characters per line in a help tooltip. Plotly hover labels do not wrap
+# on their own, so an unwrapped paragraph becomes one line as wide as the page
+# and covers the panels it is meant to explain.
+_HELP_WRAP = 62
+
+
+def _wrap_help(text: str) -> str:
+    """Wrap help text to a readable column width, respecting its markup.
+
+    Explicit ``<br>`` breaks are kept as paragraph boundaries. Line length is
+    measured on visible characters only, so a ``<b>`` tag does not push the
+    wrap; and breaks are only ever inserted between words, never inside a tag.
+    """
+    import re as _re
+
+    visible = lambda s: len(_re.sub(r"<[^>]+>", "", s))
+    out_paragraphs = []
+    for paragraph in text.split("<br><br>"):
+        line, lines = "", []
+        for word in paragraph.split(" "):
+            candidate = f"{line} {word}".strip()
+            if line and visible(candidate) > _HELP_WRAP:
+                lines.append(line)
+                line = word
+            else:
+                line = candidate
+        if line:
+            lines.append(line)
+        out_paragraphs.append("<br>".join(lines))
+    return "<br><br>".join(out_paragraphs)
+
+
+def _panel_number(text: str | None) -> int | None:
+    """The leading panel number of a subplot title, e.g. '3 · Self dot-plot'."""
+    if not text:
+        return None
+    head = text.split("·", 1)[0].strip()
+    return int(head) if head.isdigit() else None
+
+
+def _add_help_marker(fig: go.Figure, title, help_text: str, theme: Theme) -> None:
+    """Put a faded '?' after a panel title that explains the panel on hover.
+
+    A separate annotation rather than part of the title, so the hover target is
+    the marker itself and the title stays clean. Its position is estimated from
+    the title's own width: subplot titles are centred, so the marker sits half a
+    title-width to the right of that centre. Paper x spans the plotting area, so
+    pixels convert by dividing by its width.
+    """
+    half_title_px = len(title.text) * _TITLE_CHAR_PX / 2
+    offset = (half_title_px + _HELP_GAP_PX) / _PLOT_WIDTH
+
+    fig.add_annotation(
+        text=HELP_MARKER,
+        x=title.x + offset,
+        y=title.y,
+        xref=title.xref,
+        yref=title.yref,
+        xanchor="left",
+        yanchor=title.yanchor or "bottom",
+        showarrow=False,
+        font=dict(size=11, color=theme.muted, family=FONT_FAMILY),
+        hovertext=_wrap_help(help_text),
+        hoverlabel=dict(
+            bgcolor=theme.surface,
+            bordercolor=theme.axis,
+            font=dict(color=theme.text_primary, size=11, family=FONT_FAMILY),
+        ),
+        captureevents=True,
+    )
+
+
+def strip_help_markers(fig: go.Figure) -> go.Figure:
+    """Remove the '?' markers, for static export.
+
+    They are an interactive affordance: in a PDF or PNG the tooltip cannot open,
+    so the marker is a question mark with no answer — and these files are the
+    ones that end up in papers.
+    """
+    fig.layout.annotations = tuple(
+        a for a in fig.layout.annotations if a.text != HELP_MARKER
+    )
+    return fig
 
 
 def _padded_span(consensus_length: int) -> list[float]:
