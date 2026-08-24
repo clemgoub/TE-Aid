@@ -1,25 +1,56 @@
 """Command line entry point.
 
 Standalone input priority is ``--annot`` (an annotation you already trust),
-then ``--blastn`` (the v1 rediscovery path), then ``--stk``. Only ``--annot`` is
-implemented at this stage.
+then ``--blastn`` (the v1 rediscovery path), then ``--stk``. ``--pipeline``
+reverses that to seed-first, for the companion seed-building pipeline, which
+invokes TE-Aid as ``--pipeline --stk``. ``--blastn`` is not implemented yet.
+
+**Fail-soft contract.** The pipeline keeps going when a packet fails and queues
+it for a curator with a note, so every failure has to be machine-readable: a
+distinct exit code, and a stderr line carrying a stable slug::
+
+    teaid: error [no-family]: family 'x' not in families.fa
+
+Parse the slug, not the prose.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from pathlib import Path
 
 from . import __version__, analysis, orfs, readers, report, theme
-from .records import DivergenceKind
-from .sequences import read_fasta
+from .readers import stockholm
+from .records import Annotation, DivergenceKind
+from .sequences import Consensus, read_fasta
 
 EXIT_OK = 0
 EXIT_USAGE = 2
 EXIT_NO_INPUT = 3  # a required file is missing or unreadable
 EXIT_NO_FAMILY = 4  # the requested family is not in the annotation or library
 EXIT_NO_EVIDENCE = 5  # the family exists but carries nothing plottable
+EXIT_BAD_SEED = 6  # the Stockholm file could not be parsed
+
+# Exit code paired with the slug printed on stderr, so a caller can branch on
+# either. Keep the two in step.
+_SLUG = {
+    EXIT_USAGE: "usage",
+    EXIT_NO_INPUT: "no-input",
+    EXIT_NO_FAMILY: "no-family",
+    EXIT_NO_EVIDENCE: "no-evidence",
+    EXIT_BAD_SEED: "bad-seed",
+}
+
+
+def fail(code: int, message: str, hint: str | None = None) -> int:
+    """Report a failure in the form the pipeline parses, and return its code."""
+    print(f"teaid: error [{_SLUG.get(code, 'error')}]: {message}", file=sys.stderr)
+    if hint:
+        print(f"       {hint}", file=sys.stderr)
+    return code
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,11 +80,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="override annotation format detection",
     )
     source.add_argument(
+        "--stk",
+        metavar="FILE",
+        help=(
+            "Stockholm seed alignment (Dfam format, may be .gz). Supplies the "
+            "copies, their loci, the consensus and the alignment in one file"
+        ),
+    )
+    source.add_argument(
         "-c",
         "--consensus",
         metavar="FASTA",
-        required=True,
-        help="consensus FASTA; a library of many families or a single sequence",
+        help=(
+            "consensus FASTA; a library of many families or a single sequence. "
+            "Required with --annot; with --stk the seed supplies the consensus"
+        ),
     )
     source.add_argument(
         "-f",
@@ -68,6 +109,18 @@ def build_parser() -> argparse.ArgumentParser:
             "what the annotation's divergence column measures, when you know it. "
             "BED16 does not record this; the default infers it from the class label"
         ),
+    )
+
+    source.add_argument(
+        "--pipeline",
+        action="store_true",
+        help="reverse the input priority to seed-first, for the companion pipeline",
+    )
+    source.add_argument(
+        "--seed-qc",
+        action="store_true",
+        dest="seed_qc",
+        help="add the seed-QC panels: alignment depth and the expected class label",
     )
 
     output = parser.add_argument_group("output")
@@ -127,45 +180,65 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
+def _seed_qc_fields(seed, enabled: bool) -> dict:
+    """Seed-QC inputs for the sheet, or nothing when the panels are off.
 
-    if not args.annot:
-        parser.error("--annot is required (the --blastn and --stk paths are not yet implemented)")
+    Flag-gated and off by default (see docs/BRIEF_v2.md §2): the default sheet
+    is the same four quadrants whether or not the input happened to be a seed.
+    """
+    if not enabled or seed is None:
+        return {}
+    import numpy as np
+
+    return {
+        "seed_depth": np.asarray(seed.depth(), dtype=np.int64),
+        "expected_class": seed.expected_class,
+        "seed_sequence_count": len(seed),
+    }
+
+
+@dataclass(slots=True)
+class _Loaded:
+    """One family, resolved from whichever input source was chosen."""
+
+    family: str
+    consensus: Consensus
+    annotation: Annotation
+    notes: list[str] = dataclass_field(default_factory=list)
+    seed: object | None = None
+
+
+def _load_annotation(args) -> _Loaded | int:
+    """The ``--annot`` path: an annotation plus a separate consensus FASTA."""
+    if not args.consensus:
+        return fail(EXIT_USAGE, "--consensus is required with --annot")
 
     annot_path, consensus_path = Path(args.annot), Path(args.consensus)
     for path, label in ((annot_path, "annotation"), (consensus_path, "consensus FASTA")):
         if not path.exists():
-            print(f"teaid: {label} not found: {path}", file=sys.stderr)
-            return EXIT_NO_INPUT
-
-    if not 0 < args.full_length_threshold <= 1:
-        parser.error("--full-length-threshold must be in (0, 1]")
+            return fail(EXIT_NO_INPUT, f"{label} not found: {path}")
 
     library = read_fasta(consensus_path)
     if not len(library):
-        print(f"teaid: no sequences in {consensus_path}", file=sys.stderr)
-        return EXIT_NO_INPUT
+        return fail(EXIT_NO_INPUT, f"no sequences in {consensus_path}")
 
     family = args.family
     if family is None:
         if len(library) != 1:
-            print(
-                f"teaid: --family is required: {consensus_path} holds "
-                f"{len(library):,} sequences",
-                file=sys.stderr,
+            return fail(
+                EXIT_USAGE,
+                f"--family is required: {consensus_path} holds {len(library):,} sequences",
             )
-            return EXIT_USAGE
         family = next(iter(library)).bare_name
 
     consensus = library.get(family)
     if consensus is None:
-        print(f"teaid: family {family!r} not in {consensus_path}", file=sys.stderr)
         near = library.suggest(family)
-        if near:
-            print(f"       did you mean: {', '.join(near)}", file=sys.stderr)
-        return EXIT_NO_FAMILY
+        return fail(
+            EXIT_NO_FAMILY,
+            f"family {family!r} not in {consensus_path}",
+            f"did you mean: {', '.join(near)}" if near else None,
+        )
 
     kwargs = {}
     if args.divergence_kind:
@@ -173,22 +246,98 @@ def main(argv: list[str] | None = None) -> int:
     try:
         annotation = readers.read(annot_path, fmt=args.annot_format, **kwargs)
     except readers.FormatDetectionError as exc:
-        print(f"teaid: {exc}", file=sys.stderr)
-        return EXIT_NO_INPUT
+        return fail(EXIT_NO_INPUT, str(exc))
 
     subset = annotation.for_family(family, exact=False)
-    notes: list[str] = []
+    if not len(subset):
+        return fail(
+            EXIT_NO_EVIDENCE,
+            f"no copies of {family!r} in {annot_path} "
+            f"({len(annotation):,} rows, {len(annotation.families()):,} families)",
+        )
+
+    notes = []
     if annotation.skipped:
         notes.append(f"{len(annotation.skipped):,} unparsable rows skipped")
+    return _Loaded(consensus.bare_name, consensus, subset, notes)
 
-    if not len(subset):
+
+def _load_seed(args) -> _Loaded | int:
+    """The ``--stk`` path: one Stockholm record supplies everything.
+
+    Copies, loci, consensus and alignment all come from the seed, so no separate
+    FASTA is needed and none is consulted — a consensus passed alongside would
+    silently disagree with the alignment the depth panel is drawn from.
+    """
+    seed_path = Path(args.stk)
+    if not seed_path.exists():
+        return fail(EXIT_NO_INPUT, f"seed alignment not found: {seed_path}")
+
+    try:
+        seed = stockholm.read(seed_path, args.family)
+    except stockholm.MalformedSeedError as exc:
+        hint = None
+        if args.family:
+            try:
+                available = stockholm.identifiers(seed_path)
+                hint = f"{len(available):,} records, e.g. {', '.join(available[:4])}"
+            except stockholm.MalformedSeedError:
+                pass
+        return fail(EXIT_BAD_SEED, str(exc), hint)
+
+    sequence = seed.consensus()
+    if not sequence:
+        return fail(
+            EXIT_NO_EVIDENCE,
+            f"seed {seed.identifier!r} yields an empty consensus "
+            f"(no #=GC RF line and no aligned columns)",
+        )
+
+    annotation = seed.to_annotation()
+    if not len(annotation):
+        return fail(
+            EXIT_NO_EVIDENCE, f"seed {seed.identifier!r} holds no aligned sequences"
+        )
+
+    notes = []
+    if args.consensus:
+        notes.append("--consensus ignored: the seed supplies its own consensus")
         print(
-            f"teaid: no copies of {family!r} in {annot_path} "
-            f"({len(annotation):,} rows, {len(annotation.families()):,} families)",
+            "teaid: warning: --consensus ignored; the seed supplies its own consensus",
             file=sys.stderr,
         )
-        return EXIT_NO_EVIDENCE
+    declared = seed.declared_count
+    if declared is not None and declared != len(seed):
+        notes.append(f"#=GF SQ declares {declared} sequences but {len(seed)} are present")
 
+    name = seed.identifier or "seed"
+    return _Loaded(name, Consensus(name, sequence), annotation, notes, seed=seed)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if not 0 < args.full_length_threshold <= 1:
+        parser.error("--full-length-threshold must be in (0, 1]")
+
+    # Input priority: --annot, then --blastn, then --stk; --pipeline reverses to
+    # seed-first. Whichever source is chosen, everything downstream works from
+    # the same record struct.
+    order = ("stk", "annot") if args.pipeline else ("annot", "stk")
+    chosen = next((name for name in order if getattr(args, name)), None)
+    if chosen is None:
+        parser.error("give an input: --annot or --stk (--blastn is not implemented yet)")
+
+    loaded = (_load_seed if chosen == "stk" else _load_annotation)(args)
+    if isinstance(loaded, int):
+        return loaded
+
+    family = loaded.family
+    consensus = loaded.consensus
+    subset = loaded.annotation
+    notes = loaded.notes
+    seed = loaded.seed
     consensus_length = len(consensus)
     coverage = analysis.coverage(subset, consensus_length)
     full = analysis.full_length(subset, consensus_length, args.full_length_threshold)
@@ -233,8 +382,9 @@ def main(argv: list[str] | None = None) -> int:
         orf_min_size=args.min_orf,
         class_label=consensus.class_label,
         full_length_threshold=args.full_length_threshold,
-        source_format=annotation.source_format,
+        source_format=subset.source_format,
         notes=notes,
+        **_seed_qc_fields(seed, args.seed_qc),
     )
 
     figure = report.build_figure(data, theme.get(args.theme))

@@ -34,8 +34,9 @@ The working brief for this rewrite, including every settled design decision, is
 | Panels 1–3 (copies vs divergence · coverage · self dot-plot) | ✅ done |
 | Interactive HTML sheet + static export, light and dark | ✅ done |
 | Panel 4 (structure: ORFs, TIR/LTR candidates) | ✅ done |
+| `--stk` Stockholm seed input, `--pipeline`, `--seed-qc` | ✅ done |
 | Panel 5 (homology evidence) | ⬜ needs BATH |
-| `--stk` reader and `--seed-qc` panels | ⬜ |
+| Panel 7 (consensus vs library entries) | ⬜ needs the companion pipeline |
 | `--blastn` legacy path | ⬜ |
 
 The sheet keeps **v1's 2×2 quadrant layout** — copies vs divergence and coverage
@@ -81,6 +82,30 @@ The annotation format is detected from the file's content, not its extension —
 `.bed` files converted from `.out` are common enough that extensions cannot be
 trusted. Override with `--annot-format` if detection gets it wrong.
 
+### From a Stockholm seed
+
+A Dfam seed alignment carries the copies, their genomic loci, the alignment and
+the consensus in one file, so nothing else is needed:
+
+```bash
+teaid --stk families.stk --family rnd-1_family-257 --seed-qc -o sheets/
+```
+
+`--seed-qc` appends the seed-QC panels below the grid: per-position alignment
+depth with Dfam's 3-sequence floor drawn as a rule (stretches falling short are
+shaded), and the seed's `#=GF TP` shown as a supplied claim to be checked rather
+than as a conclusion. It is off by default, so the default sheet is the same
+four quadrants whatever the input was.
+
+Sequence identifiers are Smitten format, in either the 4-part
+(`GCA_951799975.1:OX637595.1:15848-16090_+`) or the 2-part
+(`OY720097.1:14692470-14693460_+`) shape; both are read, and their 1-based
+closed coordinates are converted to the package's 0-based half-open convention
+on the way in.
+
+`--pipeline` reverses the input priority to seed-first, for the companion
+seed-building pipeline that invokes TE-Aid as `--pipeline --stk`.
+
 Run `teaid --help` for the full option list.
 
 ### A note on divergence
@@ -98,13 +123,22 @@ produced the file.
 
 Non-zero codes are distinct so a pipeline can tell why a family failed:
 
-| Code | Meaning |
-|---|---|
-| 0 | success |
-| 2 | usage error |
-| 3 | an input file is missing or unreadable |
-| 4 | the family is not in the consensus library |
-| 5 | the family has no annotated copies |
+| Code | stderr slug | Meaning |
+|---|---|---|
+| 0 | — | success |
+| 2 | `usage` | usage error |
+| 3 | `no-input` | an input file is missing or unreadable |
+| 4 | `no-family` | the family is not in the consensus library |
+| 5 | `no-evidence` | the family has nothing plottable |
+| 6 | `bad-seed` | the Stockholm file could not be parsed |
+
+Failures also print a stable slug on stderr, so a pipeline can branch on either:
+
+```
+teaid: error [no-family]: family 'x' not in families.fa
+```
+
+Parse the slug, not the prose.
 
 ## Development
 

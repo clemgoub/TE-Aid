@@ -56,7 +56,7 @@ opinion. Do not add a "predicted class" line.
 | Plotting stack | Whatever looks best — Plotly is the recommended default (polished out of the box, `kaleido` for static export). Prototype panel 1 in Plotly before committing. |
 | v1 compatibility | **Not** maintained in v2. `v1-legacy` cut from `main` (done); README points at it. |
 | EMBOSS | **Kept** — `getorf` for the ORF track (§5.3). `dotmatcher` retired (self-blastn dot plot replaces it, §5.2) |
-| Seed-QC panels | Flag-gated `--seed-qc`; off by default |
+| Seed-QC panels | Flag-gated `--seed-qc`; off by default. Appended as a half-height row *below* the 2×2 grid, so the default sheet is byte-identical whether or not the input was a seed |
 | Classification | Never asserted (§1) |
 | Protein library | Curated Pfam accession list ∪ RepeatPeps as single-sequence pHMMs |
 | Nucleotide library | Dfam FamDB only requirement; user-supplied merged famdb works via the same path |
@@ -349,8 +349,20 @@ slice.
    true 5' boundary, which pushes a real LTR pair inward. Detection now keys on
    the bracketed span (≥50% of the consensus) with non-overlapping arms, and
    collapses blastn's reciprocal duplicate reporting.
-5. `--stk` reader + `--seed-qc` panels 6–8 + `TP` mismatch flag.
-   **This is the join point with the seed-building pipeline (§7).**
+5. ~~`--stk` reader + `--seed-qc` panels 6–8 + `TP` mismatch flag.~~
+   **Mostly done — this is the join point with the pipeline (§7).** Delivered:
+   the Stockholm reader (multi-record, interleaved blocks, Smitten identifiers
+   in both the 2-part and 4-part forms), `--stk`, `--pipeline`, `--seed-qc`,
+   panel 6 and panel 8, and the fail-soft contract (distinct exit codes plus a
+   stable stderr slug, `teaid: error [bad-seed]: …`).
+   Still open:
+   - **Panel 7** (consensus vs contributing library entries) needs the source
+     entries, which only the pipeline has. The input hook is not yet defined —
+     agree it when `TEbed-seeds` exists.
+   - **The `TP` flag itself** needs panel 5. The label is displayed and the
+     comparison is drawn as *pending* rather than guessed at, since flagging
+     against anything but homology evidence would be the sheet forming an
+     opinion (§1).
 6. `te_domains.tsv` draft → maintainer review; RepeatPeps → pHMMs via
    `bathbuild`; BATH protein row.
 7. Benchmark (§5.5) → set the default protein path.
@@ -381,6 +393,10 @@ What that means for interfaces here:
   name, **1-based fully-closed** coordinates, strand. When reading a seed,
   parse these to recover genomic loci; when reporting coordinates, do not
   silently mix them with BED16's 0-based half-open convention.
+  **A shorter 2-part form is equally common in the wild** —
+  `OY720097.1:14692470-14693460_+`, no assembly accession — which is what
+  RepeatModeler writes and what all 482 GenomeArk seed sets use. The reader
+  accepts both; the pipeline should emit the 4-part form.
 - Dfam seeds use `.` as the gap character and carry required `#=GF` fields
   (`DE`, `AU`, `TP`, `OC`, `SQ`) plus a `#=GC RF` consensus line. Spec:
   `Dfam_Seeds.md` in `https://github.com/Dfam-consortium/dfam-curator`; that

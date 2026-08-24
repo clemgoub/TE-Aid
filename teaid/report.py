@@ -75,7 +75,36 @@ _H_SPACING, _V_SPACING = 0.10, 0.085
 SHEET_WIDTH = 1180
 _PLOT_WIDTH = SHEET_WIDTH - _MARGIN_L - _MARGIN_R
 _CELL = _PLOT_WIDTH * (1 - _H_SPACING) / 2
-SHEET_HEIGHT = round(2 * _CELL / (1 - _V_SPACING) + _MARGIN_T + _MARGIN_B)
+
+
+def sheet_height(cell_rows: float = 2) -> int:
+    """Figure height that keeps every cell square for a given number of rows."""
+    return round(cell_rows * _CELL / (1 - _V_SPACING) + _MARGIN_T + _MARGIN_B)
+
+
+SHEET_HEIGHT = sheet_height(2)
+
+# Distance below the plotting area, in pixels, for the legend and the notes
+# line. Both must stay inside the bottom margin.
+_LEGEND_OFFSET_PX = 62
+_NOTE_OFFSET_PX = 104
+
+
+def _plot_height(cell_rows: float) -> float:
+    return sheet_height(cell_rows) - _MARGIN_T - _MARGIN_B
+
+# Dfam requires a seed alignment to hold at least this many sequences. Drawn as
+# a rule on panel 6 so a curator sees at a glance whether the seed clears it and
+# where it runs thin.
+DFAM_SEQUENCE_FLOOR = 3
+
+# Height of the appended seed-QC row, relative to one main quadrant row.
+SEED_ROW_HEIGHT = 0.5
+
+# Reserved status colour, never used for a data series. Marks the one threshold
+# on the sheet that is a pass/fail requirement rather than a measurement, and it
+# always ships with the label naming the floor -- colour alone carries nothing.
+STATUS_BELOW_FLOOR = "#d03b3b"
 
 
 @dataclass(slots=True)
@@ -98,6 +127,15 @@ class SheetData:
     # Panel 5 content; empty until the BATH protein row and Dfam nucleotide row
     # land (work order steps 6 and 8).
     homology: list = field(default_factory=list)
+    # Seed-QC (--seed-qc): per-consensus-position alignment depth from the
+    # Stockholm seed, and the externally supplied expected classification.
+    seed_depth: np.ndarray | None = None
+    expected_class: str | None = None
+    seed_sequence_count: int | None = None
+
+    @property
+    def has_seed_qc(self) -> bool:
+        return self.seed_depth is not None or self.expected_class is not None
 
     @property
     def n_copies(self) -> int:
@@ -135,30 +173,44 @@ def build_figure(data: SheetData, theme: Theme) -> go.Figure:
         "3 · Self dot-plot",
         "4 · Structure",
     ]
+    # The grid is assembled from blocks so the default sheet is never disturbed
+    # by an optional one. The main block is always the 2x2 quadrants; the
+    # bottom-right quadrant splits in two when there is homology evidence, and
+    # --seed-qc appends a further row of full-width-cell panels beneath.
+    specs: list[list] = [[{}, {}]]
+    heights: list[float] = [1.0]
     if data.has_homology:
-        fig = make_subplots(
-            rows=3,
-            cols=2,
-            specs=[[{}, {}], [{"rowspan": 2}, {}], [None, {}]],
-            row_heights=[0.5, 0.27, 0.23],
-            column_widths=[0.5, 0.5],
-            horizontal_spacing=_H_SPACING,
-            vertical_spacing=_V_SPACING,
-            subplot_titles=titles + ["5 · Homology evidence"],
-        )
+        specs += [[{"rowspan": 2}, {}], [None, {}]]
+        heights += [0.54, 0.46]
         structure_row, homology_row = 2, 3
     else:
-        fig = make_subplots(
-            rows=2,
-            cols=2,
-            specs=[[{}, {}], [{}, {}]],
-            row_heights=[0.5, 0.5],
-            column_widths=[0.5, 0.5],
-            horizontal_spacing=_H_SPACING,
-            vertical_spacing=_V_SPACING,
-            subplot_titles=titles,
-        )
+        specs += [[{}, {}]]
+        heights += [1.0]
         structure_row, homology_row = 2, None
+
+    # The seed-QC block is appended at half height: it holds a depth profile and
+    # a text panel, neither of which needs the square cell the dot-plot does.
+    # Keeping it short leaves the main 2x2 untouched and the sheet compact.
+    seed_row = None
+    if data.has_seed_qc:
+        seed_row = len(specs) + 1
+        specs += [[{}, {}]]
+        heights += [SEED_ROW_HEIGHT]
+        titles += ["6 · Seed depth", "8 · Expected class"]
+
+    cell_rows = 2 + (SEED_ROW_HEIGHT if data.has_seed_qc else 0)
+    # Normalise so each *cell* row gets an equal share, whatever the split above.
+    total = sum(heights)
+    fig = make_subplots(
+        rows=len(specs),
+        cols=2,
+        specs=specs,
+        row_heights=[h / total for h in heights],
+        column_widths=[0.5, 0.5],
+        horizontal_spacing=_H_SPACING,
+        vertical_spacing=_V_SPACING / cell_rows * 2,
+        subplot_titles=titles,
+    )
 
     _panel_hits(fig, data, theme, row=1, col=1)
     _panel_coverage(fig, data, theme, row=1, col=2)
@@ -166,8 +218,19 @@ def build_figure(data: SheetData, theme: Theme) -> go.Figure:
     _panel_structure(fig, data, theme, row=structure_row, col=2)
     if homology_row is not None:
         _panel_homology(fig, data, theme, row=homology_row, col=2)
+    if seed_row is not None:
+        _panel_seed_depth(fig, data, theme, row=seed_row, col=1)
+        _panel_expected_class(fig, data, theme, row=seed_row, col=2)
 
-    _layout(fig, data, theme, structure_row=structure_row, homology_row=homology_row)
+    _layout(
+        fig,
+        data,
+        theme,
+        structure_row=structure_row,
+        homology_row=homology_row,
+        seed_row=seed_row,
+        cell_rows=cell_rows,
+    )
     return fig
 
 
@@ -441,6 +504,159 @@ def _panel_structure(fig: go.Figure, data: SheetData, theme: Theme, row: int, co
     fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
 
 
+def _panel_seed_depth(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: int) -> None:
+    """Panel 6: how many seed sequences align at each consensus position.
+
+    Dfam requires at least three sequences in a seed. The floor is drawn as a
+    rule with the region beneath it shaded, so 'does this seed qualify' and
+    'where is it thin' are both answerable at a glance rather than by reading
+    numbers off an axis.
+    """
+    depth = data.seed_depth
+    if depth is None or not len(depth):
+        _empty_note(fig, "no seed alignment", theme, row, col)
+        fig.update_yaxes(title_text="sequences aligned", row=row, col=col)
+        fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
+        return
+
+    ceiling = max(int(depth.max()), DFAM_SEQUENCE_FLOOR) + 1
+
+    fig.add_trace(
+        go.Scatter(
+            x=[-len(depth), len(depth) * 2],
+            y=[DFAM_SEQUENCE_FLOOR, DFAM_SEQUENCE_FLOOR],
+            mode="lines",
+            line=dict(color=STATUS_BELOW_FLOOR, width=1.5, dash="dash"),
+            name=f"Dfam floor ({DFAM_SEQUENCE_FLOOR} sequences)",
+            hoverinfo="skip",
+        ),
+        row=row,
+        col=col,
+    )
+    fig.add_trace(
+        go.Scattergl(
+            x=np.arange(len(depth)),
+            y=depth,
+            mode="lines",
+            name="seed depth",
+            showlegend=False,
+            line=dict(color=theme.base, width=2),
+            fill="tozeroy",
+            fillcolor=_alpha(theme.base, 0.18),
+            hovertemplate="consensus %{x:,.0f} bp<br>%{y:,.0f} sequences<extra></extra>",
+        ),
+        row=row,
+        col=col,
+    )
+
+    # Shade only the stretches that actually fall short, rather than banding the
+    # whole sub-floor region: a full-width band sits under the depth fill and
+    # muddies it everywhere, including on seeds that are fine. Marking the thin
+    # stretches answers 'where is it thin' directly, and shows nothing at all
+    # when the seed comfortably clears the floor.
+    #
+    # Added *after* the traces, deliberately: add_vrect resolves its axis from
+    # the traces already on that subplot, and on an empty subplot it adds
+    # nothing at all without raising. layer='below' still puts it behind them.
+    for start, end in _runs_below(depth, DFAM_SEQUENCE_FLOOR):
+        fig.add_vrect(
+            x0=start,
+            x1=end,
+            fillcolor=STATUS_BELOW_FLOOR,
+            opacity=0.16,
+            line_width=0,
+            layer="below",
+            row=row,
+            col=col,
+        )
+
+    thin = int((depth < DFAM_SEQUENCE_FLOOR).sum())
+    if thin:
+        data.notes.append(
+            f"seed is below the Dfam {DFAM_SEQUENCE_FLOOR}-sequence floor at "
+            f"{thin:,} of {len(depth):,} consensus positions"
+        )
+
+    fig.update_yaxes(
+        title_text="sequences aligned",
+        range=[0, ceiling],
+        rangemode="tozero",
+        row=row,
+        col=col,
+    )
+    fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
+
+
+def _panel_expected_class(
+    fig: go.Figure, data: SheetData, theme: Theme, row: int, col: int
+) -> None:
+    """Panel 8: the seed's ``#=GF TP``, and whether the evidence contradicts it.
+
+    The label is *not* TE-Aid's opinion — it arrives with the seed. The
+    deliverable is the flag, and the flag only means something because the rest
+    of the sheet has no opinion of its own (§1). With no homology evidence drawn
+    yet, the comparison is stated as pending rather than guessed at.
+    """
+    lines: list[str] = []
+    if data.expected_class:
+        # Dfam's TP is a full semicolon-separated path; show it broken up rather
+        # than as one unreadable run.
+        path = [p.strip() for p in data.expected_class.split(";") if p.strip()]
+        lines.append("<b>#=GF TP</b> (supplied with the seed)")
+        lines.append("<br>".join(f"&#8195;{'└ ' if i else ''}{p}" for i, p in enumerate(path)))
+    else:
+        lines.append(
+            f"<span style='color:{theme.muted}'>the seed carries no "
+            f"<b>#=GF TP</b>; nothing to check the evidence against</span>"
+        )
+
+    if data.seed_sequence_count is not None:
+        qualifies = data.seed_sequence_count >= DFAM_SEQUENCE_FLOOR
+        colour = theme.text_secondary if qualifies else STATUS_BELOW_FLOOR
+        verdict = "meets" if qualifies else "below"
+        lines.append(
+            f"<br><span style='color:{colour}'>{data.seed_sequence_count} sequence"
+            f"{'s' if data.seed_sequence_count != 1 else ''} — {verdict} the Dfam "
+            f"minimum of {DFAM_SEQUENCE_FLOOR}</span>"
+        )
+
+    if data.expected_class:
+        lines.append(
+            f"<br><span style='color:{theme.muted}'>agreement with homology "
+            f"evidence: pending (panel 5)</span>"
+        )
+
+    fig.add_trace(
+        go.Scatter(
+            x=[0], y=[0], mode="markers",
+            marker=dict(opacity=0, size=1), showlegend=False, hoverinfo="skip",
+        ),
+        row=row,
+        col=col,
+    )
+    fig.add_annotation(
+        text="<br>".join(lines),
+        xref="x domain",
+        yref="y domain",
+        x=0.02,
+        y=0.94,
+        xanchor="left",
+        yanchor="top",
+        align="left",
+        showarrow=False,
+        font=dict(size=11, color=theme.text_secondary, family=FONT_FAMILY),
+        row=row,
+        col=col,
+    )
+    fig.update_xaxes(
+        showticklabels=False, showgrid=False, zeroline=False, title_text=None,
+        row=row, col=col,
+    )
+    fig.update_yaxes(
+        showticklabels=False, showgrid=False, zeroline=False, row=row, col=col
+    )
+
+
 def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: int) -> None:
     """Panel 5: best protein and nucleotide hits (work order steps 6 and 8)."""
     _empty_note(fig, "homology evidence pending", theme, row, col)
@@ -551,6 +767,8 @@ def _layout(
     *,
     structure_row: int,
     homology_row: int | None,
+    seed_row: int | None = None,
+    cell_rows: int = 2,
 ) -> None:
     subtitle_bits = [f"{data.consensus_length:,} bp", f"{data.n_copies:,} copies"]
     if data.full_length:
@@ -577,7 +795,7 @@ def _layout(
             font=dict(size=18, color=theme.text_primary, family=FONT_FAMILY),
         ),
         width=SHEET_WIDTH,
-        height=SHEET_HEIGHT,
+        height=sheet_height(cell_rows),
         paper_bgcolor=theme.paper,
         plot_bgcolor=theme.surface,
         font=dict(family=FONT_FAMILY, color=theme.text_secondary, size=11),
@@ -587,7 +805,11 @@ def _layout(
         legend=dict(
             orientation="h",
             yanchor="top",
-            y=-0.055,
+            # Offsets below the plot are expressed in pixels and converted, so
+            # they stay put as the sheet grows taller with optional blocks. A
+            # fixed paper fraction scales with plot height and pushes the note
+            # past the bottom margin on a tall sheet.
+            y=-_LEGEND_OFFSET_PX / _plot_height(cell_rows),
             xanchor="center",
             x=0.5,
             bgcolor="rgba(0,0,0,0)",
@@ -662,7 +884,7 @@ def _layout(
             xref="paper",
             yref="paper",
             x=0,
-            y=-0.098,
+            y=-_NOTE_OFFSET_PX / _plot_height(cell_rows),
             xanchor="left",
             yanchor="top",
             showarrow=False,
@@ -676,6 +898,8 @@ def _layout(
             "3 · Self dot-plot",
             "4 · Structure",
             "5 · Homology evidence",
+            "6 · Seed depth",
+            "8 · Expected class",
         }:
             annotation.update(
                 font=dict(size=12, color=theme.text_primary, family=FONT_FAMILY),
@@ -803,6 +1027,18 @@ def write_html(fig: go.Figure, path, data: SheetData, theme: Theme) -> None:
                 div_id=div_id,
             )
         )
+
+
+def _runs_below(values: np.ndarray, floor: int) -> list[tuple[int, int]]:
+    """Half-open [start, end) spans where ``values`` sits under ``floor``."""
+    below = values < floor
+    if not below.any():
+        return []
+    # Difference of the padded mask marks every rising and falling edge.
+    edges = np.diff(np.concatenate(([0], below.view(np.int8), [0])))
+    starts = np.flatnonzero(edges == 1)
+    ends = np.flatnonzero(edges == -1)
+    return list(zip(starts.tolist(), ends.tolist()))
 
 
 def _padded_span(consensus_length: int) -> list[float]:
