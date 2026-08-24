@@ -400,58 +400,99 @@ slice.
     warning documented.
 11. Tag `v2.0`.
 
-Steps 1–4 and 6–8 are independent of the companion pipeline; step 5 is the
-join.
+Step 5 is what downstream integrators depend on; the rest is independent of any
+of them.
 
 ---
 
-## 7. Context: the companion seed-building pipeline
+## 7. Scope, input routes, and downstream integrators
 
-**Two seed use cases, both supported and both expected in production:**
+### TE-Aid v2 is a general-purpose tool, and this branch keeps it that way
 
-1. **Raw seed evaluation** — a `.stk` straight out of a RepeatModeler2 run,
-   judged on its own merits before anyone invests curation effort in it.
-2. **QC of a pipeline-built seed** — the "low hanging fruits" seeds the VGP
-   pipeline produces, checked before a curator approves or rejects.
+**Nothing in this repo is specific to any one pipeline or consortium.** TE-Aid
+inspects one TE family from whatever evidence the user has, and the routes are
+designed to compose. A downstream project that needs project-specific behaviour
+**forks TE-Aid and modifies its fork** — it does not push its architecture back
+into this branch. Keeping the tool general is what makes it worth forking.
 
-They differ in what is trustworthy, not in what is drawn. In (1) the seed is the
-only artefact and its sampling is RepeatModeler's; in (2) the seed was built
-deliberately from a chosen copy set and the question is whether that choice was
-sound. Both are better served with an annotation supplied alongside the seed, so
-**`--stk` and `--annot` are not alternatives**: given both, panels 1–2 show every
-annotated genomic copy while panel 6 shows the seed's own sampling, and the
-comparison ("the seed used 12 of 340 copies") is the QC signal. The seed stays
-primary — it supplies the consensus and the seed-QC panels — regardless of the
-standalone priority order. A family absent from the annotation warns and falls
-back to the seed's sequences rather than failing.
+Practically, when a change is proposed, ask: *would this make sense to someone
+curating TEs who has never heard of the pipeline that asked for it?* If not, it
+belongs in the fork.
 
-TE-Aid v2 will be pinned as a **git submodule** of a separate pipeline repo
-(planned name `TEbed-seeds`) that screens candidate TE families from a
-multi-tool VGP repeat-annotation track hub, rebuilds each family's consensus
-from its genomic copies, and emits **Dfam-compliant Stockholm seed
-alignments** for a curator to approve or reject. TE-Aid v2 is that pipeline's
-QC step, invoked with `--pipeline --stk`.
+### The four input routes
 
-What that means for interfaces here:
+| Route | Input | What it gives |
+|---|---|---|
+| **a** | `--annot` — RepeatMasker `.out`, GFF3, or BED16, plus `--consensus` | copies, loci, divergence and consensus coordinates, read not re-derived |
+| **b** | `--blastn` — the v1 rediscovery path (not yet implemented) | copies found by searching a genome, with v1's leakiness |
+| **c** | `--stk` — a Stockholm seed, e.g. raw from a RepeatModeler2 run | copies, loci, the alignment *and* the consensus, all from one file |
+| **d** | `--annot` **+** `--stk` together | the family as it exists in the genome (panels 1–2) against the copies the seed actually used (panel 6) |
 
-- **Stockholm sequence identifiers are Smitten format**:
-  `GCA_951799975.1:OX637595.1:15848-16090_+` — assembly accession, sequence
-  name, **1-based fully-closed** coordinates, strand. When reading a seed,
-  parse these to recover genomic loci; when reporting coordinates, do not
-  silently mix them with BED16's 0-based half-open convention.
-  **A shorter 2-part form is equally common in the wild** —
-  `OY720097.1:14692470-14693460_+`, no assembly accession — which is what
-  RepeatModeler writes and what all 482 GenomeArk seed sets use. The reader
-  accepts both; the pipeline should emit the 4-part form.
-- Dfam seeds use `.` as the gap character and carry required `#=GF` fields
-  (`DE`, `AU`, `TP`, `OC`, `SQ`) plus a `#=GC RF` consensus line. Spec:
-  `Dfam_Seeds.md` in `https://github.com/Dfam-consortium/dfam-curator`; that
-  repo also ships `stk lint`, which the pipeline uses as its acceptance gate.
-  TE-Aid does not need to validate seeds, but should fail gracefully and
-  informatively on a malformed one.
-- Fail-soft contract: if TE-Aid errors on a packet, the pipeline still queues
-  that packet for the curator with a note. Exit codes and stderr should make
-  the failure reason machine-readable.
+Route **d** is the reason `--stk` and `--annot` are **not alternatives**. The
+seed says which copies were *chosen*; the annotation says which *exist*. Given
+both, the seed stays primary — it supplies the consensus and the seed-QC panels
+— while panels 1–2 show every annotated copy, and the comparison ("the seed used
+44 of 515 copies") is the QC signal. A family absent from the annotation warns
+and falls back to the seed's own sequences rather than failing. In practice
+route **d** is available whenever a RepeatModeler2 run supplies both its `.out`
+and its `.stk`, which is the common case.
+
+Two seed use cases, both first-class, and they differ in what is *trustworthy*
+rather than in what is drawn:
+
+1. **Raw seed evaluation** — a `.stk` straight from a RepeatModeler2 run, judged
+   before anyone invests curation effort in it. The sampling is RepeatModeler's.
+2. **QC of a purpose-built seed** — a seed some pipeline assembled from a chosen
+   copy set; the question is whether that choice was sound.
+
+### What an integrator can rely on
+
+Anything below is a contract: it will not change without a version bump. Full
+detail, including worked invocations, is in **`docs/INTEGRATION.md`** — read
+that file first if you are building a tool that calls or forks TE-Aid.
+
+- **Invocation** is per family. `--pipeline` reverses the standalone input
+  priority to seed-first, for callers whose primary artefact is a seed.
+- **Fail-soft**: every failure gives a distinct exit code *and* a stable stderr
+  slug (`teaid: error [bad-seed]: …`). A caller that must keep going on a bad
+  packet can branch on either. TE-Aid does not validate seeds beyond what it
+  needs to draw them; it fails informatively on a malformed one.
+- **Stockholm identifiers** are Smitten, and both shapes are accepted:
+  `GCA_951799975.1:OX637595.1:15848-16090_+` (assembly, sequence, span, strand)
+  and the shorter `OY720097.1:14692470-14693460_+`. Coordinates are **1-based
+  fully closed** and are converted to 0-based half-open on read; do not mix them
+  with BED16's convention. A producer with an assembly accession to hand should
+  emit the 4-part form, but the 2-part form is what RepeatModeler writes and
+  what all 482 GenomeArk seed sets use.
+- **Dfam seed conventions**: `.` as the gap character, `#=GF` fields (`DE`, `AU`,
+  `TP`, `OC`, `SQ`) and a `#=GC RF` consensus line. Spec: `Dfam_Seeds.md` in
+  `https://github.com/Dfam-consortium/dfam-curator`, which also ships `stk lint`
+  — the natural machine acceptance gate for a seed *producer*. TE-Aid is the
+  human-facing half of that gate, not a replacement for it.
+- **`#=GF TP`** is Dfam's full semicolon-separated path
+  (`Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;…`), not
+  a short `LTR/Gypsy` label.
+
+### Known downstream consumer (context only, not a requirement)
+
+One planned consumer is a VGP "low hanging fruits" pipeline that screens
+candidate families from a multi-tool repeat-annotation track hub, rebuilds each
+consensus, and emits Stockholm seeds for a curator to approve or reject, with
+TE-Aid as the curator-facing QC step. **It will fork this repo.** Recorded here
+only so its findings are not lost, and explicitly *not* as design constraints:
+
+- Its candidate gate **G2** is "MSA depth ≥3 over ≥99% of the consensus",
+  computed as per-position copy depth from *consensus coordinates* — the
+  **spanning** quantity of §4 panel 2. Dfam's actual requirement concerns bases
+  at a column, the base-level quantity of panel 6. **G2 is therefore
+  optimistic**: a family can pass it and still have fewer than three real bases
+  inside common deletions. Any seed producer using a span-based depth gate has
+  the same issue.
+- Its deposition unit is a *cross-tool cluster*, not one program's family, so
+  "contributing library entries" for panel 7 means every cluster member's
+  sequence. That shape is a property of that pipeline, and panel 7's input hook
+  should be designed generically (a FASTA of candidate source entries) rather
+  than around it.
 
 ---
 

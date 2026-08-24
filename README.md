@@ -82,6 +82,23 @@ The annotation format is detected from the file's content, not its extension —
 `.bed` files converted from `.out` are common enough that extensions cannot be
 trusted. Override with `--annot-format` if detection gets it wrong.
 
+### Input routes
+
+Four, and they compose:
+
+| Route | Flags |
+|---|---|
+| annotation you trust | `--annot FILE --consensus FASTA --family NAME` |
+| genome search (v1 path, not yet implemented) | `--blastn` |
+| Stockholm seed | `--stk FILE [--family ID]` |
+| **both together** | `--annot FILE --stk FILE --family NAME` |
+
+The last is not a contest between the two. The seed says which copies were
+*chosen*; the annotation says which *exist*. Given both, the seed supplies the
+consensus and the seed-QC panels while panels 1–2 show every annotated genomic
+copy, and the sheet states the comparison — `panels 1-2 show 515 annotated
+genomic copies; the seed uses 44`. That ratio is the QC signal.
+
 ### From a Stockholm seed
 
 A Dfam seed alignment carries the copies, their genomic loci, the alignment and
@@ -91,11 +108,20 @@ the consensus in one file, so nothing else is needed:
 teaid --stk families.stk --family rnd-1_family-257 --seed-qc -o sheets/
 ```
 
-`--seed-qc` appends the seed-QC panels below the grid: per-position alignment
-depth with Dfam's 3-sequence floor drawn as a rule (stretches falling short are
-shaded), and the seed's `#=GF TP` shown as a supplied claim to be checked rather
-than as a conclusion. It is off by default, so the default sheet is the same
-four quadrants whatever the input was.
+`--seed-qc` appends the seed-QC panels below the grid. Panel 6 follows the shape
+of [Dfam's own seed-alignment track](https://dfam.org/family/DF000001423/browser):
+a coverage band split into sequences that match the consensus and sequences that
+differ, over a pileup of the individual seed sequences drawn as their aligned
+runs, so an internal deletion shows as a gap in a lane rather than being smoothed
+over. Dfam's 3-sequence floor is a rule across the band and stretches falling
+short are shaded. Panel 8 shows the seed's `#=GF TP` as a supplied claim to be
+checked, not as a conclusion.
+
+Splitting coverage by agreement matters: a column with 43 aligned sequences of
+which 25 disagree is not 43 sequences of support, and depth alone hides that.
+
+`--seed-qc` is off by default, so the default sheet is the same four quadrants
+whatever the input was.
 
 Sequence identifiers are Smitten format, in either the 4-part
 (`GCA_951799975.1:OX637595.1:15848-16090_+`) or the 2-part
@@ -139,6 +165,15 @@ teaid: error [no-family]: family 'x' not in families.fa
 ```
 
 Parse the slug, not the prose.
+
+## Building on TE-Aid
+
+TE-Aid is deliberately general — nothing in it is specific to any pipeline,
+consortium or assembly. If you are writing a tool that calls it, or forking it to
+add project-specific behaviour, read **[docs/INTEGRATION.md](docs/INTEGRATION.md)**:
+input routes, the fail-soft contract, the coordinate and divergence conventions
+that bite, using the package as a library, and how to fork so your fork can still
+track upstream.
 
 ## Development
 

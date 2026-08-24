@@ -167,6 +167,75 @@ class Seed:
             for column in self.consensus_columns()
         ]
 
+    def mismatches(self) -> list[int]:
+        """Per-consensus-position count of sequences differing from the reference.
+
+        Depth alone can flatter a seed: a column with twelve sequences that
+        disagree with each other is not twelve sequences of support. Dfam's own
+        browser colours its coverage bars by allele fraction for exactly this
+        reason, and this is the quantity behind that.
+
+        Positions where the reference is ambiguous (``N``) are not counted as
+        disagreement, since there is nothing definite to disagree with.
+        """
+        reference = self.reference_line
+        columns = self.consensus_columns()
+        if not reference:
+            return [0] * len(columns)
+
+        counts = []
+        for column in columns:
+            base = reference[column].upper()
+            if base in GAPS or base == "N":
+                counts.append(0)
+                continue
+            counts.append(
+                sum(
+                    1
+                    for s in self.sequences
+                    if column < len(s.aligned)
+                    and s.aligned[column] not in GAPS
+                    and s.aligned[column].upper() != base
+                )
+            )
+        return counts
+
+    def aligned_blocks(self) -> list[tuple[str, list[tuple[int, int]]]]:
+        """Each sequence's aligned stretches, in consensus coordinates.
+
+        One entry per sequence: its name, and the half-open runs of consensus
+        positions where it actually has a base. Internal deletions appear as the
+        gaps *between* runs, which is what makes a pileup show where a copy is
+        truncated and where it is interrupted — two very different things that a
+        single start-to-end bar conflates.
+
+        Sorted by start position, then by span, so a pileup reads top-left to
+        bottom-right the way a genome browser lays reads out.
+        """
+        columns = self.consensus_columns()
+        out: list[tuple[str, list[tuple[int, int]]]] = []
+
+        for sequence in self.sequences:
+            runs: list[tuple[int, int]] = []
+            start: int | None = None
+            for position, column in enumerate(columns):
+                filled = (
+                    column < len(sequence.aligned)
+                    and sequence.aligned[column] not in GAPS
+                )
+                if filled and start is None:
+                    start = position
+                elif not filled and start is not None:
+                    runs.append((start, position))
+                    start = None
+            if start is not None:
+                runs.append((start, len(columns)))
+            if runs:
+                out.append((sequence.name, runs))
+
+        out.sort(key=lambda item: (item[1][0][0], -(item[1][-1][1] - item[1][0][0])))
+        return out
+
     def to_annotation(self) -> Annotation:
         """Copies, consensus coordinates and divergence, all read from the seed."""
         columns = self.consensus_columns()

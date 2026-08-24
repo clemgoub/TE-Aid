@@ -161,6 +161,53 @@ class TestDerivedQuantities:
         assert stockholm.read(path, "x").consensus() == "ACGT"
 
 
+class TestDfamStyleTrack:
+    """Panel 6 follows Dfam's own seed-alignment track: a coverage band split by
+    agreement, over a pileup of the individual sequences."""
+
+    def test_mismatches_counted_against_the_reference(self, seed_file):
+        seed = stockholm.read(seed_file, "fam-one")
+        # RF is ACGTACGTAC; sequence 2 ends ...GTAT, one mismatch at the last
+        # column, and sequence 3 covers only the first six columns.
+        assert seed.mismatches() == [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+
+    def test_an_ambiguous_reference_base_is_not_disagreement(self, tmp_path):
+        path = tmp_path / "n.stk"
+        path.write_text(
+            "# STOCKHOLM 1.0\n#=GF ID x\n#=GC RF ANGT\nchr1:1-4_+ ACGT\n//\n"
+        )
+        assert stockholm.read(path, "x").mismatches() == [0, 0, 0, 0]
+
+    def test_blocks_split_at_internal_deletions(self, tmp_path):
+        """Truncation and interruption are different things; a single
+        start-to-end bar conflates them."""
+        path = tmp_path / "del.stk"
+        path.write_text(
+            "# STOCKHOLM 1.0\n#=GF ID x\n#=GC RF ACGTACGT\n"
+            "chr1:1-8_+ ACG..CGT\nchr1:11-18_+ ACGTACGT\n//\n"
+        )
+        blocks = dict(stockholm.read(path, "x").aligned_blocks())
+        assert blocks["chr1:1-8_+"] == [(0, 3), (5, 8)]
+        assert blocks["chr1:11-18_+"] == [(0, 8)]
+
+    def test_blocks_are_ordered_for_a_pileup(self, tmp_path):
+        path = tmp_path / "order.stk"
+        path.write_text(
+            "# STOCKHOLM 1.0\n#=GF ID x\n#=GC RF ACGTACGT\n"
+            "chr1:1-8_+ ....ACGT\nchr1:11-18_+ ACGTACGT\n//\n"
+        )
+        names = [name for name, _ in stockholm.read(path, "x").aligned_blocks()]
+        assert names == ["chr1:11-18_+", "chr1:1-8_+"]
+
+    def test_a_sequence_of_only_gaps_is_dropped(self, tmp_path):
+        path = tmp_path / "empty.stk"
+        path.write_text(
+            "# STOCKHOLM 1.0\n#=GF ID x\n#=GC RF ACGT\n"
+            "chr1:1-4_+ ACGT\nchr1:11-14_+ ....\n//\n"
+        )
+        assert len(stockholm.read(path, "x").aligned_blocks()) == 1
+
+
 class TestSeedQcPanels:
     @staticmethod
     def _sheet(depth, expected_class=None, count=None):
@@ -196,6 +243,30 @@ class TestSeedQcPanels:
         expected = tuple(report._padded_span(1000))
         for name in ("xaxis", "xaxis2", "xaxis3", "xaxis4"):
             assert tuple(fig.layout[name].range) == expected
+
+    def test_coverage_is_split_by_agreement(self):
+        """Depth alone flatters a seed: 43 sequences of which 25 disagree is not
+        43 sequences of support, which is why Dfam colours its coverage bars."""
+        depth = np.array([10] * 100)
+        data = self._sheet(depth)
+        data.seed_mismatches = np.array([5] * 100)
+        fig = report.build_figure(data, theme.LIGHT)
+        names = {t.name for t in fig.data if t.name}
+        assert "matches consensus" in names
+        assert "differs from consensus" in names
+
+    def test_no_disagreement_band_when_every_sequence_matches(self):
+        data = self._sheet(np.array([10] * 100))
+        data.seed_mismatches = np.zeros(100, dtype=np.int64)
+        fig = report.build_figure(data, theme.LIGHT)
+        assert "differs from consensus" not in {t.name for t in fig.data if t.name}
+
+    def test_pileup_lanes_are_drawn_and_capped(self):
+        data = self._sheet(np.array([5] * 100))
+        data.seed_blocks = [(f"s{i}", [(0, 50), (60, 100)]) for i in range(60)]
+        fig = report.build_figure(data, theme.LIGHT)
+        assert any("seed sequences" in (t.name or "") for t in fig.data)
+        assert any("pileup shows 40 of 60" in note for note in data.notes)
 
     def test_thin_stretches_are_shaded_and_nothing_else_is(self):
         """A full-width sub-floor band muddies every seed including good ones;

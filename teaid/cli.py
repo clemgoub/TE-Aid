@@ -1,17 +1,21 @@
 """Command line entry point.
 
-Standalone input priority is ``--annot`` (an annotation you already trust),
-then ``--blastn`` (the v1 rediscovery path), then ``--stk``. ``--pipeline``
-reverses that to seed-first, for the companion seed-building pipeline, which
-invokes TE-Aid as ``--pipeline --stk``. ``--blastn`` is not implemented yet.
+Four input routes, designed to compose: ``--annot`` (an annotation you already
+trust), ``--blastn`` (the v1 rediscovery path, not implemented yet), ``--stk``
+(a Stockholm seed), and ``--annot`` **with** ``--stk`` — which is not a contest
+between the two but the richest sheet, showing the family as it exists in the
+genome against the copies a seed actually used.
 
-**Fail-soft contract.** The pipeline keeps going when a packet fails and queues
-it for a curator with a note, so every failure has to be machine-readable: a
+Standalone priority among single routes is annot, blastn, stk; ``--pipeline``
+reverses that to seed-first for callers whose primary artefact is a seed.
+
+**Fail-soft contract.** A caller processing many families must be able to keep
+going when one fails and record why, so every failure is machine-readable: a
 distinct exit code, and a stderr line carrying a stable slug::
 
     teaid: error [no-family]: family 'x' not in families.fa
 
-Parse the slug, not the prose.
+Parse the slug, not the prose. See docs/INTEGRATION.md for the full contract.
 """
 
 from __future__ import annotations
@@ -114,7 +118,7 @@ def build_parser() -> argparse.ArgumentParser:
     source.add_argument(
         "--pipeline",
         action="store_true",
-        help="reverse the input priority to seed-first, for the companion pipeline",
+        help="reverse the input priority to seed-first, when a seed is the primary input",
     )
     source.add_argument(
         "--seed-qc",
@@ -197,6 +201,8 @@ def _seed_qc_fields(seed, enabled: bool) -> dict:
         # show both and make the difference between 'spans' and 'has a base'
         # visible rather than leaving it to be inferred across two panels.
         "seed_span": analysis.coverage(seed.to_annotation(), len(depth)),
+        "seed_mismatches": np.asarray(seed.mismatches(), dtype=np.int64),
+        "seed_blocks": seed.aligned_blocks(),
         "expected_class": seed.expected_class,
         "seed_sequence_count": len(seed),
     }

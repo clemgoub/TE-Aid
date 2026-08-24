@@ -117,8 +117,16 @@ def _plot_height(cell_rows: float) -> float:
 # where it runs thin.
 DFAM_SEQUENCE_FLOOR = 3
 
-# Height of the appended seed-QC row, relative to one main quadrant row.
-SEED_ROW_HEIGHT = 0.5
+# Height of the appended seed-QC row, relative to one main quadrant row. Full
+# height because panel 6 carries a pileup as well as a coverage band.
+SEED_ROW_HEIGHT = 1.0
+
+# Share of panel 6's cell given to the coverage band; the rest holds the pileup.
+_COVERAGE_BASE = 0.52
+
+# Pileup lanes drawn before the list is cut. Past this the lanes are thinner
+# than a pixel and the coverage band above already carries the depth.
+MAX_PILEUP_LANES = 40
 
 # Reserved status colour, never used for a data series. Marks the one threshold
 # on the sheet that is a pass/fail requirement rather than a measurement, and it
@@ -153,6 +161,10 @@ class SheetData:
     # quantity panel 2 plots. Carried so panel 6 can draw it faintly behind the
     # base-level depth and make the difference between the two visible.
     seed_span: np.ndarray | None = None
+    # Per-position count of sequences differing from the reference, and each
+    # sequence's aligned runs, for the coverage split and the pileup.
+    seed_mismatches: np.ndarray | None = None
+    seed_blocks: list | None = None
     expected_class: str | None = None
     seed_sequence_count: int | None = None
 
@@ -532,32 +544,42 @@ def _panel_structure(fig: go.Figure, data: SheetData, theme: Theme, row: int, co
 
 
 def _panel_seed_depth(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: int) -> None:
-    """Panel 6: how many seed sequences contribute a base at each position.
+    """Panel 6: the seed alignment, laid out as Dfam's own seed track.
 
-    Dfam requires at least three sequences in a seed. The floor is drawn as a
-    rule with the shortfall shaded, so 'does this seed qualify' and 'where is it
-    thin' are both answerable at a glance rather than by reading numbers off an
-    axis.
+    Two stacked parts sharing the consensus axis, the way a genome browser shows
+    an alignment — Dfam's family browser uses igv.js for exactly this:
+
+    * **Coverage**, on top, split into sequences that match the consensus and
+      sequences that differ. Depth alone flatters a seed: a column with 43
+      sequences of which 25 disagree is not 43 sequences of support, and only
+      the split shows it. Dfam colours its coverage bars by allele fraction for
+      the same reason.
+    * **The pileup**, below: one lane per sequence, drawn as its aligned runs so
+      an internal deletion appears as a gap in the lane rather than being
+      smoothed over. Truncation and interruption look different, which is the
+      point.
+
+    Dfam's floor of three sequences is a rule across the coverage part, with the
+    stretches that fall short shaded.
 
     **This is not panel 2 restated.** Panel 2 counts copies that *span* a
-    position — everything between a copy's first and last aligned base, internal
-    deletions included. This panel counts sequences that actually *contribute a
-    base* there. A copy carrying a 200 bp internal deletion is present in panel
-    2 across the whole span and absent from this one inside the deletion.
-
-    The gap between the two is therefore the seed's internal deletion structure,
-    and it is large in practice: across the 409 GenomeArk seeds for one
-    assembly, 362 differ, by as many as 37 sequences at a single position. So
-    when both curves come from the same seed the spanning curve is drawn here
-    too, faintly, and the area between them shaded — the divergence is the
-    signal, not an artefact to be explained away in a caption.
+    position, internal deletions included; this counts sequences that contribute
+    a *base*. Across the 409 GenomeArk seeds for one assembly, 362 differ, by as
+    much as 37 sequences at a single position — so the spanning curve is drawn
+    here too, faintly, and the gap between the two is the deletion structure.
     """
     depth = data.seed_depth
     if depth is None or not len(depth):
         _empty_note(fig, "no seed alignment", theme, row, col)
-        fig.update_yaxes(title_text="sequences with a base", row=row, col=col)
+        fig.update_yaxes(title_text="seed alignment", row=row, col=col)
         fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
         return
+
+    positions = np.arange(len(depth))
+    mismatch = data.seed_mismatches
+    if mismatch is None or len(mismatch) != len(depth):
+        mismatch = np.zeros_like(depth)
+    agreeing = np.maximum(depth - mismatch, 0)
 
     ceiling = max(
         int(depth.max()),
@@ -565,36 +587,59 @@ def _panel_seed_depth(fig: go.Figure, data: SheetData, theme: Theme, row: int, c
         DFAM_SEQUENCE_FLOOR,
     ) + 1
 
+    # The cell is split: coverage in the upper band, pileup lanes beneath. Both
+    # are drawn on one normalised axis so they share the consensus scale exactly.
+    def to_y(value: float) -> float:
+        return _COVERAGE_BASE + (value / ceiling) * (1.0 - _COVERAGE_BASE)
+
+    # An explicit baseline at the foot of the coverage band. The fills stack
+    # onto it rather than onto y=0, which is the floor of the whole cell -- a
+    # 'tozeroy' fill here floods the pileup underneath.
     fig.add_trace(
         go.Scatter(
-            x=[-len(depth), len(depth) * 2],
-            y=[DFAM_SEQUENCE_FLOOR, DFAM_SEQUENCE_FLOOR],
-            mode="lines",
-            line=dict(color=STATUS_BELOW_FLOOR, width=1.5, dash="dash"),
-            name=f"Dfam floor ({DFAM_SEQUENCE_FLOOR} sequences)",
-            hoverinfo="skip",
+            x=positions, y=np.full(len(positions), _COVERAGE_BASE),
+            mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
         ),
-        row=row,
-        col=col,
+        row=row, col=col,
     )
-    positions = np.arange(len(depth))
+    # Matching sequences, then the disagreeing remainder stacked on top, so the
+    # total height is the depth and the coloured cap is the disagreement.
+    fig.add_trace(
+        go.Scatter(
+            x=positions, y=[to_y(v) for v in agreeing],
+            mode="lines", name="matches consensus",
+            line=dict(color=theme.base, width=1.5),
+            fill="tonexty", fillcolor=_alpha(theme.base, 0.30),
+            hovertemplate="consensus %{x:,.0f} bp<extra>matching</extra>",
+        ),
+        row=row, col=col,
+    )
+    if mismatch.any():
+        fig.add_trace(
+            go.Scatter(
+                x=positions, y=[to_y(v) for v in depth],
+                mode="lines", name="differs from consensus",
+                line=dict(color=theme.highlight, width=1.5),
+                fill="tonexty", fillcolor=_alpha(theme.highlight, 0.45),
+                customdata=np.stack([depth, mismatch], axis=-1),
+                hovertemplate=(
+                    "consensus %{x:,.0f} bp<br>%{customdata[0]:,.0f} aligned, "
+                    "%{customdata[1]:,.0f} differing<extra></extra>"
+                ),
+            ),
+            row=row, col=col,
+        )
+
     span = data.seed_span
     if span is not None and len(span) == len(depth) and not np.array_equal(span, depth):
         fig.add_trace(
-            go.Scattergl(
-                x=positions,
-                y=span,
-                mode="lines",
-                name="sequences spanning",
-                line=dict(color=theme.muted, width=1.5, dash="dot"),
-                fill="tonexty" if False else None,
-                hovertemplate=(
-                    "consensus %{x:,.0f} bp<br>%{y:,.0f} spanning"
-                    "<extra></extra>"
-                ),
+            go.Scatter(
+                x=positions, y=[to_y(v) for v in span],
+                mode="lines", name="sequences spanning",
+                line=dict(color=theme.muted, width=1.2, dash="dot"),
+                hovertemplate="consensus %{x:,.0f} bp<br>%{y}<extra>spanning</extra>",
             ),
-            row=row,
-            col=col,
+            row=row, col=col,
         )
         deleted = int((span - depth).sum())
         if deleted:
@@ -603,41 +648,49 @@ def _panel_seed_depth(fig: go.Figure, data: SheetData, theme: Theme, row: int, c
                 f"(the gap between spanning and aligned)"
             )
 
+    floor_y = to_y(DFAM_SEQUENCE_FLOOR)
     fig.add_trace(
-        go.Scattergl(
-            x=positions,
-            y=depth,
-            mode="lines",
-            name="sequences with a base",
-            showlegend=span is not None and len(span) == len(depth),
-            line=dict(color=theme.base, width=2),
-            fill="tozeroy",
-            fillcolor=_alpha(theme.base, 0.18),
-            hovertemplate="consensus %{x:,.0f} bp<br>%{y:,.0f} with a base<extra></extra>",
+        go.Scatter(
+            x=[-len(depth), len(depth) * 2], y=[floor_y, floor_y],
+            mode="lines", name=f"Dfam floor ({DFAM_SEQUENCE_FLOOR} sequences)",
+            line=dict(color=STATUS_BELOW_FLOOR, width=1.5, dash="dash"),
+            hoverinfo="skip",
         ),
-        row=row,
-        col=col,
+        row=row, col=col,
     )
 
-    # Shade only the stretches that actually fall short, rather than banding the
-    # whole sub-floor region: a full-width band sits under the depth fill and
-    # muddies it everywhere, including on seeds that are fine. Marking the thin
-    # stretches answers 'where is it thin' directly, and shows nothing at all
-    # when the seed comfortably clears the floor.
-    #
-    # Added *after* the traces, deliberately: add_vrect resolves its axis from
-    # the traces already on that subplot, and on an empty subplot it adds
-    # nothing at all without raising. layer='below' still puts it behind them.
+    # The pileup: one lane per sequence, drawn as its aligned runs.
+    blocks = data.seed_blocks or []
+    shown = blocks[:MAX_PILEUP_LANES]
+    if len(blocks) > len(shown):
+        data.notes.append(
+            f"pileup shows {len(shown)} of {len(blocks):,} seed sequences"
+        )
+    if shown:
+        lane_top = _COVERAGE_BASE - 0.06
+        step = lane_top / (len(shown) + 1)
+        xs: list[float | None] = []
+        ys: list[float | None] = []
+        for index, (_, runs) in enumerate(shown):
+            y = lane_top - index * step
+            for run_start, run_end in runs:
+                xs.extend((run_start, run_end, None))
+                ys.extend((y, y, None))
+        fig.add_trace(
+            go.Scattergl(
+                x=xs, y=ys, mode="lines",
+                name=f"seed sequences (n={len(blocks)})",
+                line=dict(color=theme.base, width=max(1.0, min(4.0, 160 / len(shown)))),
+                opacity=0.75,
+                hovertemplate="consensus %{x:,.0f} bp<extra>seed sequence</extra>",
+            ),
+            row=row, col=col,
+        )
+
     for start, end in _runs_below(depth, DFAM_SEQUENCE_FLOOR):
         fig.add_vrect(
-            x0=start,
-            x1=end,
-            fillcolor=STATUS_BELOW_FLOOR,
-            opacity=0.16,
-            line_width=0,
-            layer="below",
-            row=row,
-            col=col,
+            x0=start, x1=end, fillcolor=STATUS_BELOW_FLOOR, opacity=0.16,
+            line_width=0, layer="below", row=row, col=col,
         )
 
     thin = int((depth < DFAM_SEQUENCE_FLOOR).sum())
@@ -647,14 +700,25 @@ def _panel_seed_depth(fig: go.Figure, data: SheetData, theme: Theme, row: int, c
             f"{thin:,} of {len(depth):,} consensus positions"
         )
 
+    ticks = _depth_ticks(ceiling)
     fig.update_yaxes(
-        title_text="sequences with a base",
-        range=[0, ceiling],
-        rangemode="tozero",
-        row=row,
-        col=col,
+        title_text="sequences · pileup",
+        range=[0, 1.0],
+        tickvals=[to_y(v) for v in ticks],
+        ticktext=[str(v) for v in ticks],
+        showgrid=False,
+        zeroline=False,
+        row=row, col=col,
     )
     fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
+
+
+def _depth_ticks(ceiling: int) -> list[int]:
+    """A few round depth values to label the coverage band with."""
+    if ceiling <= 6:
+        return list(range(0, ceiling + 1))
+    step = max(1, round(ceiling / 4))
+    return [v for v in range(0, ceiling + 1, step)]
 
 
 def _panel_expected_class(
