@@ -388,8 +388,19 @@ slice.
      comparison is drawn as *pending* rather than guessed at, since flagging
      against anything but homology evidence would be the sheet forming an
      opinion (§1).
-6. `te_domains.tsv` draft → maintainer review; RepeatPeps → pHMMs via
-   `bathbuild`; BATH protein row.
+6. **← NEXT.** `te_domains.tsv` draft → maintainer review; RepeatPeps → pHMMs
+   via `bathbuild`; BATH protein row (fills panel 5, and unblocks the `TP`
+   mismatch flag of step 5). Order of work:
+   a. Build BATH from source — it is **not installed** (§8).
+   b. Draft `teaid/data/te_domains.tsv` per §5.4 and **send it to the maintainer
+      before wiring it in**; he specifically wants eyes on the CL0219
+      host-enzyme exclusions. This is a deliverable in its own right.
+   c. Fetch RepeatPeps, `bathbuild RepeatPeps.bhmm RepeatPeps.lib` (verified:
+      it accepts unaligned sequence files, one pHMM per sequence).
+   d. `bathsearch --fs` against (Pfam set ∪ RepeatPeps); render panel 5, which
+      then splits the bottom-right quadrant with panel 4 — the layout already
+      switches on `SheetData.homology` being non-empty.
+   e. Turn on the `TP` comparison in panel 8, which currently draws "pending".
 7. Benchmark (§5.5) → set the default protein path.
 8. Nucleotide row: famdb slice + `nhmmer` + cache + the documentation of §5.1.
 9. TSD detection in the flank path (§5.2) + `#=GF TD` output.
@@ -490,6 +501,44 @@ only so its findings are not lost, and explicitly *not* as design constraints:
   sequence. That shape is a property of that pipeline, and panel 7's input hook
   should be designed generically (a FASTA of candidate source entries) rather
   than around it.
+
+---
+
+## 7b. Resuming work on this machine
+
+Not in git, so not obvious from a clean checkout:
+
+- **Virtualenv `.venv-teaid/`** at the repo root, with an editable install and
+  `kaleido`, `pytest`, `pillow`. Use `./.venv-teaid/bin/teaid` and
+  `./.venv-teaid/bin/python -m pytest -q`. Recreate with
+  `python3 -m venv .venv-teaid && ./.venv-teaid/bin/pip install -e '.[static,dev]'`.
+- **`dev-data/`** (gitignored) holds the development triple for GenomeArk
+  assembly `GCA_963082875.1` — `.fa.out` (19 MB), `-families.fa`, and
+  `-families.stk` (409 records) — plus a BED16 conversion made with VGP_TEbed's
+  `scripts/rmout2bed.py`. Re-fetch from
+  `https://genomeark.s3.amazonaws.com/downstream_analyses/repeats/systematic_annotations/RepeatModeler-v2.0.8/`
+  under `RepeatMasker/`, `fasta/` and `stk/`. 482 assemblies are available, each
+  with all three files; this one is the smallest complete triple.
+- **`getorf` is MacPorts, at `/opt/local/bin`**, which is not on the default
+  PATH here — `export PATH=$PATH:/opt/local/bin` before any run that draws the
+  ORF track, or the panel degrades to "no ORFs" without saying why.
+- **Verifying the HTML in a browser**: `file://` URLs are blocked by the Chrome
+  tooling, so serve the directory (`python3 -m http.server`) and open
+  `http://localhost:…`. Worth doing for anything interactive — two bugs got
+  through every static check and were caught only this way (a reset button that
+  silently did nothing, and hover tooltips rendering a page wide).
+
+Useful families in the dev data, for eyeballing a change:
+
+| Family | Why |
+|---|---|
+| `ltr-1_family-65` | both a direct and an inverted terminal repeat |
+| `ltr-1_family-26` | LTR pair pushed inward by extra 5' sequence; 4 ORFs |
+| `ltr-1_family-22` | tandem gag + pol ORFs (856 aa, 1,155 aa) |
+| `rnd-1_family-137` | 515 genomic copies vs 44 in the seed; heavy internal deletion |
+| `rnd-1_family-30` | internally repetitive; exercises the repeat-lane cap |
+| `ltr-1_family-11` | 2 sequences — below the Dfam floor |
+| `rnd-1_family-117` | 10,851 copies — the performance case |
 
 ---
 
