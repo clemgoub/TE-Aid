@@ -193,14 +193,26 @@ TIRs, and TSDs. Three separate answers:
   this way fills Dfam's `#=GF TD` field, which the seed-building pipeline
   needs anyway. Implement TSD detection in the flank-analysis path, and label
   it clearly as flank-derived, not dot-plot-derived.
-
+- **Caveat: do not assume a perfect end-to-end consensus.** Flank-derived TSD
+  detection presumes the consensus termini are the element's true boundaries.
+  Sometimes they are — but consensuses can be chimeric (a TE embedded in
+  another TE's consensus), in which case the extracted "flanks" are the host
+  element, not genomic sequence, and no consistent TSD will emerge. Report
+  that absence honestly rather than forcing a call. When the boundaries *are*
+  right the payoff is real: several Class II (DNA) superfamilies carry
+  diagnostic TSDs (e.g. `TA` for Tc1/mariner, ~8 bp for hAT, 9–11 bp for
+  Mutator), so report the detected TSD sequence and length as evidence the
+  curator can weigh — never as a classification (§1).
 ### 5.3 ORF track
 
 ORF finding stays EMBOSS `getorf`, exactly as in v1 (EMBOSS remains a
 dependency; only `dotmatcher` is retired, §5.2). Note that BATH's translated
 alignments already mark coding regions *including frameshifted ones*, so the
 ORF track and the protein row are complementary: ORFs show open frames, BATH
-shows homology regardless of frame integrity. Draw both.
+shows homology regardless of frame integrity. Draw both — for now. The
+benchmark (§5.5) should additionally measure whether the ORF track is
+redundant once BATH's coding annotation is drawn; if it never shows anything
+BATH does not, retiring `getorf` can be revisited then, with data.
 
 ### 5.4 `teaid/data/te_domains.tsv` — a deliverable, and a trap to avoid
 
@@ -246,6 +258,10 @@ measures cost and *relative* sensitivity, not accuracy:
 - **Partial recall check that is not genome-specific:** Dfam **curated**
   families carry known classifications — run the arms over a curated subset
   for the only honest accuracy signal available.
+- **ORF-track redundancy (§5.3):** compare the `getorf` ORF track against
+  BATH's coding regions across the benchmark families — quantify how often
+  the ORF track shows something BATH does not. This decides whether `getorf`
+  stays long-term.
 
 Arms: v1 (`getorf` + `blastp` vs RepeatPeps) · `hmmscan` vs the curated Pfam
 set · **BATH `--fs`** vs (Pfam set + RepeatPeps pHMMs) · `nhmmer` vs a Dfam
