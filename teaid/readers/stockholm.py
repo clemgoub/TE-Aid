@@ -47,8 +47,8 @@ _SMITTEN = re.compile(
 class MalformedSeedError(ValueError):
     """The file is not usable Stockholm.
 
-    Raised rather than silently skipped: the companion pipeline treats a failed
-    packet as a curator to-do, so the reason has to reach stderr intact.
+    Raised rather than silently skipped: a caller processing many families needs
+    to record *why* one failed, so the reason has to reach stderr intact.
     """
 
 

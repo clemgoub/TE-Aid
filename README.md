@@ -22,7 +22,8 @@ The working brief for this rewrite, including every settled design decision, is
    so coordinates, divergence and strand are read, not re-derived. No
    `makeblastdb`, no genome-wide search: seconds per family.
 2. **Python, with an interactive HTML sheet** (static PDF/PNG retained for papers).
-3. **Stockholm (Dfam seed) input**, for use with a companion seed-building pipeline.
+3. **Stockholm (Dfam seed) input** — a seed carries the copies, their loci, the
+   alignment and the consensus in one file.
 4. **Stronger homology evidence**: frameshift-aware translated pHMM search (BATH),
    and optional nucleotide hits against a taxonomic slice of Dfam.
 
@@ -36,7 +37,7 @@ The working brief for this rewrite, including every settled design decision, is
 | Panel 4 (structure: ORFs, TIR/LTR candidates) | ✅ done |
 | `--stk` Stockholm seed input, `--pipeline`, `--seed-qc` | ✅ done |
 | Panel 5 (homology evidence) | ⬜ needs BATH |
-| Panel 7 (consensus vs library entries) | ⬜ needs the companion pipeline |
+| Panel 7 (consensus vs library entries) | ⬜ needs an agreed input hook |
 | `--blastn` legacy path | ⬜ |
 
 The sheet keeps **v1's 2×2 quadrant layout** — copies vs divergence and coverage
@@ -129,8 +130,8 @@ Sequence identifiers are Smitten format, in either the 4-part
 closed coordinates are converted to the package's 0-based half-open convention
 on the way in.
 
-`--pipeline` reverses the input priority to seed-first, for the companion
-seed-building pipeline that invokes TE-Aid as `--pipeline --stk`.
+`--pipeline` reverses the input priority to seed-first, for callers whose primary
+artefact is a seed.
 
 Run `teaid --help` for the full option list.
 

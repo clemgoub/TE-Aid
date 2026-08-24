@@ -31,8 +31,8 @@ structure (TIR/LTR suggestions, ORFs, protein hits).
 2. **Python rewrite with an interactive HTML sheet** (static PDF/PNG retained
    for papers). v1's R/shell implementation is not extended; it is preserved
    on a `v1-legacy` branch.
-3. **Stockholm (Dfam seed) input**, for use with a seed-building pipeline
-   (see §7): copies, coordinates and the alignment all come from the seed.
+3. **Stockholm (Dfam seed) input** — copies, coordinates, the alignment *and*
+   the consensus all come from the seed (§7). Combines with `--annot`.
 4. **Stronger homology evidence**: frameshift-aware translated pHMM search
    (BATH) for protein hits, and optional nucleotide hits against a taxonomic
    slice of Dfam.
@@ -56,7 +56,7 @@ opinion. Do not add a "predicted class" line.
 | Plotting stack | Whatever looks best — Plotly is the recommended default (polished out of the box, `kaleido` for static export). Prototype panel 1 in Plotly before committing. |
 | v1 compatibility | **Not** maintained in v2. `v1-legacy` cut from `main` (done); README points at it. |
 | EMBOSS | **Kept** — `getorf` for the ORF track (§5.3). `dotmatcher` retired (self-blastn dot plot replaces it, §5.2) |
-| Seed-QC panels | Flag-gated `--seed-qc`; off by default. Appended as a half-height row *below* the 2×2 grid, so the default sheet is byte-identical whether or not the input was a seed |
+| Seed-QC panels | Flag-gated `--seed-qc`; off by default. Appended as a row *below* the 2×2 grid, so the default sheet is byte-identical whether or not the input was a seed |
 | Classification | Never asserted (§1) |
 | Protein library | Curated Pfam accession list ∪ RepeatPeps as single-sequence pHMMs |
 | Nucleotide library | Dfam FamDB only requirement; user-supplied merged famdb works via the same path |
@@ -177,14 +177,12 @@ the square dot-plot.
    spanning curve faintly behind the base-level one, and the axes are named for
    different quantities (`copies spanning` vs `sequences with a base`).
 
-   **Consequence for the pipeline's G2 gate.** VGP_TEbed gate G2 is "MSA depth
-   ≥3 over ≥99% of the consensus", computed as *per-position copy depth from
-   consensus coordinates* — i.e. the spanning quantity. The Dfam requirement is
-   really about how many sequences supply a base at a column, which is the
-   base-level quantity. **G2 is therefore optimistic:** a family can pass it and
-   still have fewer than three real bases at positions inside common deletions.
-   Either tighten G2 to base-level depth, or treat panel 6 as the authority and
-   expect some gate-passing families to show a shortfall.
+   **Consequence for anyone gating seeds on "depth ≥ 3".** Decide which quantity
+   you mean. A gate computed from consensus coordinates measures *spanning* and
+   is optimistic: a family can pass it and still have fewer than three real bases
+   at positions inside common deletions. Dfam's requirement concerns bases at a
+   column, which is the base-level quantity panel 6 draws. (§7 records one real
+   pipeline whose gate has exactly this issue.)
 7. **Consensus vs contributing library entries** — the rebuilt consensus
    aligned against each source library entry: end extension means a truncation
    was fixed; mid-sequence disagreement is a chimera warning.
@@ -258,9 +256,8 @@ TIRs, and TSDs. Three separate answers:
   multiple genomic copies**: align the flanks of the copies and look for a
   short direct repeat immediately abutting the element boundary, consistently
   across copies. Two consequences: (a) the extraction step must keep flanks
-  (the companion pipeline extracts ±500 bp), and (b) a TSD consensus computed
-  this way fills Dfam's `#=GF TD` field, which the seed-building pipeline
-  needs anyway. Implement TSD detection in the flank-analysis path, and label
+  (±500 bp is a reasonable default), and (b) a TSD consensus computed this way
+  fills Dfam's `#=GF TD` field, which any seed producer needs anyway. Implement TSD detection in the flank-analysis path, and label
   it clearly as flank-derived, not dot-plot-derived.
 - **Caveat: do not assume a perfect end-to-end consensus.** Flank-derived TSD
   detection presumes the consensus termini are the element's true boundaries.
