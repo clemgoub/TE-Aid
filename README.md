@@ -1,6 +1,8 @@
 # TE+Aid [![support](https://img.shields.io/badge/support:-yes-green)]() [![publication](https://img.shields.io/badge/publication:-Mobile_DNA-blue)](https://doi.org/10.1186/s13100-021-00259-7)
 <img src=https://i.imgur.com/pxxR3Ec.png width="500">
 
+> **🚧 TE-Aid v2 is under development on the [`v2`](https://github.com/clemgoub/TE-Aid/tree/v2) branch** (Python rewrite, annotation-driven input, interactive HTML report). The published v1 (`shell`+`R`, [Mobile DNA 2022](https://doi.org/10.1186/s13100-021-00259-7)) is preserved unchanged on the [`v1-legacy`](https://github.com/clemgoub/TE-Aid/tree/v1-legacy) branch.
+
 **TE-Aid** is a `shell`+`R` program aimed to help the manual curation of transposable elements (TE). It inputs a TE consensus sequence (fasta format) and requires a reference genome (in fasta as well). Using `R` and the `NCBI blast+ suite`, TE-Aid produces 4 figures reporting:
  1. (top left) the genomic hits with divergence to consensus
  2. (top right) the genomic coverage of the consensus
