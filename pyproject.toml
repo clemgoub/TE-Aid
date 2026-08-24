@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "teaid"
+version = "2.0.0.dev0"
+description = "Evidence sheets for manual curation of transposable element families"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Clement Goubert", email = "goubert.clement@gmail.com" }]
+keywords = ["transposable elements", "TE", "genomics", "repeat annotation", "curation"]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3",
+]
+
+dependencies = [
+    "numpy>=1.24",
+    "plotly>=5.20",
+    "biopython>=1.81",
+]
+
+[project.optional-dependencies]
+static = ["kaleido>=0.2.1"]
+dev = ["pytest>=7.4"]
+
+[project.urls]
+Homepage = "https://github.com/clemgoub/TE-Aid"
+Publication = "https://doi.org/10.1186/s13100-021-00259-7"
+
+[project.scripts]
+teaid = "teaid.cli:main"
+"TE-Aid" = "teaid.cli:main_legacy_alias"
+
+[tool.hatch.build.targets.wheel]
+packages = ["teaid"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

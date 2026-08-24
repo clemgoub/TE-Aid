@@ -272,9 +272,22 @@ slice.
 ## 6. Work order
 
 1. ~~Cut `v1-legacy` from current `main`; README pointer. Open `v2`.~~ **Done.**
-2. Python package skeleton + CLI (`teaid`, with the `TE-Aid` alias notice) +
-   annotation reader (`.out` / `.gff3` / BED16) + panels 1–3 from `--annot`.
-   **Milestone: v1 parity with no blastn.**
+2. ~~Python package skeleton + CLI (`teaid`, with the `TE-Aid` alias notice) +
+   annotation reader (`.out` / `.gff3` / BED16) + panels 1–3 from `--annot`.~~
+   **Done — milestone reached: v1 parity with no blastn.** Notes:
+   - Format is detected by *content*, not extension (the hub ships `.bed` files
+     converted from `.out`).
+   - The `.out` and BED16 readers were cross-validated: the same GenomeArk
+     annotation routed through VGP_TEbed's independent `rmout2bed.py` converter
+     yields byte-identical records from both readers (147,231 copies).
+   - Coverage uses a difference array, O(n + L); v1's dense
+     `n_copies × consensus_length` matrix reached ~2 GB on large families.
+   - Full-length is measured on half-open consensus coordinates, removing v1's
+     off-by-one (`abs(qend - qstart)` was one short of the true span).
+   - BED16 column 16 (`hit_id`) groups fragments of one interrupted insertion;
+     `Annotation.fragment_groups()` exposes this. It is the direct fix for the
+     fragment inflation that motivates v2, and panel 1 should use it once
+     panels 4–5 land.
 3. Interactive HTML sheet + static export.
 4. Panels 4–5 split; `getorf` ORF track; self-blastn dot-plot per §5.2.
 5. `--stk` reader + `--seed-qc` panels 6–8 + `TP` mismatch flag.
@@ -325,8 +338,11 @@ What that means for interfaces here:
 
 1. ~~Path to the VGP repeat-hub repo~~ **Answered:** `~/Documents/VGP_TEbed`
    (`docs/INPUT_FORMAT.md` confirmed present).
-2. Whether a BATH install already exists locally, or whether the brief should
-   include building it. **Open.**
+2. ~~Whether a BATH install already exists locally~~ **Answered by inspection:**
+   no `bathsearch`/`bathbuild` on this machine, so step 6 must include building
+   BATH from source. Present and usable: `blastn`/`blastp`/`makeblastdb`
+   (Homebrew), EMBOSS `getorf` and `dotmatcher` (MacPorts, `/opt/local/bin`),
+   `nhmmer` and `hmmscan` (Homebrew). Python 3.13.7.
 3. ~~Test genome + consensus sequences for development~~ **Answered:** use
    RepeatMasker `.out` + `.fasta` libraries from GenomeArk systematic
    annotations:

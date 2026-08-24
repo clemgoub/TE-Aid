@@ -2,3 +2,18 @@ db/*
 Example/dm6*
 .DS_Store
 .Rhistory
+
+# v2 (Python)
+__pycache__/
+*.py[cod]
+.venv*/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Development data downloaded from GenomeArk; see docs/BRIEF_v2.md section 8.
+# Large and reproducible, so not versioned.
+dev-data/

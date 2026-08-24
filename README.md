@@ -1,144 +1,113 @@
-# TE+Aid [![support](https://img.shields.io/badge/support:-yes-green)]() [![publication](https://img.shields.io/badge/publication:-Mobile_DNA-blue)](https://doi.org/10.1186/s13100-021-00259-7)
+# TE-Aid v2 [![publication](https://img.shields.io/badge/v1_publication:-Mobile_DNA-blue)](https://doi.org/10.1186/s13100-021-00259-7)
+
 <img src=https://i.imgur.com/pxxR3Ec.png width="500">
 
-> **🚧 TE-Aid v2 is under development on the [`v2`](https://github.com/clemgoub/TE-Aid/tree/v2) branch** (Python rewrite, annotation-driven input, interactive HTML report). The published v1 (`shell`+`R`, [Mobile DNA 2022](https://doi.org/10.1186/s13100-021-00259-7)) is preserved unchanged on the [`v1-legacy`](https://github.com/clemgoub/TE-Aid/tree/v1-legacy) branch.
+> **🚧 This is the `v2` development branch** — a Python rewrite, still incomplete.
+> For the published, stable version (`shell`+`R`, [Mobile DNA 2022](https://doi.org/10.1186/s13100-021-00259-7)),
+> use the [`v1-legacy`](https://github.com/clemgoub/TE-Aid/tree/v1-legacy) branch,
+> which also carries the full v1 documentation.
 
-**TE-Aid** is a `shell`+`R` program aimed to help the manual curation of transposable elements (TE). It inputs a TE consensus sequence (fasta format) and requires a reference genome (in fasta as well). Using `R` and the `NCBI blast+ suite`, TE-Aid produces 4 figures reporting:
- 1. (top left) the genomic hits with divergence to consensus
- 2. (top right) the genomic coverage of the consensus
- 3. (bottom left) a self dot-plot 
- 4. (bottom right) a structure analysis including: TIR and LTR suggestions, open reading frames (ORFs) and TE protein hit annotation.
+**TE-Aid** builds a single **evidence sheet for one TE family** to support manual
+curation. It renders evidence and leaves the verdict to the curator — it never
+asserts a classification.
 
-🗞️ TE-Aid is presented in ["A beginner’s guide to manual curation of transposable elements"](https://doi.org/10.1186/s13100-021-00259-7) by Clement Goubert, Rory J. Craig, Agustin F. Bilat, Valentina Peona, Aaron A. Vogan & Anna V. Protasio, published in Mobile DNA (2022)
+The working brief for this rewrite, including every settled design decision, is
+[`docs/BRIEF_v2.md`](docs/BRIEF_v2.md).
 
-<img src=https://github.com/clemgoub/TE-Aid/blob/main/Example/TE1.jpeg width="900">
+## What changes in v2
 
-**Pipeline overview:**
+1. **Annotation-driven, not search-driven.** v1 rediscovered copies with
+   `blastn`, which misses diverged copies and splits elements at indels. v2
+   reads an annotation you already trust — RepeatMasker `.out`, GFF3, or BED16 —
+   so coordinates, divergence and strand are read, not re-derived. No
+   `makeblastdb`, no genome-wide search: seconds per family.
+2. **Python, with an interactive HTML sheet** (static PDF/PNG retained for papers).
+3. **Stockholm (Dfam seed) input**, for use with a companion seed-building pipeline.
+4. **Stronger homology evidence**: frameshift-aware translated pHMM search (BATH),
+   and optional nucleotide hits against a taxonomic slice of Dfam.
 
-- The TE (ideally, candidate consensus sequence) is searched against the provided reference genome with `blastn` 
-	- Fig 1: genomic hits (horizontal lines) are represented relative to the query (TE consensus), the y axis represent the `blastn` divergence
-	- Fig 2: pileup of the genomic hits relative to position along the query (TE consensus)
-- The query is then blasted against itself in order to detect micro repeats and inversions (putative TIRs, LTRs)
-	- Fig 3: self dot-plot and Fig 4 (top): TIR and LTR are suggested (colored arrows)
-	- Bonus: a self dot-plot with `emboss dotmatcher` is also produced in an extra file
-- Putative ORFs are searched with `emboss getorf` and the peptides queried against a TE protein database (distributed with [`RepeatMasker`](https://github.com/rmhubley/RepeatMasker))
-	- Fig 4: ORFs (black rectangles: + orientation; red rectangles: - orientation), TE protein hits 
+## Status
 
-The consensus size, number of fragments (hits) and full length copies (according to user-defined threshold) are automatically printed on the graph.
-If any ORFs and protein hits are found, their locations relative to the consensus are printed in the `stdout`
-
-
-TE-Aid has been tested on MacOSX (shell, sh, zsh) and Linux (shell, sh)
-support: click the "issues" tab on github or [email me](mailto:goubert.clement@gmail.com)
-
-**TE-Aid** comes from `consensus2genome` that is now deprecated
-
-## Version and branches
-
-TE+Aid is a fully open software and is being integrated in a growing number of projects (thank you! ❤️). In order to track project-specific modifications of the base code, I have created specific branches based on the pull requests of developpers. Do not hesitate to check them out!
-
-The main branch may not includes all these modifications, but I am happy to consider any request to modify the main branch. If you think your changes should make it to the main branch but are only available in a parallel branch, please let me know, and when time allows, I'll be happy to review and merge!
+| Step | State |
+|---|---|
+| Package skeleton, CLI, annotation readers (`.out` / GFF3 / BED16) | ✅ done |
+| Panels 1–3 (copies vs divergence · coverage · self dot-plot) | ✅ done |
+| Interactive HTML sheet + static export | ✅ basic; refinement pending |
+| Panels 4–5 (structure · homology evidence) | ⬜ next |
+| `--stk` reader and `--seed-qc` panels | ⬜ |
+| BATH protein row, Dfam nucleotide row | ⬜ |
+| `--blastn` legacy path | ⬜ |
 
 ## Install
 
-### Dependencies
-
-- [R (Rscript)](https://cran.r-project.org/mirrors.html)
-  - Biostrings
-  - Rcpp (when using -r option)
-- [NCBI Blast+ suite](https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/)
-- [EMBOSS `getorf`](http://emboss.sourceforge.net/download/)
-
-TE-Aid calls **NCBI blast** and **R** from the command line with `blastn`, `blastp`, `makeblastdb` and `Rscript` commands. All these executables must be accessible in the user path (usually the case following the default install). You can also set up a conda environment specifically for TE-Aid (see below).
-If not, you need to locate the executables' location and add them to your local path before using TE-Aid.
-For instance: 
-```
-export PATH="/path/to/blast/bins/folder/:$PATH"` 
-export PATH="/path/to/R/bins/folder/:$PATH"` 
-```
-These lines can be added to the user `~/.bashrc` (Linux) or `~/.zshrc` (macOS) to add these programs permanently to `$PATH`.
-
-### Install **TE-Aid** from github
-```
-git clone https://github.com/clemgoub/TE-Aid.git
-```
-
-### Setting a conda environment with all dependencies
-
-You can set a conda environment for running TE-Aid after you cloned the repository with this command (use [mamba](https://anaconda.org/conda-forge/mamba) instead of conda because it's way faster):
-```
+```bash
+git clone -b v2 https://github.com/clemgoub/TE-Aid.git
 cd TE-Aid
-mamba env create -f TE_AID.yml
-```
-After that, you'll have all the dependencies ready once you activate the environment:
-```
-mamba activate TE_AID
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .              # add '[static]' for PNG/PDF export via kaleido
 ```
 
-## Usage and options
+Requires Python ≥ 3.10. `blastn` ([NCBI BLAST+](https://blast.ncbi.nlm.nih.gov/))
+must be on `PATH` for the self dot-plot; without it every other panel still
+renders and the dot-plot reports why it is missing.
 
-### Minimal command line
+## Usage
 
-```
-<user-path>/TE-Aid [-q|--query <query.TE.fa>] [-g|--genome <genome.fa>] [options]
-```
->**Note.** replace `<user-path>` with the path of the downloaded `TE-Aid` folder.
-
-### Mandatory arguments:
-```
-    -q, --query                   TE consensus (fasta file)
-    -g, --genome                  Reference genome (fasta file)
-```
-### Optional arguments:
-
-```
-    -h, --help                    show this help message and exit
-    
-    -o, --output                  output folder (default "./")
-    -t, --tables                  write features coordinates in tables (self dot-plot, ORFs and protein hits coordinates)
-    -T, --all-Tables              same as -t plus write the genomic blastn table. 
-                                  Warning: can be very large if your TE is highly repetitive!
-    -r, --remove-redundant        remove redundant hits from genomic blastn table and a title of the first plot
-    
-    -e, --e-value                 genome blastn: e-value threshold to keep hit (default: 10e-8)
-    -f, --full-length-threshold   genome blastn: min. proportion (hit_size)/(consensus_size) to be considered "full length" (0-1; default: 0.9)
-
-    -m, --min-orf                 getorf: minimum ORF size (in bp)
-    -R, --no-reverse-orfs         getorf: don't use ORFs in ther reverse complement of your sequence
-
-    -a, --alpha                   graphical: transparency value for blastn hit (0-1; default 0.3)
-    -F, --full-length-alpha       graphical: transparency value for full-length blastn hits (0-1; default 1)
-    -y, --auto-y                  graphical: manual override for y lims (default: TRUE; otherwise: -y NUM)
-
-    -D | --emboss-dotmatcher      Produce a dotplot with EMBOSS dotmatcher
+```bash
+teaid --annot genome.fa.out \
+      --consensus families.fa \
+      --family rnd-1_family-257 \
+      --output sheets/
 ```
 
-## Tutorial
+This writes `sheets/rnd-1_family-257.teaid.html`. Add `--static png` (or `pdf`,
+`svg`) for a figure file alongside it, and `--theme dark` for a dark sheet.
 
-In this example we are going to analyze some transposable elements of *Drosophila melanogaster*. The consensus sequences for this tutorial are located in the `Example/` folder, and you will need to download the *D. melanogaster* reference genome (dm6). Let's go!
+The annotation format is detected from the file's content, not its extension —
+`.bed` files converted from `.out` are common enough that extensions cannot be
+trusted. Override with `--annot-format` if detection gets it wrong.
 
-#### 1. Download the *D. melanogaster* genome
+Run `teaid --help` for the full option list.
 
-```shell
-curl -o Example/dm6.fa.gz https://hgdownload.soe.ucsc.edu/goldenPath/dm6/bigZips/dm6.fa.gz
-gunzip Example/dm6.fa.gz
+### A note on divergence
+
+`perc_div` does not mean the same thing in every file. For homology-based tools
+it is divergence from a library consensus (a proxy for the age of an insertion);
+for tandem-repeat finders it is array homogeneity; some tools report nothing at
+all. TE-Aid tracks which of the three it has, labels the axis accordingly, and
+**never plots an absent divergence as zero** — a zero there would read as a
+pristine, very recent insertion. Copies with no divergence are left out of panel
+1 and counted in the axis label. Use `--divergence-kind` when you know what
+produced the file.
+
+### Exit codes
+
+Non-zero codes are distinct so a pipeline can tell why a family failed:
+
+| Code | Meaning |
+|---|---|
+| 0 | success |
+| 2 | usage error |
+| 3 | an input file is missing or unreadable |
+| 4 | the family is not in the consensus library |
+| 5 | the family has no annotated copies |
+
+## Development
+
+```bash
+pip install -e '.[dev]'
+pytest
 ```
-A couple of *D. melanogaster* TE consensus sequences are present in the folder `Examples`
 
-#### 2. Analyze the TE consensus
+Test data used during development comes from the
+[GenomeArk systematic repeat annotations](https://genomeark.s3.amazonaws.com/index.html?prefix=downstream_analyses/repeats/systematic_annotations/RepeatModeler-v2.0.8/)
+(RepeatMasker `.out`, family FASTA, and Stockholm seeds for 482 assemblies).
+Downloads belong in `dev-data/`, which is git-ignored.
 
-Let's start with Jockey, a recent **LINE** element in the *D. melanogaster* genome
+## Citing
 
-```shell
-./TE-Aid -q Example/Jockey_DM.fasta -g Example/dm6.fa -o ../dm6example
-```
-<img src=https://github.com/clemgoub/TE-Aid/blob/main/Example/Jockey.TEaid.png width="1024">
+The v1 method is described in
+["A beginner's guide to manual curation of transposable elements"](https://doi.org/10.1186/s13100-021-00259-7),
+Goubert, Craig, Bilat, Peona, Vogan & Protasio, *Mobile DNA* (2022).
 
-Next is Gypsy-2, from the **LTR** lineage
-
-```shell
-./TE-Aid -q Example/Gypsy2_DM.fasta -g Example/dm6.fa -o ../dm6example
-```
-<img src=https://github.com/clemgoub/TE-Aid/blob/main/Example/Gypsy2.TEaid.png width="1024">
-
-
+Support: open an issue, or [email the maintainer](mailto:goubert.clement@gmail.com).
