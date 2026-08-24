@@ -70,7 +70,12 @@ teaid --annot genome.fa.out \
 ```
 
 This writes `sheets/rnd-1_family-257.teaid.html`. Add `--static png` (or `pdf`,
-`svg`) for a figure file alongside it, and `--theme dark` for a dark sheet.
+`svg`) for a publication figure alongside it, and `--theme dark` for a dark sheet.
+
+In the HTML sheet you can drag to pan, scroll to zoom, and double-click a panel
+to autoscale it. **Reset view** returns all four quadrants to the full consensus
+span at once — unlike Plotly's built-in reset, which autoscales each panel
+independently and so leaves them on different x-ranges.
 
 The annotation format is detected from the file's content, not its extension —
 `.bed` files converted from `.out` are common enough that extensions cannot be

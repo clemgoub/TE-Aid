@@ -182,9 +182,7 @@ def terminal_repeats(
     segmental duplication produces the same signature as an LTR.
     """
     minimum = min_span * consensus_length
-    seen: set[tuple[int, int, bool]] = set()
-    ltr: list[SelfHit] = []
-    tir: list[SelfHit] = []
+    candidates: list[SelfHit] = []
 
     for hit in hits:
         if hit.is_trivial_diagonal:
@@ -196,10 +194,44 @@ def terminal_repeats(
         span = max(hit.q_end, s_hi) - min(hit.q_start, s_lo)
         if span < minimum:
             continue
-        key = (min(hit.q_start, s_lo), max(hit.q_end, s_hi), hit.is_reverse)
-        if key in seen:
-            continue
-        seen.add(key)
-        (tir if hit.is_reverse else ltr).append(hit)
+        candidates.append(hit)
 
+    # blastn reports one terminal repeat many times over: once per direction,
+    # and again for each slightly different extension of the same alignment.
+    # Left alone that turns a single pair of LTRs into a dozen near-identical
+    # candidates and a dozen lanes in the structure panel. Keep the
+    # best-scoring representative of each group of mutually overlapping
+    # candidates, comparing arm to arm.
+    ltr: list[SelfHit] = []
+    tir: list[SelfHit] = []
+    for hit in sorted(candidates, key=lambda h: h.bitscore, reverse=True):
+        kept = tir if hit.is_reverse else ltr
+        if any(_same_repeat(hit, other) for other in kept):
+            continue
+        kept.append(hit)
+
+    ltr.sort(key=lambda h: min(h.q_start, h.s_start, h.s_end))
+    tir.sort(key=lambda h: min(h.q_start, h.s_start, h.s_end))
     return {"LTR": ltr, "TIR": tir}
+
+
+def _arms(hit: SelfHit) -> tuple[tuple[int, int], tuple[int, int]]:
+    """The hit's two arms as ascending intervals, ordered left to right."""
+    query = (hit.q_start, hit.q_end)
+    subject = tuple(sorted((hit.s_start, hit.s_end)))
+    return tuple(sorted((query, subject)))  # type: ignore[return-value]
+
+
+def _same_repeat(a: SelfHit, b: SelfHit) -> bool:
+    """True when two hits describe the same terminal repeat.
+
+    Compares left arm to left arm and right arm to right arm, so two genuinely
+    different repeats that happen to share one endpoint are not merged.
+    """
+    a_left, a_right = _arms(a)
+    b_left, b_right = _arms(b)
+    return _overlaps(a_left, b_left) and _overlaps(a_right, b_right)
+
+
+def _overlaps(a: tuple[int, int], b: tuple[int, int]) -> bool:
+    return min(a[1], b[1]) > max(a[0], b[0])

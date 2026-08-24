@@ -243,12 +243,7 @@ def main(argv: list[str] | None = None) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = _safe_stem(consensus.bare_name)
     html_path = out_dir / f"{stem}.teaid.html"
-    figure.write_html(
-        html_path,
-        include_plotlyjs="cdn",
-        full_html=True,
-        config={"scrollZoom": True, "displaylogo": False, "responsive": True},
-    )
+    report.write_html(figure, html_path, data, theme.get(args.theme))
     print(f"wrote {html_path}")
 
     if args.static:

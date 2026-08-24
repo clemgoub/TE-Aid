@@ -117,7 +117,14 @@ divergence as zero** — leave the point out and say so in the axis label.
 3. Self dot-plot (see §5.2), at a **true 1:1 data aspect** — both axes are
    consensus base pairs, and the square is what makes an off-diagonal repeat
    read as parallel to the main diagonal.
-4. **Structure** — TIR/LTR suggestions, ORFs.
+4. **Structure** — TIR/LTR suggestions, ORFs. Both are drawn as **arrows**,
+   carrying over v1's good idea: a repeat pair's two arms point the same way
+   when direct (`→ … →`, LTR-like) and at each other when inverted
+   (`→ … ←`, TIR-like), so orientation is readable from shape rather than from
+   a colour key. Lanes are labelled `direct`/`inverted` — what was measured —
+   with the LTR/TIR reading offered in the legend, because on an internally
+   repetitive consensus the same signature is a tandem unit and naming the lane
+   `LTR` would assert a class (§1).
 5. **Homology evidence** — best protein hits, best nucleotide hits (§5.1).
 
 Panels 4 and 5 are the split of v1's single crowded structure quadrant. They
@@ -309,7 +316,13 @@ slice.
      fragment inflation that motivates v2, and panel 1 should use it once
      panels 4–5 land.
 3. ~~Interactive HTML sheet + static export.~~ **Done** (Plotly HTML + kaleido
-   PNG/PDF/SVG, light and dark themes).
+   PNG/PDF/SVG, light and dark themes; PDF verified as real vector output). The
+   HTML carries a **Reset view** button that returns every quadrant to the full
+   consensus span in one click — Plotly's own "reset axes" autoscales each panel
+   to its own data instead, which leaves the quadrants on different x-ranges and
+   breaks the vertical alignment between them. Verified in a real browser:
+   measured data aspect of the dot-plot is exactly 1.0, and reset restores the
+   byte-identical on-load axis state.
 4. ~~Panels 4–5 split; `getorf` ORF track; self-blastn dot-plot per §5.2.~~
    **Done except panel 5's content**, which needs BATH (step 6). Panel 4 draws
    the ORF track and terminal-repeat candidates. Note on detection: anchoring

@@ -38,6 +38,11 @@ from .orfs import ORF
 from .records import Annotation, Copy, DivergenceKind
 from .theme import FONT_FAMILY, Theme
 
+# Terminal-repeat lanes drawn per type before the list is cut. The structure
+# quadrant is a quarter of the sheet; past a handful of lanes the arrows are too
+# thin to read, and the dot-plot already shows every self-match.
+MAX_REPEAT_LANES = 4
+
 
 @dataclass(slots=True)
 class SheetData:
@@ -285,7 +290,6 @@ def _panel_structure(fig: go.Figure, data: SheetData, theme: Theme, row: int, co
     shown by arrowhead direction rather than colour, keeping direction as a
     shape channel and leaving colour free to mean 'coding feature'.
     """
-    lanes: list[tuple[str, str]] = []  # (tick label, ...)
     y = 0.0
     tickvals: list[float] = []
     ticktext: list[str] = []
@@ -294,91 +298,82 @@ def _panel_structure(fig: go.Figure, data: SheetData, theme: Theme, row: int, co
     ltr = data.terminal_repeats.get("LTR", [])
     tir = data.terminal_repeats.get("TIR", [])
 
-    if ltr or tir:
-        for hits, colour, label in (
-            (ltr, theme.base, "LTR-like"),
-            (tir, theme.inverted, "TIR-like"),
-        ):
-            if not hits:
-                continue
-            xs: list[float | None] = []
-            ys: list[float | None] = []
-            for hit in hits:
-                s_lo, s_hi = sorted((hit.s_start, hit.s_end))
-                # Both arms of the terminal repeat, on one lane.
-                xs.extend((hit.q_start, hit.q_end, None, s_lo, s_hi, None))
-                ys.extend((y, y, None, y, y, None))
-            fig.add_trace(
-                go.Scatter(
-                    x=xs,
-                    y=ys,
-                    mode="lines",
-                    name=f"{label} (n={len(hits)})",
-                    line=dict(color=colour, width=9),
-                    opacity=0.85,
-                    hovertemplate=f"{label} arm<br>%{{x:,.0f}} bp<extra></extra>",
-                ),
-                row=row,
-                col=col,
+    # v1's genuinely good idea, kept: draw both arms of a terminal repeat as
+    # arrows and let the arrowheads carry the orientation. Direct repeats point
+    # the same way (-> ... ->), inverted repeats point at each other
+    # (-> ... <-), so LTR and TIR are distinguishable by shape alone rather
+    # than by colour.
+    #
+    # Three v1 bugs are not reproduced. It placed each pair at y = i, the row
+    # index of the *unfiltered* self-blast table, so a consensus with 50 hits
+    # and 3 drawn pairs scattered 3 arrows over 50 empty lanes; lanes here are
+    # packed consecutively. It coloured by rainbow(n)[i], which carries no
+    # meaning, shifts with the hit count and is not colourblind-safe; colour
+    # here is the LTR/TIR distinction and matches the dot-plot. And it drew
+    # every self-similarity under the heading 'structure', including purely
+    # internal repeats; only terminal-repeat candidates reach this panel.
+    seen_types: set[str] = set()
+    # The lane names what was measured — a direct or inverted repeat pair — and
+    # the legend offers the interpretation. Calling a lane 'LTR' would assert a
+    # classification, and on an internally repetitive consensus the same
+    # signature is a tandem unit, not a long terminal repeat.
+    for all_hits, colour, label, lane_label in (
+        (ltr, theme.base, "direct pair (LTR-like)", "direct"),
+        (tir, theme.inverted, "inverted pair (TIR-like)", "inverted"),
+    ):
+        # An internally repetitive consensus can yield many genuine repeat
+        # pairs. Show the strongest few rather than letting one family fill the
+        # quadrant, and say so when the list is cut.
+        hits = sorted(all_hits, key=lambda h: h.bitscore, reverse=True)[:MAX_REPEAT_LANES]
+        hits.sort(key=lambda h: min(h.q_start, h.s_start, h.s_end))
+        hidden = len(all_hits) - len(hits)
+        if hidden:
+            data.notes.append(
+                f"{hidden} further {lane_label} repeat pair"
+                f"{'s' if hidden != 1 else ''} not drawn "
+                f"(showing the {MAX_REPEAT_LANES} strongest)"
             )
-        tickvals.append(y)
-        ticktext.append("terminal<br>repeats")
-        y -= 1.0
-        drew_anything = True
+        for hit in hits:
+            # blastn always reports the query interval ascending, so the query
+            # arm points right; the subject arm follows its own coordinate
+            # order, which is descending exactly when the match is inverted.
+            arm_hover = (
+                f"{label}<br>arms %{{x:,.0f}} bp<br>identity {hit.identity:.1f}%"
+            )
+            _arrow(
+                fig, hit.q_start, hit.q_end, y, colour, arm_hover, row, col,
+                show_legend=label not in seen_types,
+                legend_name=f"{label} (n={len(all_hits)})",
+            )
+            seen_types.add(label)
+            _arrow(fig, hit.s_start, hit.s_end, y, colour, arm_hover, row, col,
+                   legend_name=f"{label} (n={len(all_hits)})")
+            tickvals.append(y)
+            ticktext.append(lane_label)
+            y -= 1.0
+            drew_anything = True
 
-    for orf in data.orfs:
-        tip = orf.end if orf.strand == "+" else orf.start
-        fig.add_trace(
-            go.Scatter(
-                x=[orf.start, orf.end],
-                y=[y, y],
-                mode="lines",
-                line=dict(color=theme.highlight, width=9),
-                opacity=0.85,
-                showlegend=False,
-                hovertemplate=(
-                    f"ORF {orf.coordinates_1based()[0]:,}-{orf.coordinates_1based()[1]:,} "
-                    f"({orf.strand})<br>{orf.length_aa:,} aa<extra></extra>"
-                ),
-            ),
-            row=row,
-            col=col,
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=[tip],
-                y=[y],
-                mode="markers",
-                marker=dict(
-                    symbol="triangle-right" if orf.strand == "+" else "triangle-left",
-                    size=11,
-                    color=theme.highlight,
-                ),
-                showlegend=False,
-                hoverinfo="skip",
-            ),
-            row=row,
-            col=col,
+    for index, orf in enumerate(data.orfs):
+        # Drawn tail-to-head so the arrowhead sits at the ORF's 3' end,
+        # pointing the way it is translated.
+        tail, head = (orf.start, orf.end) if orf.strand == "+" else (orf.end, orf.start)
+        _arrow(
+            fig,
+            tail,
+            head,
+            y,
+            theme.highlight,
+            f"ORF {orf.coordinates_1based()[0]:,}-{orf.coordinates_1based()[1]:,} "
+            f"({orf.strand})<br>{orf.length_aa:,} aa",
+            row,
+            col,
+            show_legend=index == 0,
+            legend_name=f"ORF ≥{data.orf_min_size} bp (n={len(data.orfs)})",
         )
         tickvals.append(y)
         ticktext.append(f"{orf.length_aa:,} aa {orf.strand}")
         y -= 1.0
         drew_anything = True
-
-    if data.orfs:
-        # One legend entry for the ORF track as a whole; the per-ORF traces stay
-        # out of the legend so it does not fill with one row per frame.
-        fig.add_trace(
-            go.Scatter(
-                x=[None],
-                y=[None],
-                mode="lines",
-                line=dict(color=theme.highlight, width=9),
-                name=f"ORF ≥{data.orf_min_size} bp (n={len(data.orfs)})",
-            ),
-            row=row,
-            col=col,
-        )
 
     if not drew_anything:
         _empty_note(
@@ -407,6 +402,61 @@ def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col
     _empty_note(fig, "homology evidence pending", theme, row, col)
     fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False, row=row, col=col)
     fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
+
+
+def _arrow(
+    fig: go.Figure,
+    x_tail: float,
+    x_head: float,
+    y: float,
+    colour: str,
+    hover: str,
+    row: int,
+    col: int,
+    *,
+    show_legend: bool = False,
+    legend_name: str | None = None,
+) -> None:
+    """One horizontal arrow from ``x_tail`` to ``x_head`` on lane ``y``.
+
+    The arrowhead is placed at ``x_head`` and points in the direction of travel,
+    so a feature's orientation is readable from its shape rather than from a
+    colour key. ``x_head < x_tail`` is normal and means the feature runs right
+    to left.
+    """
+    fig.add_trace(
+        go.Scatter(
+            x=[x_tail, x_head],
+            y=[y, y],
+            mode="lines",
+            line=dict(color=colour, width=8),
+            opacity=0.85,
+            name=legend_name or "",
+            showlegend=show_legend,
+            legendgroup=legend_name or None,
+            hovertemplate=f"{hover}<extra></extra>",
+        ),
+        row=row,
+        col=col,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[x_head],
+            y=[y],
+            mode="markers",
+            marker=dict(
+                symbol="triangle-right" if x_head >= x_tail else "triangle-left",
+                size=12,
+                color=colour,
+            ),
+            opacity=0.85,
+            showlegend=False,
+            legendgroup=legend_name or None,
+            hoverinfo="skip",
+        ),
+        row=row,
+        col=col,
+    )
 
 
 def _empty_note(fig: go.Figure, text: str, theme: Theme, row: int, col: int) -> None:
@@ -491,7 +541,7 @@ def _layout(
             bgcolor="rgba(0,0,0,0)",
             font=dict(color=theme.text_secondary, size=11),
         ),
-        margin=dict(l=68, r=26, t=96, b=104),
+        margin=dict(l=68, r=26, t=96, b=128),
         hovermode="closest",
         dragmode="pan",
     )
@@ -542,6 +592,23 @@ def _layout(
         )
         fig.update_xaxes(title_text=None, showticklabels=False, row=structure_row, col=2)
 
+    # Anything the sheet chose not to draw is stated on the sheet. A silent
+    # truncation reads as 'this is everything', which is the one thing an
+    # evidence sheet must never imply.
+    notes = list(dict.fromkeys(data.notes))
+    if notes:
+        fig.add_annotation(
+            text=" · ".join(notes),
+            xref="paper",
+            yref="paper",
+            x=0,
+            y=-0.098,
+            xanchor="left",
+            yanchor="top",
+            showarrow=False,
+            font=dict(size=10, color=theme.muted, family=FONT_FAMILY),
+        )
+
     for annotation in fig.layout.annotations:
         if annotation.text in {
             "1 · Annotated copies vs divergence",
@@ -555,6 +622,127 @@ def _layout(
                 x=annotation.x,
                 xanchor="center",
             )
+
+
+_HTML_TEMPLATE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<style>
+  :root {{ color-scheme: {scheme}; }}
+  body {{
+    margin: 0;
+    background: {paper};
+    color: {text};
+    font-family: {font};
+  }}
+  .teaid-bar {{
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px 0;
+    max-width: 1180px;
+    margin: 0 auto;
+  }}
+  .teaid-reset {{
+    font: inherit;
+    font-size: 12px;
+    color: {text};
+    background: {surface};
+    border: 1px solid {axis};
+    border-radius: 6px;
+    padding: 5px 12px;
+    cursor: pointer;
+  }}
+  .teaid-reset:hover {{ border-color: {accent}; color: {accent}; }}
+  .teaid-reset:focus-visible {{ outline: 2px solid {accent}; outline-offset: 2px; }}
+  .teaid-hint {{ font-size: 11px; color: {muted}; }}
+  .teaid-plot {{ max-width: 1180px; margin: 0 auto; }}
+</style>
+</head>
+<body>
+<div class="teaid-bar">
+  <button class="teaid-reset" id="teaid-reset" type="button">Reset view</button>
+  <span class="teaid-hint">drag to pan · scroll to zoom · double-click a panel to autoscale it</span>
+</div>
+<div class="teaid-plot">{plot}</div>
+<script>
+  // Restore every axis to the range the sheet was built with, so one click
+  // re-centres all four quadrants on the full consensus. Plotly's own "reset
+  // axes" autoscales each panel to its data instead, which leaves the panels
+  // on different x-ranges and breaks the vertical alignment between them.
+  (function () {{
+    var RESET = {reset};
+    var gd = document.getElementById({div_id!r});
+    var button = document.getElementById('teaid-reset');
+    if (!gd || !button) return;
+    button.addEventListener('click', function () {{
+      Plotly.relayout(gd, RESET);
+    }});
+  }})();
+</script>
+</body>
+</html>
+"""
+
+
+def write_html(fig: go.Figure, path, data: SheetData, theme: Theme) -> None:
+    """Write the interactive sheet, with a reset control the modebar lacks."""
+    import json
+
+    div_id = "teaid-sheet"
+    plot_div = fig.to_html(
+        include_plotlyjs="cdn",
+        full_html=False,
+        div_id=div_id,
+        default_width="100%",
+        config={
+            "scrollZoom": True,
+            "displaylogo": False,
+            "responsive": True,
+            "toImageButtonOptions": {
+                "filename": f"{data.family}.teaid",
+                "format": "png",
+                "scale": 2,
+            },
+        },
+    )
+
+    reset: dict[str, object] = {}
+    for name in fig.layout:
+        if not (name.startswith("xaxis") or name.startswith("yaxis")):
+            continue
+        axis = fig.layout[name]
+        # The layout attribute path is the full axis name ('xaxis2.range').
+        # Traces reference axes by the short form ('x2'), which is not a valid
+        # relayout key -- using it fails silently, leaving the button inert.
+        if axis.range is not None:
+            reset[f"{name}.range"] = list(axis.range)
+        else:
+            # Panels whose y-scale depends on the data (divergence, coverage)
+            # go back to autoscaling rather than to a range invented here.
+            reset[f"{name}.autorange"] = True
+
+    path = str(path)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(
+            _HTML_TEMPLATE.format(
+                title=f"{data.family} — TE-Aid",
+                scheme="dark" if theme.is_dark else "light",
+                paper=theme.paper,
+                surface=theme.surface,
+                text=theme.text_primary,
+                muted=theme.muted,
+                axis=theme.axis,
+                accent=theme.base,
+                font=FONT_FAMILY,
+                plot=plot_div,
+                reset=json.dumps(reset),
+                div_id=div_id,
+            )
+        )
 
 
 def _alpha(hex_colour: str, alpha: float) -> str:
