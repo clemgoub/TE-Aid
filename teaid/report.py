@@ -288,6 +288,10 @@ def _segments(starts, ends, ys_start, ys_end):
 
 def build_figure(data: SheetData, theme: Theme) -> go.Figure:
     """Compose the 2x2 evidence sheet."""
+    # Titles are appended in the same order make_subplots walks the grid --
+    # row-major over the non-None specs -- so they must be built alongside the
+    # specs below, not assembled up front. Supplying one title short shifts
+    # every later panel's title onto the wrong panel, silently.
     titles = [
         "1 · Annotated copies vs divergence",
         "2 · Consensus coverage",
@@ -304,6 +308,7 @@ def build_figure(data: SheetData, theme: Theme) -> go.Figure:
         specs += [[{"rowspan": 2}, {}], [None, {}]]
         heights += [0.54, 0.46]
         structure_row, homology_row = 2, 3
+        titles += ["5 · Homology evidence"]
     else:
         specs += [[{}, {}]]
         heights += [1.0]
@@ -922,8 +927,10 @@ def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col
         y = -float(index)
         disrupted = getattr(hit, "is_disrupted", False)
         label = "disrupted (frameshift or stop)" if disrupted else "intact alignment"
+        source = getattr(hit, "source_class", None)
         hover = (
-            f"<b>{hit.query}</b> {hit.query_accession}<br>"
+            f"<b>{getattr(hit, 'display_name', hit.query)}</b>"
+            f"{' · ' + source if source else ''} {hit.query_accession}<br>"
             f"consensus {hit.start + 1:,}-{hit.end:,} ({hit.strand})<br>"
             f"E {hit.evalue:.1g} · score {hit.score:.0f} · {hit.identity:.0f}% id<br>"
             f"model coverage {hit.coverage:.0%}"
@@ -963,7 +970,7 @@ def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col
 
         tickvals.append(y)
         mark = " ✕" if disrupted else ""
-        ticktext.append(f"{hit.query}{mark}")
+        ticktext.append(f"{getattr(hit, 'display_name', hit.query)}{mark}")
 
     fig.update_yaxes(
         tickvals=tickvals,

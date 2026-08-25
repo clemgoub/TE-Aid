@@ -365,3 +365,77 @@ class TestPanelHelp:
         assert not self._markers(fig)
         # The panel titles themselves survive.
         assert any(report._panel_number(a.text) for a in fig.layout.annotations)
+
+
+class TestPanelTitleOrdering:
+    """make_subplots walks the grid row-major over non-None specs, so a title
+    list one entry short shifts every later title onto the wrong panel — and
+    does it silently."""
+
+    @staticmethod
+    def _titles(fig):
+        return [a.text for a in fig.layout.annotations if report._panel_number(a.text)]
+
+    def test_default_sheet(self):
+        assert self._titles(report.build_figure(make_data(), theme.LIGHT)) == [
+            "1 · Annotated copies vs divergence", "2 · Consensus coverage",
+            "3 · Self dot-plot", "4 · Structure",
+        ]
+
+    def test_with_homology(self):
+        fig = report.build_figure(make_data(homology=[hit()]), theme.LIGHT)
+        assert self._titles(fig)[-1] == "5 · Homology evidence"
+
+    def test_with_seed_qc(self):
+        data = make_data(seed_depth=np.ones(50, dtype=np.int64), seed_sequence_count=1)
+        assert self._titles(report.build_figure(data, theme.LIGHT))[-2:] == [
+            "6 · Seed depth", "8 · Expected class",
+        ]
+
+    def test_with_both_every_panel_keeps_its_own_title(self):
+        data = make_data(
+            homology=[hit()], seed_depth=np.ones(50, dtype=np.int64), seed_sequence_count=1
+        )
+        fig = report.build_figure(data, theme.LIGHT)
+        assert self._titles(fig) == [
+            "1 · Annotated copies vs divergence", "2 · Consensus coverage",
+            "3 · Self dot-plot", "4 · Structure", "5 · Homology evidence",
+            "6 · Seed depth", "8 · Expected class",
+        ]
+
+    def test_a_title_for_every_drawn_panel(self):
+        data = make_data(
+            homology=[hit()], seed_depth=np.ones(50, dtype=np.int64), seed_sequence_count=1
+        )
+        fig = report.build_figure(data, theme.LIGHT)
+        axes = [k for k in fig.layout if re.fullmatch(r"xaxis\d*", k)]
+        assert len(self._titles(fig)) == len(axes) == 7
+
+
+class TestHomologyPanel:
+    def test_repeatpeps_names_are_shortened_for_the_axis(self):
+        """A tier-2 model is named after the whole FASTA header; the class after
+        the '#' is redundant with the panel and pushes the name off the axis."""
+        fig = report.build_figure(
+            make_data(homology=[hit(query="ACROBAT1_tnp#DNA/PiggyBac")]), theme.LIGHT
+        )
+        assert "ACROBAT1_tnp" in list(fig.layout.yaxis5.ticktext)[0]
+        assert "#DNA/PiggyBac" not in list(fig.layout.yaxis5.ticktext)[0]
+
+    def test_a_disrupted_hit_is_marked_on_the_axis_not_only_in_hover(self):
+        fig = report.build_figure(
+            make_data(homology=[hit(frameshifts=2, stop_codons=1)]), theme.LIGHT
+        )
+        assert "✕" in list(fig.layout.yaxis5.ticktext)[0]
+
+    def test_intact_hits_carry_no_mark(self):
+        fig = report.build_figure(make_data(homology=[hit()]), theme.LIGHT)
+        assert "✕" not in list(fig.layout.yaxis5.ticktext)[0]
+
+    def test_lane_count_is_capped_and_stated(self):
+        hits = [hit(query=f"D{i}", start=i * 400, end=i * 400 + 200, score=100.0 - i)
+                for i in range(report.MAX_HOMOLOGY_LANES + 4)]
+        data = make_data(homology=hits)
+        fig = report.build_figure(data, theme.LIGHT)
+        assert len(fig.layout.yaxis5.ticktext) == report.MAX_HOMOLOGY_LANES
+        assert any("not drawn" in n for n in data.notes)

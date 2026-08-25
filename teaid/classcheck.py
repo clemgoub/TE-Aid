@@ -38,6 +38,18 @@ _ORDER_CLASS = {
     # would move. Neither should ever drive a contradiction.
 }
 
+# Tier-2 hits come from RepeatPeps rather than Pfam, so they have no Pfam
+# accession to look up — but their RepeatMasker class label states the class
+# directly. Without this the four superfamilies tier 2 exists to cover
+# (piggyBac, Maverick, Crypton, Penelope) could never reach the check at all.
+_REPEATPEPS_CLASS = {
+    "DNA": "II",
+    "RC": "II",
+    "LTR": "I",
+    "LINE": "I",
+    "SINE": "I",
+}
+
 
 @dataclass(slots=True)
 class ClassCheck:
@@ -73,6 +85,21 @@ def class_of_tp(tp: str | None) -> str | None:
     return None
 
 
+def _class_of_repeatpeps(label: str | None) -> str | None:
+    """Transposition class implied by a RepeatMasker class label, e.g. 'DNA/hAT-Ac'.
+
+    Crypton is deliberately excluded: it is filed under ``DNA`` but integrates
+    with a tyrosine recombinase, so it should not be evidence for or against
+    either class.
+    """
+    if not label:
+        return None
+    head, _, rest = label.partition("/")
+    if head == "DNA" and rest.startswith("Cryp"):
+        return None
+    return _REPEATPEPS_CLASS.get(head)
+
+
 def check(tp: str | None, hits) -> ClassCheck:
     """Flag a Class I / Class II contradiction between the seed and the evidence."""
     expected = class_of_tp(tp)
@@ -82,11 +109,14 @@ def check(tp: str | None, hits) -> ClassCheck:
     names: dict[str, list[str]] = {}
     for hit in hits:
         accession = (getattr(hit, "query_accession", "") or "").split(".")[0]
-        order = orders.get(accession)
-        klass = _ORDER_CLASS.get(order or "")
+        klass = _ORDER_CLASS.get(orders.get(accession) or "")
+        if klass is None:
+            klass = _class_of_repeatpeps(getattr(hit, "source_class", None))
         if klass:
             observed.add(klass)
-            names.setdefault(klass, []).append(getattr(hit, "query", accession))
+            names.setdefault(klass, []).append(
+                getattr(hit, "display_name", None) or getattr(hit, "query", accession)
+            )
 
     if expected is None:
         return ClassCheck(None, observed, False,

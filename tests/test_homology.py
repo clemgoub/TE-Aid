@@ -187,3 +187,40 @@ class TestCuratedTable:
 
     def test_deep_and_default_get_different_caches(self):
         assert proteins._signature(True, None) != proteins._signature(False, None)
+
+
+class TestRepeatPepsClassMapping:
+    """Tier-2 hits have no Pfam accession, so without this the four
+    superfamilies tier 2 exists to cover could never reach the class check."""
+
+    @staticmethod
+    def _hit(label):
+        return hit(query=f"SOMEPROT_tnp#{label}", query_accession="-")
+
+    def test_a_dna_transposon_hit_reads_as_class_two(self):
+        tp = "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition"
+        result = classcheck.check(tp, [self._hit("DNA/PiggyBac")])
+        assert result.disagrees is True
+        assert "SOMEPROT_tnp" in result.detail
+
+    def test_an_ltr_hit_reads_as_class_one(self):
+        tp = "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition"
+        assert classcheck.check(tp, [self._hit("LTR/Gypsy")]).disagrees is True
+
+    def test_agreement_does_not_flag(self):
+        tp = "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;hAT"
+        assert classcheck.check(tp, [self._hit("DNA/PiggyBac")]).disagrees is False
+
+    def test_penelope_is_class_one(self):
+        assert classcheck._class_of_repeatpeps("LINE/Penelope") == "I"
+
+    def test_crypton_never_votes(self):
+        """Filed under DNA but integrates with a tyrosine recombinase, so it is
+        evidence for neither class."""
+        assert classcheck._class_of_repeatpeps("DNA/Cryp") is None
+        tp = "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition"
+        assert classcheck.check(tp, [self._hit("DNA/Cryp")]).disagrees is False
+
+    def test_an_unknown_label_never_votes(self):
+        assert classcheck._class_of_repeatpeps("Unknown") is None
+        assert classcheck._class_of_repeatpeps(None) is None

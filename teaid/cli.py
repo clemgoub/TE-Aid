@@ -213,7 +213,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _protein_homology(args, consensus, notes) -> tuple[list, str | None]:
+def _protein_homology(args, consensus, found_orfs, notes) -> tuple[list, str | None]:
     """Protein hits for panel 5, degrading to an empty row rather than failing.
 
     A missing BATH install or an unbuildable library costs the sheet one panel;
@@ -247,6 +247,12 @@ def _protein_homology(args, consensus, notes) -> tuple[list, str | None]:
     except (homology.BathNotFound, RuntimeError) as exc:
         print(f"teaid: warning: protein row skipped: {exc}", file=sys.stderr)
         return [], f"protein row skipped: {exc}"
+
+    # Tier 3: named-element evidence from RepeatPeps, via the ORF peptides.
+    # Answers a different question from tiers 1-2 -- which named element this
+    # resembles, rather than which domain it encodes -- and costs 17 MB.
+    if library.repeatpeps is not None and not args.no_orfs and not args.deep:
+        hits += homology.search_repeatpeps(found_orfs, library.repeatpeps)
 
     kept = homology.best_per_region(hits)
     dropped = len(hits) - len(kept)
@@ -529,7 +535,7 @@ def main(argv: list[str] | None = None) -> int:
     protein_hits = []
     class_check = None
     if not args.no_homology:
-        protein_hits, note = _protein_homology(args, consensus, notes)
+        protein_hits, note = _protein_homology(args, consensus, found_orfs, notes)
         if note:
             notes.append(note)
         if protein_hits and seed is not None and args.seed_qc:

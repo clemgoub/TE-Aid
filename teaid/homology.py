@@ -50,6 +50,9 @@ class ProteinHit:
     hmm_len: int
     frameshifts: int
     stop_codons: int
+    # Which tier the model came from, so the sheet can say what kind of evidence
+    # a hit is: a conserved domain, or a named element from RepeatPeps.
+    source: str = "pfam"
 
     @property
     def is_disrupted(self) -> bool:
@@ -60,6 +63,22 @@ class ProteinHit:
         distinguish between.
         """
         return self.frameshifts > 0 or self.stop_codons > 0
+
+    @property
+    def display_name(self) -> str:
+        """A short label for a lane.
+
+        Tier-1 hits are Pfam domains and already read well (``RVT_1``). Tier-2
+        hits are RepeatPeps proteins, whose model name is the whole FASTA header
+        (``ACROBAT1_tnp#DNA/PiggyBac``); the class after the ``#`` is redundant
+        with the panel and pushes the useful half off the axis.
+        """
+        return self.query.split("#", 1)[0] or self.query
+
+    @property
+    def source_class(self) -> str | None:
+        """The class label a RepeatPeps-derived model carries, if any."""
+        return self.query.split("#", 1)[1] if "#" in self.query else None
 
     @property
     def coverage(self) -> float:
@@ -154,6 +173,95 @@ def _parse_tblout(text: str) -> list[ProteinHit]:
             )
         except (ValueError, KeyError):
             continue
+    hits.sort(key=lambda h: h.evalue)
+    return hits
+
+
+def search_repeatpeps(
+    orfs,
+    repeatpeps: Path,
+    *,
+    evalue: float = 1e-5,
+) -> list[ProteinHit]:
+    """Tier 3: ``blastp`` of ORF peptides against RepeatPeps, as v1 did.
+
+    Cheap (17 MB, no pHMMs) and it answers a different question from tiers 1-2:
+    those say *which domain* a region encodes, this says *which named element*
+    it most resembles. Only intact ORFs can hit here, by construction — that
+    limitation is exactly why the frameshift-aware tiers exist alongside it.
+
+    Peptide coordinates are converted back to the consensus by v1's rule:
+    ``consensus = orf_start + 3 * (peptide_position - 1)``.
+    """
+    if not orfs or repeatpeps is None or not Path(repeatpeps).exists():
+        return []
+    if shutil.which("blastp") is None or shutil.which("makeblastdb") is None:
+        return []
+
+    with tempfile.TemporaryDirectory(prefix="teaid-blastp-") as tmp:
+        tmpdir = Path(tmp)
+        query = tmpdir / "orfs.faa"
+        with query.open("w") as handle:
+            for index, orf in enumerate(orfs):
+                if orf.peptide:
+                    handle.write(f">orf{index}\n{orf.peptide}\n")
+        if query.stat().st_size == 0:
+            return []
+
+        database = tmpdir / "peps"
+        made = subprocess.run(
+            ["makeblastdb", "-in", str(repeatpeps), "-out", str(database), "-dbtype", "prot"],
+            capture_output=True, text=True, check=False,
+        )
+        if made.returncode != 0:
+            return []
+
+        result = subprocess.run(
+            ["blastp", "-query", str(query), "-db", str(database), "-evalue", str(evalue),
+             "-outfmt", "6 qseqid sseqid pident qstart qend evalue bitscore", "-max_target_seqs", "5"],
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode != 0:
+            return []
+
+    # v1's best-hit-per-ORF rule: highest bitscore wins.
+    best: dict[str, list[str]] = {}
+    for line in result.stdout.splitlines():
+        fields = line.split("\t")
+        if len(fields) < 7:
+            continue
+        current = best.get(fields[0])
+        if current is None or float(fields[6]) > float(current[6]):
+            best[fields[0]] = fields
+
+    hits: list[ProteinHit] = []
+    for key, fields in best.items():
+        orf = orfs[int(key[3:])]
+        q_start, q_end = int(fields[3]), int(fields[4])
+        if orf.strand == "+":
+            start = orf.start + 3 * (q_start - 1)
+            end = orf.start + 3 * q_end
+        else:
+            end = orf.end - 3 * (q_start - 1)
+            start = orf.end - 3 * q_end
+        hits.append(
+            ProteinHit(
+                query=fields[1],
+                query_accession="-",
+                start=max(0, min(start, end)),
+                end=max(start, end),
+                strand=orf.strand,
+                evalue=float(fields[5]),
+                score=float(fields[6]),
+                identity=float(fields[2]),
+                hmm_from=q_start,
+                hmm_to=q_end,
+                hmm_len=max(1, orf.length_aa),
+                frameshifts=0,
+                stop_codons=0,
+                source="repeatpeps-blastp",
+            )
+        )
     hits.sort(key=lambda h: h.evalue)
     return hits
 

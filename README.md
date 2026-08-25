@@ -36,8 +36,11 @@ The working brief for this rewrite, including every settled design decision, is
 | Interactive HTML sheet + static export, light and dark | ✅ done |
 | Panel 4 (structure: ORFs, TIR/LTR candidates) | ✅ done |
 | `--stk` Stockholm seed input, `--pipeline`, `--seed-qc` | ✅ done |
-| Panel 5 (homology evidence) | ⬜ needs BATH |
+| Panel 5 (protein homology, BATH) | ✅ done |
+| `#=GF TP` disagreement flag | ✅ done |
 | Panel 7 (consensus vs library entries) | ⬜ needs an agreed input hook |
+| Nucleotide row (Dfam slice + nhmmer) | ⬜ |
+| Benchmark (cost and relative sensitivity) | ⬜ |
 | `--blastn` legacy path | ⬜ |
 
 The sheet keeps **v1's 2×2 quadrant layout** — copies vs divergence and coverage
@@ -54,13 +57,36 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e .              # add '[static]' for PNG/PDF export via kaleido
 ```
 
-Requires Python ≥ 3.10, plus two external tools on `PATH`:
+Requires Python ≥ 3.10, plus external tools on `PATH`:
 
 - `blastn` ([NCBI BLAST+](https://blast.ncbi.nlm.nih.gov/)) for the self dot-plot
 - `getorf` ([EMBOSS](https://emboss.sourceforge.net/)) for the ORF track
+- `bathsearch`, `bathbuild`, `bathconvert` ([BATH](https://github.com/TravisWheelerLab/BATH))
+  for the protein row
 
-Either may be absent: the sheet still renders, and the affected quadrant says
-what is missing rather than disappearing.
+Any may be absent: the sheet still renders, and the affected quadrant says what
+is missing rather than disappearing.
+
+### The protein library
+
+Panel 5 searches a library built and cached on first use under `~/.teaid/proteins/`,
+in three tiers:
+
+| Tier | What | Size |
+|---|---|---|
+| 1 | 130 curated Pfam TE domains ([`teaid/data/te_domains.tsv`](teaid/data/te_domains.tsv)) | 7 MB |
+| 2 | pHMMs for the superfamilies Pfam cannot model — piggyBac, Maverick, Crypton, Penelope | 209 MB |
+| 3 | `blastp` of ORF peptides against all of RepeatPeps, as v1 did | 17 MB |
+
+Tiers 2 and 3 need `RepeatPeps.lib`, which ships inside RepeatMasker; point at it
+with `--repeatpeps` if it is somewhere unusual. `--deep` swaps tiers 1–2 for the
+whole of RepeatPeps as pHMMs, which is **~6.4 GB** — see
+[`docs/BRIEF_v2.md`](docs/BRIEF_v2.md) §5.1a for why that is not the default.
+
+A hit marked **✕** carries a frameshift or an in-frame stop: a domain that was
+once coding and has since been disrupted. Finding one is a different result from
+finding nothing, and an ORF-finder-then-align search cannot find it at all —
+which is the whole reason the search is BATH.
 
 ## Usage
 

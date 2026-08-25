@@ -442,12 +442,26 @@ slice.
       accession fails the build. 29 explicit exclusions plus 3 categories are
       recorded with reasons. `tools/build_review_page.py` renders the review
       page from the table itself.
-   c. **Blocked on a decision (see below): RepeatPeps as single-sequence pHMMs
-      is ~6.4 GB.**
-   d. `bathsearch --fs` against (Pfam set ∪ whatever (c) settles on); render
-      panel 5, which then splits the bottom-right quadrant with panel 4 — the
-      layout already switches on `SheetData.homology` being non-empty.
-   e. Turn on the `TP` comparison in panel 8, which currently draws "pending".
+   c. ~~RepeatPeps as pHMMs.~~ **Resolved 2026-08-25 — three tiers, §5.1a.**
+      Built and measured: tier 1 is 7.3 MB, tier 2 is 209 MB against the
+      ~200 MB estimate, 233 MB together versus 6.4 GB for the whole library.
+   d. ~~`bathsearch --fs`; render panel 5.~~ **Done.** `teaid/homology.py` runs
+      the search and parses `--tblout`, carrying the `shifts` and `stops`
+      columns so a disrupted domain is reported *and* marked. Competing hits
+      collapse by RepeatClassifier's best-per-region rule. Tier 3 (`blastp` of
+      ORF peptides vs all of RepeatPeps, as v1) is wired in alongside.
+   e. ~~Turn on the `TP` comparison in panel 8.~~ **Done** —
+      `teaid/classcheck.py`, firing only on a Class I / Class II contradiction.
+
+   **Validated on real data:** on `ltr-1_family-26` (LTR/Gypsy) the hits come
+   out in polyprotein order along the consensus — gag, aspartyl protease,
+   reverse transcriptase, RNase H, integrase. On `ltr-1_family-51` the RT,
+   integrase and rve domains are all frameshifted and marked, while the ORF
+   track shows no open frame over them: the case BATH exists for.
+
+   **Cost, for the §5.5 benchmark:** ~10 s per family for `bathsearch` against
+   the 233 MB library, dominated by loading the models. BATH has no `hmmpress`
+   equivalent, so there is no index step to amortise that.
 
    **Two findings from (b) and (c) that change §5.1 and need the maintainer:**
 
