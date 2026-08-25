@@ -1,0 +1,131 @@
+pfam_acc	name	te_order	provenance	why_included
+PF00078	Reverse transcriptase (RNA-dependent DNA polymerase)	Class I	clan:CL0027	reverse transcriptase catalytic core; the defining enzyme of retrotransposition
+PF05380	Pao retrotransposon-like RNaseH-like domain	Class I	clan:CL0219	RNase H domain *of a reverse transcriptase* — the retroelement-specific model, unlike the cellular RNase H of PF00075
+PF06815	Reverse transcriptase connection domain	Class I	search:reverse transcriptase	flanking domains of the RT fold, retained in diverged elements where the catalytic core has drifted
+PF06817	Reverse transcriptase thumb domain	Class I	search:reverse transcriptase	flanking domains of the RT fold, retained in diverged elements where the catalytic core has drifted
+PF07727	Reverse transcriptase (RNA-dependent DNA polymerase)	Class I	clan:CL0027	reverse transcriptase catalytic core; the defining enzyme of retrotransposition
+PF13456	Reverse transcriptase-like	Class I	clan:CL0219	reverse transcriptase catalytic core; the defining enzyme of retrotransposition
+PF13655	N-terminal domain of reverse transcriptase	Class I	search:reverse transcriptase	flanking domains of the RT fold, retained in diverged elements where the catalytic core has drifted
+PF13966	zinc-binding in reverse transcriptase	Class I	search:reverse transcriptase	flanking domains of the RT fold, retained in diverged elements where the catalytic core has drifted
+PF17917	RNase H-like domain found in reverse transcriptase	Class I	clan:CL0219	RNase H domain *of a reverse transcriptase* — the retroelement-specific model, unlike the cellular RNase H of PF00075
+PF17919	RNase H-like domain found in reverse transcriptase	Class I	clan:CL0219	RNase H domain *of a reverse transcriptase* — the retroelement-specific model, unlike the cellular RNase H of PF00075
+PF00077	Retroviral aspartyl protease	LTR	search:retroviral	aspartyl protease that cleaves the pol polyprotein; retroelement-specific, unlike the eukaryotic aspartyl proteases of PF00026
+PF00552	Integrase DNA binding domain	LTR	search:integrase	integrase accessory domains: zinc-binding and DNA-binding modules flanking the catalytic core
+PF00665	Integrase core domain	LTR	clan:CL0219	DDE integrase that inserts the cDNA; the Class I counterpart of a DNA transposase
+PF01021	Ty transposon capsid protein	LTR	clan:CL0523	gag capsid protein — the structural half of a retroelement, and often the only ORF left in a decayed copy
+PF02022	Integrase Zinc binding domain	LTR	search:integrase	integrase accessory domains: zinc-binding and DNA-binding modules flanking the catalytic core
+PF03564	Protein of unknown function (DUF1759)	LTR	clan:CL0523	gag-associated domain of the copia/gypsy lineages, named as a DUF but confined to retroelement gag
+PF04195	Putative gypsy type transposon	LTR	search:transposase	lineage-specific polyprotein segments of named LTR families
+PF08284	Retroviral aspartyl protease	LTR	search:retroviral	aspartyl protease that cleaves the pol polyprotein; retroelement-specific, unlike the eukaryotic aspartyl proteases of PF00026
+PF10599	Retro-transposon transporting motif	LTR	search:transposon	lineage-specific polyprotein segments of named LTR families
+PF12382	Retrotransposon peptidase	LTR	search:transposon	aspartyl protease that cleaves the pol polyprotein; retroelement-specific, unlike the eukaryotic aspartyl proteases of PF00026
+PF12384	Ty3 transposon peptidase	LTR	search:transposon	aspartyl protease that cleaves the pol polyprotein; retroelement-specific, unlike the eukaryotic aspartyl proteases of PF00026
+PF13333	Integrase core domain	LTR	clan:CL0219	DDE integrase that inserts the cDNA; the Class I counterpart of a DNA transposase
+PF13683	Integrase core domain	LTR	clan:CL0219	DDE integrase that inserts the cDNA; the Class I counterpart of a DNA transposase
+PF13961	Domain of unknown function (DUF4219)	LTR	clan:CL0523	gag-associated domain of the copia/gypsy lineages, named as a DUF but confined to retroelement gag
+PF13975	gag-polyprotein putative aspartyl protease	LTR	search:aspartyl protease	aspartyl protease that cleaves the pol polyprotein; retroelement-specific, unlike the eukaryotic aspartyl proteases of PF00026
+PF13976	GAG-pre-integrase domain	LTR	search:integrase	gag capsid protein — the structural half of a retroelement, and often the only ORF left in a decayed copy
+PF14223	gag-polypeptide of LTR copia-type	LTR	clan:CL0523	gag capsid protein — the structural half of a retroelement, and often the only ORF left in a decayed copy
+PF14244	Gag-polypeptide of LTR copia-type	LTR	clan:CL0523	gag capsid protein — the structural half of a retroelement, and often the only ORF left in a decayed copy
+PF17241	Ty5 Gag N-terminal region	LTR	clan:CL0523	gag capsid protein — the structural half of a retroelement, and often the only ORF left in a decayed copy
+PF17921	Integrase zinc binding domain	LTR	search:integrase	integrase accessory domains: zinc-binding and DNA-binding modules flanking the catalytic core
+PF18103	Retroviral integrase C-terminal SH3 domain	LTR	search:integrase	integrase accessory domains: zinc-binding and DNA-binding modules flanking the catalytic core
+PF18697	Murine leukemia virus (MLV) integrase (IN) C-terminal domain	LTR	search:integrase	integrase accessory domains: zinc-binding and DNA-binding modules flanking the catalytic core
+PF19259	Ty3 transposon capsid-like protein	LTR	clan:CL0523	gag capsid protein — the structural half of a retroelement, and often the only ORF left in a decayed copy
+PF20167	Putative plant retrotransposon-related domain	LTR	search:transposon	lineage-specific polyprotein segments of named LTR families
+PF23055	Domain of unknown function (DUF7041)	LTR	clan:CL0523	gag-associated domain of the copia/gypsy lineages, named as a DUF but confined to retroelement gag
+PF23309	Domain of unknown function (DUF7083)	LTR	clan:CL0523	gag-associated domain of the copia/gypsy lineages, named as a DUF but confined to retroelement gag
+PF24614	Transposon Tf2-1 polyprotein, C-terminal	LTR	search:transposon	lineage-specific polyprotein segments of named LTR families
+PF24764	Integrase core domain	LTR	clan:CL0219	DDE integrase that inserts the cDNA; the Class I counterpart of a DNA transposase
+PF29702	Transposon Ty4 N-terminal domain	LTR	search:transposon	lineage-specific polyprotein segments of named LTR families
+PF29703	Transposon Ty4 C-terminal domain	LTR	search:transposon	lineage-specific polyprotein segments of named LTR families
+PF29829	Ty4 retrotransposon middle domain	LTR	search:transposon	lineage-specific polyprotein segments of named LTR families
+PF00517	Retroviral envelope protein	LTR/ERV	search:retroviral	retroviral structural proteins: capsid, matrix, nucleocapsid and envelope of endogenous retroviruses
+PF00607	gag protein p24 N-terminal domain	LTR/ERV	search:gag protein	retroviral structural proteins: capsid, matrix, nucleocapsid and envelope of endogenous retroviruses
+PF02337	Retroviral GAG p10 protein	LTR/ERV	search:retroviral	retroviral structural proteins: capsid, matrix, nucleocapsid and envelope of endogenous retroviruses
+PF02813	Retroviral M domain	LTR/ERV	search:retroviral	retroviral structural proteins: capsid, matrix, nucleocapsid and envelope of endogenous retroviruses
+PF03276	Spumavirus gag protein, N-terminal	LTR/ERV	search:gag protein	retroviral structural proteins: capsid, matrix, nucleocapsid and envelope of endogenous retroviruses
+PF08705	Gag protein p6	LTR/ERV	search:gag protein	retroviral structural proteins: capsid, matrix, nucleocapsid and envelope of endogenous retroviruses
+PF08723	Gag protein p15	LTR/ERV	search:gag protein	retroviral structural proteins: capsid, matrix, nucleocapsid and envelope of endogenous retroviruses
+PF19317	Gag protein p24 C-terminal domain	LTR/ERV	search:gag protein	retroviral structural proteins: capsid, matrix, nucleocapsid and envelope of endogenous retroviruses
+PF25597	Retroviral polymerase SH3-like domain	LTR/ERV	search:retroviral	retroviral structural proteins: capsid, matrix, nucleocapsid and envelope of endogenous retroviruses
+PF30021	Retroviral Gag protein N-terminal domain	LTR/ERV	search:retroviral	retroviral structural proteins: capsid, matrix, nucleocapsid and envelope of endogenous retroviruses
+PF02994	L1 transposable element RBD-like domain	LINE	search:transposase	L1 ORF1 RNA-binding domain — the nucleic-acid chaperone of the L1 machinery
+PF03372	Endonuclease/Exonuclease/phosphatase family	LINE	manual	apurinic endonuclease that nicks the target site for target-primed reverse transcription. Lower specificity: the fold is shared with cellular AP endonucleases, so treat a lone hit as weak
+PF14529	Endonuclease-reverse transcriptase	LINE	search:reverse transcriptase	apurinic endonuclease that nicks the target site for target-primed reverse transcription. Lower specificity: the fold is shared with cellular AP endonucleases, so treat a lone hit as weak
+PF20445	Retrotransposon hot spot proteins N-terminal	LINE	search:transposon	retrotransposon-associated domain of the hot-spot protein families
+PF29741	R1 retrotransposon ORF1 N-terminal domain	LINE	search:transposon	L1 ORF1 RNA-binding domain — the nucleic-acid chaperone of the L1 machinery
+PF01541	GIY-YIG catalytic domain	PLE	manual	GIY-YIG endonuclease of Penelope-like elements. Lower specificity: the fold also occurs in cellular UvrC-type nucleases, so corroborate with an RT hit
+PF00589	Phage integrase family	DIRS/Crypton	search:integrase	tyrosine recombinase used for integration instead of a DDE enzyme. Lower specificity: shared with phage and bacterial integrases, so corroborate
+PF01609	Transposase DDE domain	TIR	clan:CL0219	DDE transposase catalytic core; the cut-and-paste enzyme of Class II elements
+PF03184	DDE superfamily endonuclease	TIR	clan:CL0219	DDE transposase catalytic core; the cut-and-paste enzyme of Class II elements
+PF12760	Transposase zinc-ribbon domain	TIR	search:transposase	domains flanking a DDE core: zinc fingers, HTH and associated modules that persist when the catalytic core is degraded
+PF13358	DDE superfamily endonuclease	TIR	clan:CL0219	DDE transposase catalytic core; the cut-and-paste enzyme of Class II elements
+PF13359	DDE superfamily endonuclease	TIR	clan:CL0219	DDE transposase catalytic core; the cut-and-paste enzyme of Class II elements
+PF13546	DDE superfamily endonuclease	TIR	clan:CL0219	DDE transposase catalytic core; the cut-and-paste enzyme of Class II elements
+PF13586	Transposase DDE domain	TIR	clan:CL0219	DDE transposase catalytic core; the cut-and-paste enzyme of Class II elements
+PF13610	DDE domain	TIR	clan:CL0219	DDE transposase catalytic core; the cut-and-paste enzyme of Class II elements
+PF13612	Transposase DDE domain	TIR	clan:CL0219	DDE transposase catalytic core; the cut-and-paste enzyme of Class II elements
+PF13613	Helix-turn-helix of DDE superfamily endonuclease	TIR	search:DDE	domains flanking a DDE core: zinc fingers, HTH and associated modules that persist when the catalytic core is degraded
+PF13701	Transposase DDE domain group 1	TIR	clan:CL0219	DDE transposase catalytic core; the cut-and-paste enzyme of Class II elements
+PF13737	Transposase DDE domain	TIR	clan:CL0219	DDE transposase catalytic core; the cut-and-paste enzyme of Class II elements
+PF13751	Transposase DDE domain	TIR	clan:CL0219	DDE transposase catalytic core; the cut-and-paste enzyme of Class II elements
+PF13808	DDE_Tnp_1-associated	TIR	search:DDE	domains flanking a DDE core: zinc fingers, HTH and associated modules that persist when the catalytic core is degraded
+PF13842	DDE_Tnp_1-like zinc finger	TIR	search:DDE	domains flanking a DDE core: zinc fingers, HTH and associated modules that persist when the catalytic core is degraded
+PF13843	Transposase IS4	TIR	clan:CL0219	DDE transposase catalytic core; the cut-and-paste enzyme of Class II elements
+PF13963	Transposase-associated domain	TIR	search:transposase	domains flanking a DDE core: zinc fingers, HTH and associated modules that persist when the catalytic core is degraded
+PF14319	Transposase zinc-binding domain	TIR	search:transposase	domains flanking a DDE core: zinc fingers, HTH and associated modules that persist when the catalytic core is degraded
+PF14706	Transposase DNA-binding	TIR	search:transposase	domains flanking a DDE core: zinc fingers, HTH and associated modules that persist when the catalytic core is degraded
+PF21787	TNP-like, RNase H N-terminal domain	TIR	clan:CL0219	transposase families described only as domains of unknown function, but confined to elements
+PF21789	TNP-like, RNase H C-terminal domain	TIR	clan:CL0219	transposase families described only as domains of unknown function, but confined to elements
+PF21804	Transposase protein	TIR	clan:CL0219	transposase families described only as domains of unknown function, but confined to elements
+PF25273	Domain of unknown function (DUF7869)	TIR	clan:CL0219	transposase families described only as domains of unknown function, but confined to elements
+PF01359	Transposase (partial DDE domain)	TIR/Tc1-mariner	clan:CL0219	Tc1/mariner transposase and its DNA-binding HTH; the superfamily behind Sleeping Beauty and Mos1
+PF01498	Transposase	TIR/Tc1-mariner	search:transposase	Tc1/mariner transposase and its DNA-binding HTH; the superfamily behind Sleeping Beauty and Mos1
+PF03221	Tc5 transposase DNA-binding domain	TIR/Tc1-mariner	search:transposase	Tc1/mariner transposase and its DNA-binding HTH; the superfamily behind Sleeping Beauty and Mos1
+PF04236	Tc5 transposase C-terminal domain	TIR/Tc1-mariner	search:transposase	Tc1/mariner transposase and its DNA-binding HTH; the superfamily behind Sleeping Beauty and Mos1
+PF11427	Tc3 transposase	TIR/Tc1-mariner	search:transposase	Tc1/mariner transposase and its DNA-binding HTH; the superfamily behind Sleeping Beauty and Mos1
+PF17906	HTH domain in Mos1 transposase	TIR/Tc1-mariner	search:transposase	Tc1/mariner transposase and its DNA-binding HTH; the superfamily behind Sleeping Beauty and Mos1
+PF21517	Transposable element Tc3 transposase, HTH	TIR/Tc1-mariner	search:transposase	Tc1/mariner transposase and its DNA-binding HTH; the superfamily behind Sleeping Beauty and Mos1
+PF25787	Sleeping Beauty transposase HTH domain	TIR/Tc1-mariner	search:transposase	Tc1/mariner transposase and its DNA-binding HTH; the superfamily behind Sleeping Beauty and Mos1
+PF05699	hAT family C-terminal dimerisation region	TIR/hAT	manual	hAT superfamily: the C-terminal dimerisation region and the RNase-H-like catalytic fold. The dimerisation domain sits in no Pfam clan, so clan-based selection misses it entirely
+PF10683	Hermes transposase DNA-binding domain	TIR/hAT	search:transposase	hAT superfamily: the C-terminal dimerisation region and the RNase-H-like catalytic fold. The dimerisation domain sits in no Pfam clan, so clan-based selection misses it entirely
+PF14372	hAT-like transposase, RNase-H fold	TIR/hAT	search:transposase	hAT superfamily: the C-terminal dimerisation region and the RNase-H-like catalytic fold. The dimerisation domain sits in no Pfam clan, so clan-based selection misses it entirely
+PF00872	Transposase, Mutator family	TIR/Mutator	clan:CL0219	MULE/Mutator transposase and its accessory domains
+PF03108	MuDR family transposase	TIR/Mutator	search:transposase	MULE/Mutator transposase and its accessory domains
+PF10551	MULE transposase domain	TIR/Mutator	clan:CL0219	MULE/Mutator transposase and its accessory domains
+PF18221	Mutator 2 Fork head associated domain	TIR/Mutator	search:Mutator	MULE/Mutator transposase and its accessory domains
+PF20700	Mutator-like transposase	TIR/Mutator	clan:CL0219	MULE/Mutator transposase and its accessory domains
+PF03017	TNP1/EN/SPM transposase	TIR/CACTA	search:transposase	CACTA (En/Spm) transposase and the plant transposon proteins of that superfamily
+PF04827	Plant transposon protein	TIR/CACTA	clan:CL0219	CACTA (En/Spm) transposase and the plant transposon proteins of that superfamily
+PF04937	Domain of unknown function (DUF659)	TIR/PIF-Harbinger	clan:CL0219	Harbinger-associated domain, carried by the second ORF of the superfamily
+PF12017	Transposable element P transposase-like, HTH domain	TIR/P-element	search:transposase	P-element transposase and the THAP9 domesticated copy of it
+PF12596	87kDa Transposase	TIR/P-element	search:transposase	P-element transposase and the THAP9 domesticated copy of it
+PF22824	DNA transposase THAP9, C-terminal domain	TIR/P-element	search:transposase	P-element transposase and the THAP9 domesticated copy of it
+PF18717	CxC4 like cysteine cluster associated with KDZ transposases	TIR/KDZ	search:transposase	Kyakuja-Dileera-Zisupton transposases and the CxC cysteine clusters that accompany them
+PF18718	CxC5 like cysteine cluster associated with KDZ transposases	TIR/KDZ	search:transposase	Kyakuja-Dileera-Zisupton transposases and the CxC cysteine clusters that accompany them
+PF18721	CxC6 like cysteine cluster associated with KDZ transposases	TIR/KDZ	search:transposase	Kyakuja-Dileera-Zisupton transposases and the CxC cysteine clusters that accompany them
+PF18758	Kyakuja-Dileera-Zisupton transposase	TIR/KDZ	clan:CL0219	Kyakuja-Dileera-Zisupton transposases and the CxC cysteine clusters that accompany them
+PF18759	Plavaka transposase	TIR/KDZ	clan:CL0219	Kyakuja-Dileera-Zisupton transposases and the CxC cysteine clusters that accompany them
+PF18802	CxC1 like cysteine cluster associated with KDZ transposases	TIR/KDZ	search:transposase	Kyakuja-Dileera-Zisupton transposases and the CxC cysteine clusters that accompany them
+PF18803	CxC2 like cysteine cluster associated with KDZ transposases	TIR/KDZ	search:transposase	Kyakuja-Dileera-Zisupton transposases and the CxC cysteine clusters that accompany them
+PF18804	CxC3 like cysteine cluster associated with KDZ transposases	TIR/KDZ	search:transposase	Kyakuja-Dileera-Zisupton transposases and the CxC cysteine clusters that accompany them
+PF18866	CxC7 like cysteine cluster associated with KDZ transposases	TIR/KDZ	search:transposase	Kyakuja-Dileera-Zisupton transposases and the CxC cysteine clusters that accompany them
+PF13952	Domain of unknown function (DUF4216)	RC/Helitron	manual	Helitron helicase-like domain and the Helitron-associated DUF4216, which is in no clan. Rolling-circle transposition leaves no DDE core, so these are the only catalytic evidence
+PF14214	Helitron helicase-like domain at N-terminus	RC/Helitron	clan:CL0169	Helitron helicase-like domain and the Helitron-associated DUF4216, which is in no clan. Rolling-circle transposition leaves no DDE core, so these are the only catalytic evidence
+PF18106	Rolling Circle replication initiation protein N-terminal domain	RC	search:rolling circle	HUH endonuclease of Replitrons and the rolling-circle initiator fold they share
+PF21859	Replitron, HUH endonuclease domain	RC	clan:CL0169	HUH endonuclease of Replitrons and the rolling-circle initiator fold they share
+PF03732	Retrotransposon-derived protein PEG10, N-terminal capsid-like domain	domesticated	clan:CL0523	host gene built from a retroelement gag. Same caveat: TE ancestry, not necessarily a live element
+PF14291	ZMYM1/FAM200, RNase-like domain	domesticated	clan:CL0219	host gene built from a transposase. A hit means TE ancestry, which may be a live element *or* a domesticated gene — the curator decides which, and the sheet must not
+PF14893	PNMA-like, C-terminal domain	domesticated	clan:CL0523	host gene built from a retroelement gag. Same caveat: TE ancestry, not necessarily a live element
+PF16297	RTL1/3-8/LDOC, capsid-like domain	domesticated	clan:CL0523	host gene built from a retroelement gag. Same caveat: TE ancestry, not necessarily a live element
+PF18162	Arc C-lobe	domesticated	clan:CL0523	host gene built from a retroelement gag. Same caveat: TE ancestry, not necessarily a live element
+PF21395	Activity-regulated cytoskeleton-associated protein, N-lobe	domesticated	clan:CL0523	host gene built from a retroelement gag. Same caveat: TE ancestry, not necessarily a live element
+PF26100	Recombination-activation protein 1 (RAG1) RNase H domain	domesticated	clan:CL0219	host gene built from a transposase. A hit means TE ancestry, which may be a live element *or* a domesticated gene — the curator decides which, and the sheet must not
+PF27039	ZBED1 RNase-like helical domain	domesticated	clan:CL0219	host gene built from a transposase. A hit means TE ancestry, which may be a live element *or* a domesticated gene — the curator decides which, and the sheet must not
+PF27041	ZBED1 RNase-like domain	domesticated	clan:CL0219	host gene built from a transposase. A hit means TE ancestry, which may be a live element *or* a domesticated gene — the curator decides which, and the sheet must not
+PF27046	FAM200/GTF2IRD2 helical domain	domesticated	clan:CL0219	host gene built from a transposase. A hit means TE ancestry, which may be a live element *or* a domesticated gene — the curator decides which, and the sheet must not
+PF27073	FAM200/ZBED5 RNase-like	domesticated	clan:CL0219	host gene built from a transposase. A hit means TE ancestry, which may be a live element *or* a domesticated gene — the curator decides which, and the sheet must not
+PF29000	Retrotransposon-like protein N-terminal domain	domesticated	search:transposon	host gene built from a retroelement gag. Same caveat: TE ancestry, not necessarily a live element
+PF29013	Retrotransposon-like protein 1 C-terminal domain	domesticated	search:transposon	host gene built from a retroelement gag. Same caveat: TE ancestry, not necessarily a live element
+PF30901	PEG10/RTL1, C-terminal capsid-like domain	domesticated	clan:CL0523	host gene built from a retroelement gag. Same caveat: TE ancestry, not necessarily a live element
