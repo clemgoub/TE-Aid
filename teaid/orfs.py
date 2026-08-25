@@ -58,6 +58,25 @@ class ORF:
         return self.start + 1, self.end
 
 
+def build_command(query, out, min_size: int, reverse: bool) -> list[str]:
+    """The getorf invocation, v1's exactly.
+
+    ``-find`` is deliberately absent so getorf's default ``-find 0`` applies:
+    translate the regions *between stop codons*. Panel 5 leans on that in two
+    places — two domains in one reading frame cannot overlap, and an ORF
+    rectangle's edge is the precise base where the frame closes — so a different
+    ``-find`` would quietly invalidate both. Exposed as a function so a test can
+    pin it.
+    """
+    return [
+        "getorf",
+        "-sequence", str(query),
+        "-outseq", str(out),
+        "-minsize", str(min_size),
+        "-reverse" if reverse else "-noreverse",
+    ]
+
+
 def find_orfs(
     sequence: str,
     name: str = "consensus",
@@ -81,13 +100,7 @@ def find_orfs(
         out = Path(tmp) / "orfs.fa"
         query.write_text(f">{name}\n{sequence}\n")
 
-        command = [
-            "getorf",
-            "-sequence", str(query),
-            "-outseq", str(out),
-            "-minsize", str(min_size),
-            "-reverse" if reverse else "-noreverse",
-        ]
+        command = build_command(query, out, min_size, reverse)
         result = subprocess.run(command, capture_output=True, text=True, check=False)
         if result.returncode != 0:
             raise RuntimeError(f"getorf failed: {result.stderr.strip()}")

@@ -34,6 +34,11 @@ class Theme:
     base: str
     highlight: str
     inverted: str
+    # ORF strand, carried over from v1 where a forward ORF had a black outline
+    # and a reverse one a red outline. 'Black' becomes near-white on the dark
+    # surface: the meaning is 'forward', not 'black'.
+    orf_forward: str
+    orf_reverse: str
 
     @property
     def is_dark(self) -> bool:
@@ -52,6 +57,8 @@ LIGHT = Theme(
     base="#2a78d6",
     highlight="#eb6834",
     inverted="#1baf7a",
+    orf_forward="#1c1c1a",
+    orf_reverse="#d03b3b",
 )
 
 DARK = Theme(
@@ -66,6 +73,8 @@ DARK = Theme(
     base="#3987e5",
     highlight="#d95926",
     inverted="#199e70",
+    orf_forward="#e8e8e2",
+    orf_reverse="#e8756a",
 )
 
 THEMES = {"light": LIGHT, "dark": DARK}

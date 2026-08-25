@@ -221,15 +221,13 @@ class TestStructurePanel:
         )
         assert self._arrowheads(fig) == [(200, "triangle-right"), (900, "triangle-right")]
 
-    def test_reverse_strand_orf_points_left(self):
+    def test_orfs_are_no_longer_in_this_panel(self):
+        """Panel 4 holds only what the dot-plot above it implies; ORFs moved to
+        panel 5, where they can be drawn with the domains that sit in them."""
         fig = report.build_figure(
             make_data(orfs=[ORF(100, 700, "-", "M" * 200)]), theme.LIGHT
         )
-        symbols = [
-            str(t.marker.symbol) for t in fig.data
-            if t.mode == "markers" and str(t.marker.symbol).startswith("triangle")
-        ]
-        assert symbols == ["triangle-left"]
+        assert "aa" not in " ".join(fig.layout.yaxis4.ticktext or [])
 
     def test_lane_count_is_capped_and_the_cut_is_stated(self):
         """A silent truncation reads as 'this is everything'."""
@@ -239,9 +237,10 @@ class TestStructurePanel:
         ]
         data = make_data(terminal_repeats={"LTR": hits, "TIR": []})
         fig = report.build_figure(data, theme.LIGHT)
-        # Each lane draws two arms, so count distinct lane positions.
+        # Each lane draws two arms; the consensus-span rail is not a lane.
         lanes = {
-            t.y[0] for t in fig.data if t.mode == "lines" and t.xaxis == "x4"
+            t.y[0] for t in fig.data
+            if t.mode == "lines" and t.xaxis == "x4" and float(t.y[0]) == int(float(t.y[0]))
         }
         assert len(lanes) == report.MAX_REPEAT_LANES
         assert any("not drawn" in note for note in data.notes)
@@ -259,7 +258,7 @@ class TestStructurePanel:
             ),
             theme.LIGHT,
         )
-        assert set(fig.layout.yaxis4.ticktext) == {"direct", "inverted"}
+        assert {"direct", "inverted"} <= set(fig.layout.yaxis4.ticktext)
 
 
 class TestStaticExport:
@@ -384,7 +383,7 @@ class TestPanelTitleOrdering:
 
     def test_with_homology(self):
         fig = report.build_figure(make_data(homology=[hit()]), theme.LIGHT)
-        assert self._titles(fig)[-1] == "5 · Homology evidence"
+        assert self._titles(fig)[-1] == "5 · ORFs and protein homology"
 
     def test_with_seed_qc(self):
         data = make_data(seed_depth=np.ones(50, dtype=np.int64), seed_sequence_count=1)
@@ -399,7 +398,7 @@ class TestPanelTitleOrdering:
         fig = report.build_figure(data, theme.LIGHT)
         assert self._titles(fig) == [
             "1 · Annotated copies vs divergence", "2 · Consensus coverage",
-            "3 · Self dot-plot", "4 · Structure", "5 · Homology evidence",
+            "3 · Self dot-plot", "4 · Structure", "5 · ORFs and protein homology",
             "6 · Seed depth", "8 · Expected class",
         ]
 
@@ -422,15 +421,19 @@ class TestHomologyPanel:
         assert "ACROBAT1_tnp" in list(fig.layout.yaxis5.ticktext)[0]
         assert "#DNA/PiggyBac" not in list(fig.layout.yaxis5.ticktext)[0]
 
-    def test_a_disrupted_hit_is_marked_on_the_axis_not_only_in_hover(self):
+    def test_a_disrupted_hit_is_counted_on_the_axis_not_only_in_hover(self):
+        """The counts, not a bare mark: 2 frameshifts and 4 is a different
+        finding from 1 and 0, and a static export has no hover."""
         fig = report.build_figure(
             make_data(homology=[hit(frameshifts=2, stop_codons=1)]), theme.LIGHT
         )
-        assert "✕" in list(fig.layout.yaxis5.ticktext)[0]
+        tick = list(fig.layout.yaxis5.ticktext)[0]
+        assert "2fs" in tick and "1⊗" in tick
 
     def test_intact_hits_carry_no_mark(self):
         fig = report.build_figure(make_data(homology=[hit()]), theme.LIGHT)
-        assert "✕" not in list(fig.layout.yaxis5.ticktext)[0]
+        tick = list(fig.layout.yaxis5.ticktext)[0]
+        assert "fs" not in tick and "⊗" not in tick
 
     def test_lane_count_is_capped_and_stated(self):
         hits = [hit(query=f"D{i}", start=i * 400, end=i * 400 + 200, score=100.0 - i)

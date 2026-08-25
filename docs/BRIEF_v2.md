@@ -132,7 +132,11 @@ divergence as zero** — leave the point out and say so in the axis label.
   terminus is otherwise clipped, because an arrowhead is a fixed-size marker
   centred on its coordinate. Autoscaling the panel un-clips it but gives that
   panel its own range, which breaks the first two rules.
-4. **Structure** — TIR/LTR suggestions, ORFs. Both are drawn as **arrows**,
+4. **Structure** — terminal-repeat candidates **only**: what the self dot-plot
+   in panel 3 implies, so the two quadrants read as one statement. ORFs moved
+   to panel 5 (decided 2026-08-25), where they can be drawn together with the
+   protein hits that sit in them. A rail across the full consensus shows how
+   much of the element the repeats bracket. Repeat pairs are drawn as **arrows**,
    carrying over v1's good idea: a repeat pair's two arms point the same way
    when direct (`→ … →`, LTR-like) and at each other when inverted
    (`→ … ←`, TIR-like), so orientation is readable from shape rather than from
@@ -143,7 +147,33 @@ divergence as zero** — leave the point out and say so in the axis label.
    with the LTR/TIR reading offered in the legend, because on an internally
    repetitive consensus the same signature is a tandem unit and naming the lane
    `LTR` would assert a class (§1).
-5. **Homology evidence** — best protein hits, best nucleotide hits (§5.1).
+5. **ORFs and protein homology** — the "Stack" layout, chosen 2026-08-25 from
+   three candidates rendered at true panel size. One row per ORF, drawn as a
+   rectangle outlined by strand (**black forward, red reverse, as v1 did**),
+   with the protein hits that sit in that ORF's *reading frame* drawn as arrows
+   on top of it. A hit with no open frame in its own register gets a bare row
+   over a dotted ground rule. Domain colour is **v1's TE-class scheme** (green
+   LTR, blue LINE, salmon DNA transposon) so type reads at a glance the way
+   curators are used to; colour is never the only channel, since every row names
+   its contents in the tick gutter. Also: best nucleotide hits (§5.1), pending.
+
+   **Housing tests reading frame, not merely coordinate overlap.** This is
+   load-bearing. Overlap alone will occasionally seat a frameshifted domain
+   inside a stop-to-stop block belonging to a *different* register, and the
+   panel then asserts "intact coding domain" for the exact finding the sheet
+   exists to surface. It costs one arithmetic line and it makes "a notched bar
+   inside a rectangle" impossible to draw.
+
+   Two consequences of `getorf -find 0` (translate between stops) that the
+   layout leans on, and which a different `-find` would silently invalidate:
+   two domains in one frame cannot overlap, and **an ORF rectangle's edge is the
+   exact base where the frame closes** — so a domain that opens in frame and
+   dies is drawn running out past that edge, at coordinate resolution.
+
+   The silhouette is the deliverable: a compact block of framed rows above a run
+   of bare, notched ones is a decayed element, and no ORF-finder-then-align
+   search can draw it — the bare rows are precisely what such a search cannot
+   see.
 
 Panels 4 and 5 are the split of v1's single crowded structure quadrant. They
 occupy that quadrant stacked, sharing one consensus x-axis so features line up

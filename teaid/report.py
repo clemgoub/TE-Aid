@@ -36,6 +36,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from . import annotation_rows, classcheck, tetypes
 from .analysis import SelfHit
 from .orfs import ORF
 from .records import Annotation, Copy, DivergenceKind
@@ -135,7 +136,13 @@ MAX_PILEUP_LANES = 40
 
 # Protein hits drawn in panel 5 before the list is cut. Hits arrive sorted by
 # E-value, so the cut keeps the strongest.
-MAX_HOMOLOGY_LANES = 12
+MAX_HOMOLOGY_LANES = 14
+
+# Panel 5 row metrics, in axis units. A sub-lane is one domain's height; a row
+# is as many sub-lanes as its busiest overlap needs.
+_SUBLANE = 1.0
+_ROW_HALF = 0.42
+_ROW_GAP = 0.55
 
 # Reserved status colour, never used for a data series. Marks the one threshold
 # on the sheet that is a pass/fail requirement rather than a measurement, and it
@@ -308,11 +315,13 @@ def build_figure(data: SheetData, theme: Theme) -> go.Figure:
     # --seed-qc appends a further row of full-width-cell panels beneath.
     specs: list[list] = [[{}, {}]]
     heights: list[float] = [1.0]
-    if data.has_homology:
+    # Panel 5 now carries the ORFs as well as the homology, so it takes the
+    # larger share; panel 4 is down to terminal-repeat candidates alone.
+    if data.has_homology or data.orfs:
         specs += [[{"rowspan": 2}, {}], [None, {}]]
-        heights += [0.54, 0.46]
+        heights += [0.42, 0.58]
         structure_row, homology_row = 2, 3
-        titles += ["5 · Homology evidence"]
+        titles += ["5 · ORFs and protein homology"]
     else:
         specs += [[{}, {}]]
         heights += [1.0]
@@ -594,36 +603,31 @@ def _panel_structure(fig: go.Figure, data: SheetData, theme: Theme, row: int, co
             y -= 1.0
             drew_anything = True
 
-    for index, orf in enumerate(data.orfs):
-        # Drawn tail-to-head so the arrowhead sits at the ORF's 3' end,
-        # pointing the way it is translated.
-        tail, head = (orf.start, orf.end) if orf.strand == "+" else (orf.end, orf.start)
-        _arrow(
-            fig,
-            tail,
-            head,
-            y,
-            theme.highlight,
-            f"ORF {orf.coordinates_1based()[0]:,}-{orf.coordinates_1based()[1]:,} "
-            f"({orf.strand})<br>{orf.length_aa:,} aa",
-            row,
-            col,
-            show_legend=index == 0,
-            legend_name=f"ORF ≥{data.orf_min_size} bp (n={len(data.orfs)})",
+    # ORFs have moved to panel 5, where they can be drawn together with the
+    # protein hits that sit in them. Panel 4 now holds only what the self
+    # dot-plot above it implies, so the two read as one statement.
+
+    # A rail across the full consensus, so how much of the element the repeats
+    # bracket is visible rather than inferred from tick labels.
+    if drew_anything:
+        fig.add_trace(
+            go.Scatter(
+                x=[0, data.consensus_length],
+                y=[y + 0.25, y + 0.25],
+                mode="lines",
+                line=dict(color=theme.axis, width=1),
+                showlegend=False,
+                hovertemplate=f"consensus 0-{data.consensus_length:,} bp<extra></extra>",
+            ),
+            row=row,
+            col=col,
         )
-        tickvals.append(y)
-        ticktext.append(f"{orf.length_aa:,} aa {orf.strand}")
-        y -= 1.0
-        drew_anything = True
+        tickvals.append(y + 0.25)
+        ticktext.append(f"{data.consensus_length:,} bp")
+        y -= 0.6
 
     if not drew_anything:
-        _empty_note(
-            fig,
-            f"no terminal repeats and no ORF ≥ {data.orf_min_size} bp",
-            theme,
-            row,
-            col,
-        )
+        _empty_note(fig, "no terminal repeat candidates", theme, row, col)
 
     fig.update_yaxes(
         tickvals=tickvals,
@@ -933,114 +937,219 @@ def homology_lanes(hits: list, limit: int = MAX_HOMOLOGY_LANES) -> list:
 
 
 def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: int) -> None:
-    """Panel 5: protein homology, one lane per hit, on the consensus axis.
+    """Panel 5: ORFs with their protein domains inlaid on them.
 
-    Shares its x-axis with panel 4 above, so a domain lines up with the ORF and
-    the terminal repeats it overlaps.
+    One row per ORF, drawn as a rectangle outlined by strand — black forward,
+    red reverse, as v1 did — with the domains that sit in that ORF's *register*
+    drawn as arrows on top of it. A domain with no open frame in its own
+    register gets a bare row over a dotted ground rule instead.
 
-    Hits carrying a frameshift or an in-frame stop are marked rather than hidden.
-    That mark is the reason the search is BATH and not ``getorf`` + ``blastp``: a
-    pseudogenised domain is invisible to an ORF-finder-then-align approach by
-    construction, and a disrupted hit is *evidence the element was once coding*,
-    which is a different statement from finding nothing.
+    Domain colour is v1's TE-class scheme (green LTR, blue LINE, salmon DNA
+    transposon), so a curator reads type at a glance the way they always have.
+    Colour is never the only channel: every row names its contents in the tick
+    gutter, which is the one text space on the sheet that cannot collide.
+
+    The silhouette is the point. A compact block of framed rows above a run of
+    bare, notched rows is a decayed element, and no ORF-finder-then-align search
+    can draw it — the bare rows are precisely the domains such a search cannot
+    see. The sheet still asserts nothing: what it states is "no ORF >= the
+    length floor in this register here" and "the alignment carries N
+    frameshifts".
     """
-    hits = list(data.homology)
-    if not hits:
-        _empty_note(fig, "no protein homology found", theme, row, col)
+    hits = homology_lanes(list(data.homology))
+    if len(data.homology) > len(hits):
+        hidden = len(data.homology) - len(hits)
+        data.notes.append(
+            f"{hidden} further protein hit{'s' if hidden != 1 else ''} not drawn "
+            f"(showing the {MAX_HOMOLOGY_LANES} strongest); all are listed under the sheet"
+        )
+
+    rows = annotation_rows.build(list(data.orfs), hits, data.consensus_length)
+    if not rows:
+        _empty_note(fig, "no ORFs and no protein homology", theme, row, col)
         fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False, row=row, col=col)
         fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
         return
 
-    shown = homology_lanes(hits)
-    if len(hits) > len(shown):
-        data.notes.append(
-            f"{len(hits) - len(shown)} further protein hit"
-            f"{'s' if len(hits) - len(shown) != 1 else ''} not drawn "
-            f"(showing the {MAX_HOMOLOGY_LANES} strongest)"
-        )
+    orders = classcheck.domain_orders()
+    tickvals: list[float] = []
+    ticktext: list[str] = []
+    seen_classes: dict[str, str] = {}
+    seen_strands: set[str] = set()
+    y = 0.0
 
-    # The legend gets dedicated proxy traces rather than borrowing the first
-    # real one. An arrow is a line trace plus a separate marker trace, so a
-    # borrowed entry shows only the line -- which made 'intact' and 'disrupted'
-    # render as the same plain blue swatch, the one difference the panel most
-    # needs to convey.
-    kinds = {getattr(h, "is_disrupted", False) for h in shown}
-    for disrupted_kind in sorted(kinds):
-        fig.add_trace(
-            go.Scatter(
-                x=[None], y=[None],
-                mode="lines+markers" if disrupted_kind else "lines",
-                line=dict(color=theme.base, width=8),
-                marker=(
-                    dict(symbol="x-thin", size=9,
-                         line=dict(width=2, color=STATUS_BELOW_FLOOR))
-                    if disrupted_kind else dict(opacity=0)
-                ),
-                name="disrupted ✕ (frameshift or stop)" if disrupted_kind
-                     else "intact alignment",
-                hoverinfo="skip",
-            ),
-            row=row, col=col,
-        )
+    for entry in rows:
+        height = entry.height
+        # A row is as tall as its deepest sub-lane, so a busy ORF never draws
+        # two domains on top of each other.
+        centre = y - (height - 1) * _SUBLANE / 2
 
-    tickvals, ticktext = [], []
-    for index, hit in enumerate(shown):
-        y = -float(index)
-        disrupted = getattr(hit, "is_disrupted", False)
-        label = "disrupted (frameshift or stop)" if disrupted else "intact alignment"
-        source = getattr(hit, "source_class", None)
-        hover = (
-            f"<b>{getattr(hit, 'display_name', hit.query)}</b>"
-            f"{' · ' + source if source else ''} {hit.query_accession}<br>"
-            f"consensus {hit.start + 1:,}-{hit.end:,} ({hit.strand})<br>"
-            f"E {hit.evalue:.1g} · score {hit.score:.0f} · {hit.identity:.0f}% id<br>"
-            f"model coverage {hit.coverage:.0%}"
-        )
-        if disrupted:
-            hover += f"<br>{hit.frameshifts} frameshift(s), {hit.stop_codons} stop(s)"
-
-        _arrow(
-            fig,
-            hit.start if hit.strand == "+" else hit.end,
-            hit.end if hit.strand == "+" else hit.start,
-            y,
-            theme.base,
-            hover,
-            row,
-            col,
-        )
-
-        if disrupted:
-            # A cross on the lane, so 'this domain is broken' survives grayscale
-            # and does not rely on the hover being opened.
+        if entry.orf is not None:
+            orf = entry.orf
+            stroke = theme.orf_forward if orf.strand == "+" else theme.orf_reverse
+            half = (height - 1) * _SUBLANE / 2 + _ROW_HALF
             fig.add_trace(
                 go.Scatter(
-                    x=[(hit.start + hit.end) / 2],
-                    y=[y],
-                    mode="markers",
-                    marker=dict(symbol="x-thin", size=9, line=dict(width=2, color=STATUS_BELOW_FLOOR)),
+                    x=[orf.start, orf.end, orf.end, orf.start, orf.start],
+                    y=[centre - half, centre - half, centre + half, centre + half, centre - half],
+                    mode="lines",
+                    line=dict(color=stroke, width=1.5),
+                    fill="toself",
+                    fillcolor=_alpha(stroke, 0.10),
+                    name=f"ORF {orf.strand} strand",
+                    showlegend=orf.strand not in seen_strands,
+                    legendgroup=f"orf{orf.strand}",
+                    hovertemplate=(
+                        f"ORF {orf.coordinates_1based()[0]:,}-{orf.coordinates_1based()[1]:,} "
+                        f"({orf.strand})<br>{orf.length_aa:,} aa"
+                        f"<extra></extra>"
+                    ),
+                ),
+                row=row,
+                col=col,
+            )
+            seen_strands.add(orf.strand)
+        else:
+            # A positive mark for "the frame is not open along this row", in
+            # theme.axis rather than theme.grid, which is too faint to read.
+            fig.add_trace(
+                go.Scatter(
+                    x=[0, data.consensus_length],
+                    y=[centre, centre],
+                    mode="lines",
+                    line=dict(color=theme.axis, width=1, dash="dot"),
                     showlegend=False,
-                    hoverinfo="skip",
+                    hovertemplate=(
+                        f"no ORF ≥ {data.orf_min_size} bp in this reading frame"
+                        f"<extra></extra>"
+                    ),
                 ),
                 row=row,
                 col=col,
             )
 
-        tickvals.append(y)
-        mark = " ✕" if disrupted else ""
-        ticktext.append(f"{getattr(hit, 'display_name', hit.query)}{mark}")
+        names: list[str] = []
+        for hit, lane in zip(entry.hits, entry.lanes):
+            hy = centre + (lane - (height - 1) / 2) * _SUBLANE
+            key = tetypes.classify_hit(hit, orders)
+            tint = tetypes.colour(key)
+            disrupted = getattr(hit, "is_disrupted", False)
+            derived = getattr(hit, "source", "pfam") == "repeatpeps-blastp"
+            label = getattr(hit, "display_name", hit.query)
+
+            _hit_bar(fig, hit, hy, tint, theme, row, col, hollow=derived)
+            if disrupted:
+                # A notch cut out of the bar, in the surface colour, at a fixed
+                # pixel size: it reads at every bar width from 2 px to 150 px,
+                # where a dash pattern needs ~25 px of shaft and most domains
+                # are narrower than that.
+                fig.add_trace(
+                    go.Scatter(
+                        x=[(hit.start + hit.end) / 2],
+                        y=[hy],
+                        mode="markers",
+                        marker=dict(symbol="line-ns", size=9,
+                                    line=dict(width=2.5, color=theme.surface)),
+                        showlegend=False,
+                        hoverinfo="skip",
+                    ),
+                    row=row,
+                    col=col,
+                )
+            if key not in seen_classes:
+                seen_classes[key] = tint
+
+            mark = ""
+            if disrupted:
+                bits = []
+                if hit.frameshifts:
+                    bits.append(f"{hit.frameshifts}fs")
+                if hit.stop_codons:
+                    bits.append(f"{hit.stop_codons}⊗")
+                mark = " " + " ".join(bits)
+            names.append(("= " if derived else "") + label + mark)
+
+        if names:
+            ticktext.append("<br>".join(names))
+        elif entry.orf is not None:
+            ticktext.append(f"{entry.orf.length_aa:,} aa {entry.orf.strand}")
+        else:
+            ticktext.append("")
+        tickvals.append(centre)
+        y -= height * _SUBLANE + _ROW_GAP
+
+    # One legend entry per TE class actually present, so the key stays as short
+    # as the sheet allows.
+    for key, tint in seen_classes.items():
+        fig.add_trace(
+            go.Scatter(
+                x=[None], y=[None], mode="lines",
+                line=dict(color=tint, width=7),
+                name=key, hoverinfo="skip",
+            ),
+            row=row, col=col,
+        )
 
     fig.update_yaxes(
         tickvals=tickvals,
         ticktext=ticktext,
-        range=[-len(shown) + 0.4 - 1, 0.8],
+        range=[y - _ROW_GAP, _ROW_HALF + _ROW_GAP],
         showgrid=False,
         zeroline=False,
-        tickfont=dict(size=10, color=theme.muted),
+        tickfont=dict(size=9, color=theme.muted),
         row=row,
         col=col,
     )
     fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
+
+
+def _hit_bar(fig, hit, y, tint, theme, row, col, *, hollow: bool) -> None:
+    """One domain: a bar with a scaled arrowhead at its 3' end.
+
+    ``hollow`` marks a tier-3 hit, whose consensus coordinates are computed
+    *from* the ORF it came out of, so its containment is arithmetic rather than
+    a finding. Drawing it solid would turn a tautology into evidence.
+    """
+    tail, head = (hit.start, hit.end) if hit.strand == "+" else (hit.end, hit.start)
+    fig.add_trace(
+        go.Scatter(
+            x=[tail, head],
+            y=[y, y],
+            mode="lines",
+            line=dict(color=tint, width=2 if hollow else 7),
+            opacity=0.95,
+            showlegend=False,
+            hovertemplate=(
+                f"<b>{getattr(hit, 'display_name', hit.query)}</b> "
+                f"{hit.query_accession}<br>"
+                f"consensus {hit.start + 1:,}-{hit.end:,} ({hit.strand})<br>"
+                f"E {hit.evalue:.1g} · score {hit.score:.0f} · {hit.identity:.0f}% id<br>"
+                f"model coverage {hit.coverage:.0%}"
+                + (f"<br>{hit.frameshifts} frameshift(s), {hit.stop_codons} stop(s)"
+                   if getattr(hit, "is_disrupted", False) else "")
+                + "<extra></extra>"
+            ),
+        ),
+        row=row,
+        col=col,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[head],
+            y=[y],
+            mode="markers",
+            marker=dict(
+                symbol="triangle-right" if head >= tail else "triangle-left",
+                size=8,
+                color=theme.surface if hollow else tint,
+                line=dict(width=1.5, color=tint),
+            ),
+            showlegend=False,
+            hoverinfo="skip",
+        ),
+        row=row,
+        col=col,
+    )
 
 
 def _ordered_arms(hit: SelfHit) -> tuple[tuple[int, int], tuple[int, int]]:
