@@ -58,7 +58,7 @@ opinion. Do not add a "predicted class" line.
 | EMBOSS | **Kept** — `getorf` for the ORF track (§5.3). `dotmatcher` retired (self-blastn dot plot replaces it, §5.2) |
 | Seed-QC panels | Flag-gated `--seed-qc`; off by default. Appended as a row *below* the 2×2 grid, so the default sheet is byte-identical whether or not the input was a seed |
 | Classification | Never asserted (§1) |
-| Protein library | Curated Pfam accession list ∪ RepeatPeps as single-sequence pHMMs |
+| Protein library | **Three tiers (decided 2026-08-25, see §5.1a).** Default = curated Pfam pHMMs ∪ pHMMs for only the superfamilies Pfam cannot model (~200 MB). Fallback = `blastp` vs full RepeatPeps, as v1. `--deep` = full RepeatPeps as single-sequence pHMMs (~6.4 GB), built on demand and cached. The original "Pfam ∪ all of RepeatPeps as pHMMs" is **superseded**: it is a 6.4 GB model file |
 | Nucleotide library | Dfam FamDB only requirement; user-supplied merged famdb works via the same path |
 | Benchmark set | ~20 goby families stratified by order **plus** a Dfam-curated subset for recall |
 | Sheet layout | **v1's 2×2 quadrant grid is load-bearing and must be preserved** — the whole sheet readable at a glance, with the dot-plot at a true 1:1 aspect. This is a large part of why v1 is used. Do not replace it with a vertical stack. |
@@ -216,6 +216,45 @@ Query set = two parts:
   into single-sequence pHMMs. Verified: `bathbuild` accepts *unaligned*
   sequence files and builds one pHMM per sequence —
   `bathbuild RepeatPeps.bhmm RepeatPeps.lib`. No alignment work needed.
+
+### 5.1a The protein library: three tiers, and why
+
+**Decided 2026-08-25 by the maintainer, after the measurements below. Do not
+re-derive this; the numbers are here so the decision survives.**
+
+§5.1's original plan — the curated Pfam set *plus all of RepeatPeps* as
+single-sequence pHMMs — does not survive contact with the sizes:
+
+- **RepeatPeps as one pHMM per protein is ~6.4 GB.** Measured, not estimated:
+  `bathbuild` had written 718 MB at 2,022 of 18,011 sequences before the build
+  was stopped. 16.2 M residues at ~396 bytes each.
+- **Reducing redundancy first does not help.** cd-hit at 90% identity removes
+  0.5% of RepeatPeps (18,011 → 17,916); at 80%, 3%. It is already a
+  non-redundant curated library, so the size is intrinsic.
+- **But RepeatPeps cannot simply be dropped**, because Pfam has *no model at
+  all* for **piggyBac**, **Maverick/Polinton** and **Crypton**, and only a
+  generic GIY-YIG for **Penelope**. RepeatPeps covers those four with 827
+  proteins. The two halves are genuinely complementary, not redundant.
+
+So the library is **three tiers**:
+
+| Tier | What | Size | When |
+|---|---|---|---|
+| 1 | curated Pfam TE domains (§5.4) as pHMMs, searched with `bathsearch --fs` | small | always |
+| 2 | pHMMs for RepeatPeps proteins of the superfamilies Pfam cannot model | **~200 MB** | always; this is what keeps piggyBac/Maverick/Crypton/Penelope covered |
+| 3 | `blastp` vs the *whole* RepeatPeps FASTA, as v1 did | 17 MB | fallback, for named-family evidence outside tiers 1–2 |
+| — | `--deep`: the whole of RepeatPeps as single-sequence pHMMs | ~6.4 GB | opt-in only, built on demand and cached |
+
+Tiers 1–2 get frameshift-aware search where the conserved catalytic domains
+are; tier 3 keeps v1's named-family hits at negligible cost; `--deep` exists for
+anyone who wants frameshift-aware search across all of RepeatPeps and has the
+disk for it.
+
+**What is deliberately *not* claimed here.** This is a cost decision, not a
+sensitivity one. Whether tiers 1–2 actually recover what tier 3 or `--deep`
+would is exactly what the §5.5 benchmark measures, and the framework is being
+built first so that benchmark has something to run. Do not present the tiering
+as validated until it has been.
 
 **Nucleotide row — `nhmmer` against a taxonomic slice of Dfam FamDB.**
 - `--species <taxon>` extracts a famdb slice, cached under

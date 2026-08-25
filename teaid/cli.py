@@ -26,7 +26,8 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
 
-from . import __version__, analysis, orfs, readers, report, theme
+from . import (__version__, analysis, classcheck, homology, orfs, proteins,
+               readers, report, theme)
 from .readers import stockholm
 from .records import Annotation, DivergenceKind
 from .sequences import Consensus, read_fasta
@@ -180,8 +181,79 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-orfs", action="store_true", help="skip the ORF track (no getorf call)"
     )
 
+    homology_group = parser.add_argument_group("protein homology (panel 5)")
+    homology_group.add_argument(
+        "--no-homology", action="store_true",
+        help="skip the protein row (no bathsearch call)",
+    )
+    homology_group.add_argument(
+        "--proteins", metavar="FILE",
+        help="a prebuilt BATH pHMM library to search, instead of building one",
+    )
+    homology_group.add_argument(
+        "--repeatpeps", metavar="FILE",
+        help="path to RepeatPeps.lib (ships with RepeatMasker). Needed for the "
+             "superfamilies Pfam cannot model: piggyBac, Maverick, Crypton, Penelope",
+    )
+    homology_group.add_argument(
+        "--deep", action="store_true",
+        help="search all of RepeatPeps as pHMMs rather than only the Pfam-blind "
+             "superfamilies. Builds a ~6.4 GB library on first use; see docs/BRIEF_v2.md §5.1a",
+    )
+    homology_group.add_argument(
+        "--homology-evalue", type=float, default=1e-3, metavar="E",
+        help="E-value cutoff for the protein search (default 1e-3)",
+    )
+    homology_group.add_argument(
+        "--rebuild-proteins", action="store_true",
+        help="rebuild the cached protein library even if it is present",
+    )
+
     parser.add_argument("--version", action="version", version=f"teaid {__version__}")
     return parser
+
+
+def _protein_homology(args, consensus, notes) -> tuple[list, str | None]:
+    """Protein hits for panel 5, degrading to an empty row rather than failing.
+
+    A missing BATH install or an unbuildable library costs the sheet one panel;
+    it must not cost it the whole run, since the other four panels are
+    independent of it.
+    """
+    from pathlib import Path as _Path
+
+    try:
+        if args.proteins:
+            library = proteins.Library(hmm=_Path(args.proteins), repeatpeps=None,
+                                       tiers=("prebuilt",))
+        else:
+            library = proteins.build(
+                deep=args.deep,
+                repeatpeps=args.repeatpeps,
+                force=args.rebuild_proteins,
+                log=lambda m: print(f"teaid: {m}", file=sys.stderr),
+            )
+    except proteins.LibraryError as exc:
+        print(f"teaid: warning: protein row skipped: {exc}", file=sys.stderr)
+        return [], f"protein row skipped: {exc}"
+
+    try:
+        hits = homology.search(
+            consensus.sequence,
+            library,
+            name=consensus.bare_name,
+            evalue=args.homology_evalue,
+        )
+    except (homology.BathNotFound, RuntimeError) as exc:
+        print(f"teaid: warning: protein row skipped: {exc}", file=sys.stderr)
+        return [], f"protein row skipped: {exc}"
+
+    kept = homology.best_per_region(hits)
+    dropped = len(hits) - len(kept)
+    note = None
+    if dropped:
+        note = f"{dropped} competing protein hit{'s' if dropped != 1 else ''} collapsed"
+    return kept, note
 
 
 def _seed_qc_fields(seed, enabled: bool) -> dict:
@@ -454,6 +526,15 @@ def main(argv: list[str] | None = None) -> int:
             notes.append(f"ORF track skipped: {exc}")
             print(f"teaid: warning: {exc}", file=sys.stderr)
 
+    protein_hits = []
+    class_check = None
+    if not args.no_homology:
+        protein_hits, note = _protein_homology(args, consensus, notes)
+        if note:
+            notes.append(note)
+        if protein_hits and seed is not None and args.seed_qc:
+            class_check = classcheck.check(seed.expected_class, protein_hits)
+
     data = report.SheetData(
         family=consensus.bare_name,
         consensus_length=consensus_length,
@@ -469,6 +550,8 @@ def main(argv: list[str] | None = None) -> int:
         source_format=shown.source_format,
         sources=loaded.sources,
         notes=notes,
+        homology=protein_hits,
+        class_check=class_check,
         **_seed_qc_fields(seed, args.seed_qc),
     )
 

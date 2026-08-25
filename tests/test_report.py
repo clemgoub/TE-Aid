@@ -10,8 +10,19 @@ import pytest
 
 from teaid import report, theme
 from teaid.analysis import SelfHit
+from teaid.homology import ProteinHit
 from teaid.orfs import ORF
 from teaid.records import Copy, DivergenceKind
+
+
+def hit(**overrides) -> ProteinHit:
+    base = dict(
+        query="RVT_1", query_accession="PF00078.33", start=100, end=700, strand="+",
+        evalue=1e-40, score=127.0, identity=27.0, hmm_from=1, hmm_to=200,
+        hmm_len=200, frameshifts=0, stop_codons=0,
+    )
+    base.update(overrides)
+    return ProteinHit(**base)
 
 
 def make_data(**overrides) -> report.SheetData:
@@ -48,7 +59,7 @@ class TestQuadrantGrid:
         assert len(axes) == 4
 
     def test_five_panels_once_homology_exists(self):
-        fig = report.build_figure(make_data(homology=["placeholder"]), theme.LIGHT)
+        fig = report.build_figure(make_data(homology=[hit()]), theme.LIGHT)
         axes = [k for k in fig.layout if re.fullmatch(r"xaxis\d*", k)]
         assert len(axes) == 5
 

@@ -133,6 +133,10 @@ _COVERAGE_BASE = 0.52
 # than a pixel and the coverage band above already carries the depth.
 MAX_PILEUP_LANES = 40
 
+# Protein hits drawn in panel 5 before the list is cut. Hits arrive sorted by
+# E-value, so the cut keeps the strongest.
+MAX_HOMOLOGY_LANES = 12
+
 # Reserved status colour, never used for a data series. Marks the one threshold
 # on the sheet that is a pass/fail requirement rather than a measurement, and it
 # always ships with the label naming the floor -- colour alone carries nothing.
@@ -176,9 +180,16 @@ PANEL_HELP = {
         "tandem unit, not a terminal repeat."
     ),
     5: (
-        "Best protein and nucleotide homology hits.<br><br>"
-        "Not yet drawn: this needs the frameshift-aware translated pHMM search "
-        "(BATH), which is not installed."
+        "Protein homology from a frameshift-aware translated pHMM search "
+        "(BATH), one lane per hit, sharing panel 4's axis so a domain lines up "
+        "with the ORF it overlaps.<br><br>"
+        "A lane marked <b>✕</b> carries a frameshift or an in-frame stop. That "
+        "is not a failed hit — it is a domain that was once coding and has since "
+        "been disrupted, which an ORF-finder-then-align search cannot see at "
+        "all. Finding a broken domain and finding nothing are different results."
+        "<br><br>"
+        "Hits are evidence, never a classification. Where models compete over "
+        "the same stretch, the strongest is kept."
     ),
     6: (
         "The seed alignment, in the shape of Dfam's own seed track.<br><br>"
@@ -239,6 +250,9 @@ class SheetData:
     seed_blocks: list | None = None
     expected_class: str | None = None
     seed_sequence_count: int | None = None
+    # Result of comparing the seed's TP against the protein hits. None when the
+    # comparison has not been run -- which is different from "no disagreement".
+    class_check: object | None = None
 
     @property
     def has_seed_qc(self) -> bool:
@@ -827,10 +841,22 @@ def _panel_expected_class(
         )
 
     if data.expected_class:
-        lines.append(
-            f"<br><span style='color:{theme.muted}'>agreement with homology "
-            f"evidence: pending (panel 5)</span>"
-        )
+        check = data.class_check
+        if check is None:
+            lines.append(
+                f"<br><span style='color:{theme.muted}'>agreement with homology "
+                f"evidence: pending (panel 5)</span>"
+            )
+        elif check.disagrees:
+            lines.append(
+                f"<br><span style='color:{STATUS_BELOW_FLOOR}'><b>⚠ disagrees with "
+                f"the evidence</b><br>{_wrap_help(check.detail)}</span>"
+            )
+        else:
+            lines.append(
+                f"<br><span style='color:{theme.muted}'>no disagreement: "
+                f"{check.detail}</span>"
+            )
 
     fig.add_trace(
         go.Scatter(
@@ -864,9 +890,91 @@ def _panel_expected_class(
 
 
 def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: int) -> None:
-    """Panel 5: best protein and nucleotide hits (work order steps 6 and 8)."""
-    _empty_note(fig, "homology evidence pending", theme, row, col)
-    fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False, row=row, col=col)
+    """Panel 5: protein homology, one lane per hit, on the consensus axis.
+
+    Shares its x-axis with panel 4 above, so a domain lines up with the ORF and
+    the terminal repeats it overlaps.
+
+    Hits carrying a frameshift or an in-frame stop are marked rather than hidden.
+    That mark is the reason the search is BATH and not ``getorf`` + ``blastp``: a
+    pseudogenised domain is invisible to an ORF-finder-then-align approach by
+    construction, and a disrupted hit is *evidence the element was once coding*,
+    which is a different statement from finding nothing.
+    """
+    hits = list(data.homology)
+    if not hits:
+        _empty_note(fig, "no protein homology found", theme, row, col)
+        fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False, row=row, col=col)
+        fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
+        return
+
+    shown = hits[:MAX_HOMOLOGY_LANES]
+    if len(hits) > len(shown):
+        data.notes.append(
+            f"{len(hits) - len(shown)} further protein hit"
+            f"{'s' if len(hits) - len(shown) != 1 else ''} not drawn "
+            f"(showing the {MAX_HOMOLOGY_LANES} strongest)"
+        )
+
+    tickvals, ticktext = [], []
+    seen_legend = set()
+    for index, hit in enumerate(shown):
+        y = -float(index)
+        disrupted = getattr(hit, "is_disrupted", False)
+        label = "disrupted (frameshift or stop)" if disrupted else "intact alignment"
+        hover = (
+            f"<b>{hit.query}</b> {hit.query_accession}<br>"
+            f"consensus {hit.start + 1:,}-{hit.end:,} ({hit.strand})<br>"
+            f"E {hit.evalue:.1g} · score {hit.score:.0f} · {hit.identity:.0f}% id<br>"
+            f"model coverage {hit.coverage:.0%}"
+        )
+        if disrupted:
+            hover += f"<br>{hit.frameshifts} frameshift(s), {hit.stop_codons} stop(s)"
+
+        _arrow(
+            fig,
+            hit.start if hit.strand == "+" else hit.end,
+            hit.end if hit.strand == "+" else hit.start,
+            y,
+            theme.base,
+            hover,
+            row,
+            col,
+            show_legend=label not in seen_legend,
+            legend_name=label,
+        )
+        seen_legend.add(label)
+
+        if disrupted:
+            # A cross on the lane, so 'this domain is broken' survives grayscale
+            # and does not rely on the hover being opened.
+            fig.add_trace(
+                go.Scatter(
+                    x=[(hit.start + hit.end) / 2],
+                    y=[y],
+                    mode="markers",
+                    marker=dict(symbol="x-thin", size=9, line=dict(width=2, color=STATUS_BELOW_FLOOR)),
+                    showlegend=False,
+                    hoverinfo="skip",
+                ),
+                row=row,
+                col=col,
+            )
+
+        tickvals.append(y)
+        mark = " ✕" if disrupted else ""
+        ticktext.append(f"{hit.query}{mark}")
+
+    fig.update_yaxes(
+        tickvals=tickvals,
+        ticktext=ticktext,
+        range=[-len(shown) + 0.4 - 1, 0.8],
+        showgrid=False,
+        zeroline=False,
+        tickfont=dict(size=10, color=theme.muted),
+        row=row,
+        col=col,
+    )
     fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
 
 

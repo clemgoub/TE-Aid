@@ -17,3 +17,6 @@ htmlcov/
 # Development data downloaded from GenomeArk; see docs/BRIEF_v2.md section 8.
 # Large and reproducible, so not versioned.
 dev-data/
+
+# Built protein libraries (large, rebuildable); see teaid/proteins.py
+dev-data/protein-cache/
