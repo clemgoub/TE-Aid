@@ -224,3 +224,40 @@ class TestRepeatPepsClassMapping:
     def test_an_unknown_label_never_votes(self):
         assert classcheck._class_of_repeatpeps("Unknown") is None
         assert classcheck._class_of_repeatpeps(None) is None
+
+
+class TestCrossTierCompetition:
+    """Tiers must not compete. A blastp bitscore over a 1,000-residue ORF runs
+    into the thousands where a profile-HMM bit score for a 200-position domain
+    is of order 100, so a shared ranking hands every region to tier 3 — which is
+    exactly what happened, leaving three named-element hits drawn and every
+    interpretable Pfam domain gone."""
+
+    @staticmethod
+    def _pair():
+        domain = hit(query="RVT_1", query_accession="PF00078", start=1000, end=1600,
+                     score=127.0, evalue=1e-40, source="pfam")
+        element = hit(query="Gyp2_Cis_pol", query_accession="-", start=900, end=3700,
+                      score=1262.0, evalue=0.0, source="repeatpeps-blastp")
+        return domain, element
+
+    def test_a_named_element_does_not_displace_a_domain(self):
+        domain, element = self._pair()
+        kept = homology.best_per_region([domain, element])
+        assert {h.query for h in kept} == {"RVT_1", "Gyp2_Cis_pol"}
+
+    def test_competitors_within_one_tier_still_collapse(self):
+        strong = hit(query="strong", start=0, end=600, score=200.0, source="pfam")
+        weak = hit(query="weak", start=50, end=560, score=40.0, source="pfam")
+        kept = homology.best_per_region([strong, weak])
+        assert [h.query for h in kept] == ["strong"]
+
+    def test_opting_out_restores_the_single_ranking(self):
+        domain, element = self._pair()
+        kept = homology.best_per_region([domain, element], per_source=False)
+        assert [h.query for h in kept] == ["Gyp2_Cis_pol"]
+
+    def test_results_stay_ordered_along_the_consensus(self):
+        late = hit(query="late", start=5000, end=5200, source="pfam")
+        early = hit(query="early", start=10, end=200, source="repeatpeps-blastp")
+        assert [h.query for h in homology.best_per_region([late, early])] == ["early", "late"]
