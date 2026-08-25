@@ -237,6 +237,10 @@ class SheetData:
     # Panel 5 content; empty until the BATH protein row and Dfam nucleotide row
     # land (work order steps 6 and 8).
     homology: list = field(default_factory=list)
+    # Every protein hit found, including those collapsed by best_per_region and
+    # those past the lane cap. Panel 5 draws a readable subset; this is what the
+    # sheet's expandable table lists, so nothing found is only in a log file.
+    homology_all: list = field(default_factory=list)
     # Seed-QC (--seed-qc): per-consensus-position alignment depth from the
     # Stockholm seed, and the externally supplied expected classification.
     seed_depth: np.ndarray | None = None
@@ -894,6 +898,40 @@ def _panel_expected_class(
     )
 
 
+def homology_lanes(hits: list, limit: int = MAX_HOMOLOGY_LANES) -> list:
+    """The hits panel 5 has room to draw, chosen by strength and laid out by position.
+
+    One function so the panel and the sheet's hit table cannot disagree about
+    which hits were drawn — they did, briefly, and the table then claimed a hit
+    was on the panel when it was not.
+
+    Slicing the position-ordered list instead keeps the leftmost hits and drops
+    the strongest, while the note claims the opposite. Strength is ranked within
+    a source, since a blastp bitscore and a profile-HMM bit score are not
+    comparable, and taken round-robin so one source cannot crowd out the other.
+    """
+    if len(hits) <= limit:
+        return list(hits)
+
+    by_source: dict[str, list] = {}
+    for hit in hits:
+        by_source.setdefault(getattr(hit, "source", "pfam"), []).append(hit)
+    for group in by_source.values():
+        group.sort(key=lambda h: (h.evalue, -h.score))
+
+    shown: list = []
+    index = 0
+    while len(shown) < limit and any(index < len(g) for g in by_source.values()):
+        for group in by_source.values():
+            if index < len(group):
+                shown.append(group[index])
+                if len(shown) == limit:
+                    break
+        index += 1
+    shown.sort(key=lambda h: h.start)
+    return shown
+
+
 def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: int) -> None:
     """Panel 5: protein homology, one lane per hit, on the consensus axis.
 
@@ -913,7 +951,7 @@ def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col
         fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
         return
 
-    shown = hits[:MAX_HOMOLOGY_LANES]
+    shown = homology_lanes(hits)
     if len(hits) > len(shown):
         data.notes.append(
             f"{len(hits) - len(shown)} further protein hit"
@@ -921,8 +959,31 @@ def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col
             f"(showing the {MAX_HOMOLOGY_LANES} strongest)"
         )
 
+    # The legend gets dedicated proxy traces rather than borrowing the first
+    # real one. An arrow is a line trace plus a separate marker trace, so a
+    # borrowed entry shows only the line -- which made 'intact' and 'disrupted'
+    # render as the same plain blue swatch, the one difference the panel most
+    # needs to convey.
+    kinds = {getattr(h, "is_disrupted", False) for h in shown}
+    for disrupted_kind in sorted(kinds):
+        fig.add_trace(
+            go.Scatter(
+                x=[None], y=[None],
+                mode="lines+markers" if disrupted_kind else "lines",
+                line=dict(color=theme.base, width=8),
+                marker=(
+                    dict(symbol="x-thin", size=9,
+                         line=dict(width=2, color=STATUS_BELOW_FLOOR))
+                    if disrupted_kind else dict(opacity=0)
+                ),
+                name="disrupted ✕ (frameshift or stop)" if disrupted_kind
+                     else "intact alignment",
+                hoverinfo="skip",
+            ),
+            row=row, col=col,
+        )
+
     tickvals, ticktext = [], []
-    seen_legend = set()
     for index, hit in enumerate(shown):
         y = -float(index)
         disrupted = getattr(hit, "is_disrupted", False)
@@ -947,10 +1008,7 @@ def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col
             hover,
             row,
             col,
-            show_legend=label not in seen_legend,
-            legend_name=label,
         )
-        seen_legend.add(label)
 
         if disrupted:
             # A cross on the lane, so 'this domain is broken' survives grayscale
@@ -1280,6 +1338,36 @@ _HTML_TEMPLATE = """<!doctype html>
   .teaid-reset:focus-visible {{ outline: 2px solid {accent}; outline-offset: 2px; }}
   .teaid-hint {{ font-size: 11px; color: {muted}; }}
   .teaid-plot {{ max-width: 1180px; margin: 0 auto; }}
+  .teaid-hits {{
+    max-width: 1180px; margin: 4px auto 40px; padding: 0 16px;
+    font-size: 12px; color: {text};
+  }}
+  .teaid-hits > summary {{
+    cursor: pointer; padding: 7px 0; color: {muted};
+    border-top: 1px solid {axis}; list-style: revert;
+  }}
+  .teaid-hits > summary:hover {{ color: {accent}; }}
+  .teaid-hits > summary:focus-visible {{ outline: 2px solid {accent}; outline-offset: 2px; }}
+  .teaid-hits-actions {{ display: flex; gap: 8px; margin: 8px 0 10px; }}
+  .teaid-hits-actions button {{
+    font: inherit; font-size: 11px; color: {text}; background: {surface};
+    border: 1px solid {axis}; border-radius: 5px; padding: 4px 11px; cursor: pointer;
+  }}
+  .teaid-hits-actions button:hover {{ border-color: {accent}; color: {accent}; }}
+  .teaid-hits-scroll {{ overflow-x: auto; max-height: 420px; overflow-y: auto; }}
+  .teaid-hits table {{ border-collapse: collapse; width: 100%; }}
+  .teaid-hits th {{
+    position: sticky; top: 0; background: {paper}; text-align: left;
+    font-weight: 500; font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+    color: {muted}; padding: 5px 10px 5px 0; border-bottom: 1px solid {axis};
+  }}
+  .teaid-hits td {{
+    padding: 4px 10px 4px 0; border-bottom: 1px solid {axis}; color: {muted};
+    white-space: nowrap; font-variant-numeric: tabular-nums;
+  }}
+  .teaid-hits td.name {{ color: {text}; }}
+  .teaid-hits tr.collapsed td {{ opacity: .62; }}
+  .teaid-hits .flag {{ color: {alarm}; }}
 </style>
 </head>
 <body>
@@ -1288,6 +1376,7 @@ _HTML_TEMPLATE = """<!doctype html>
   <span class="teaid-hint">drag to pan · scroll to zoom · double-click a panel to autoscale it</span>
 </div>
 <div class="teaid-plot">{plot}</div>
+{hits_table}
 <script>
   // Restore every axis to the range the sheet was built with, so one click
   // re-centres all four quadrants on the full consensus. Plotly's own "reset
@@ -1302,10 +1391,116 @@ _HTML_TEMPLATE = """<!doctype html>
       Plotly.relayout(gd, RESET);
     }});
   }})();
+
+  // Protein-hit table: export what the panel could not draw.
+  (function () {{
+    var rows = window.__teaidHits;
+    if (!rows || !rows.length) return;
+    var head = Object.keys(rows[0]);
+    var tsv = [head.join('\t')].concat(
+      rows.map(function (r) {{ return head.map(function (k) {{ return r[k]; }}).join('\t'); }})
+    ).join('\n');
+
+    var save = document.getElementById('teaid-hits-download');
+    if (save) save.addEventListener('click', function () {{
+      // A blob URL rather than a data: URI — a large table exceeds what some
+      // browsers accept in a URL.
+      var url = URL.createObjectURL(new Blob([tsv], {{type: 'text/tab-separated-values'}}));
+      var a = document.createElement('a');
+      a.href = url; a.download = {tsv_name!r};
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () {{ URL.revokeObjectURL(url); }}, 1000);
+    }});
+
+    var copy = document.getElementById('teaid-hits-copy');
+    if (copy) copy.addEventListener('click', function () {{
+      // Clipboard works where a download is blocked, e.g. a sandboxed viewer.
+      navigator.clipboard.writeText(tsv).then(
+        function () {{ copy.textContent = 'Copied'; setTimeout(function () {{ copy.textContent = 'Copy TSV'; }}, 1600); }},
+        function () {{ copy.textContent = 'Copy failed — select the table'; }}
+      );
+    }});
+  }})();
 </script>
 </body>
 </html>
 """
+
+
+def _hits_table(data: SheetData, theme: Theme, tsv_name: str) -> tuple[str, str]:
+    """The expandable table of every protein hit, and its JSON for export.
+
+    Panel 5 draws a readable subset — competitors collapsed, lanes capped — so
+    without this the rest exists only in a note saying how many were dropped.
+    A curator checking a marginal call needs the actual numbers.
+    """
+    import html as _html
+    import json as _json
+
+    hits = list(data.homology_all or data.homology)
+    if not hits:
+        return "", "null"
+
+    drawn = {id(h) for h in homology_lanes(list(data.homology))}
+    rows = []
+    for hit in sorted(hits, key=lambda h: (h.start, h.evalue)):
+        start, end = hit.coordinates_1based()
+        rows.append({
+            "name": getattr(hit, "display_name", hit.query),
+            "class": getattr(hit, "source_class", None) or "",
+            "accession": hit.query_accession,
+            "start": start,
+            "end": end,
+            "strand": hit.strand,
+            "evalue": f"{hit.evalue:.2g}",
+            "score": f"{hit.score:.1f}",
+            "identity_pct": f"{hit.identity:.1f}",
+            "model_coverage_pct": f"{hit.coverage * 100:.0f}",
+            "frameshifts": hit.frameshifts,
+            "stop_codons": hit.stop_codons,
+            "source": getattr(hit, "source", "pfam"),
+            "drawn": "yes" if id(hit) in drawn else "no",
+        })
+
+    headers = ["name", "class", "accession", "start", "end", "strand", "evalue",
+               "score", "identity_pct", "model_coverage_pct", "frameshifts",
+               "stop_codons", "source", "drawn"]
+    labels = ["hit", "class", "accession", "start", "end", "str", "E-value",
+              "score", "% id", "% model", "shifts", "stops", "tier", "drawn"]
+
+    body = []
+    for row in rows:
+        classes = [] if row["drawn"] == "yes" else ["collapsed"]
+        cells = []
+        for key in headers:
+            value = _html.escape(str(row[key]))
+            css = "name" if key == "name" else ""
+            if key in ("frameshifts", "stop_codons") and row[key]:
+                css = (css + " flag").strip()
+            cells.append(f'<td class="{css}">{value}</td>' if css else f"<td>{value}</td>")
+        body.append(f'<tr class="{" ".join(classes)}">{"".join(cells)}</tr>')
+
+    n_drawn = sum(1 for r in rows if r["drawn"] == "yes")
+    hidden = len(rows) - n_drawn
+    summary = (
+        f"{len(rows)} protein hit{'s' if len(rows) != 1 else ''}"
+        + (f" — {n_drawn} drawn, {hidden} collapsed or capped" if hidden else " — all drawn")
+    )
+
+    markup = (
+        '<details class="teaid-hits">'
+        f"<summary>{_html.escape(summary)}</summary>"
+        '<div class="teaid-hits-actions">'
+        '<button type="button" id="teaid-hits-download">Download TSV</button>'
+        '<button type="button" id="teaid-hits-copy">Copy TSV</button>'
+        "</div>"
+        '<div class="teaid-hits-scroll"><table><thead><tr>'
+        + "".join(f"<th>{_html.escape(l)}</th>" for l in labels)
+        + "</tr></thead><tbody>"
+        + "".join(body)
+        + "</tbody></table></div></details>"
+    )
+    return markup, _json.dumps(rows)
 
 
 def write_html(fig: go.Figure, path, data: SheetData, theme: Theme) -> None:
@@ -1345,6 +1540,11 @@ def write_html(fig: go.Figure, path, data: SheetData, theme: Theme) -> None:
             # go back to autoscaling rather than to a range invented here.
             reset[f"{name}.autorange"] = True
 
+    tsv_name = f"{data.family}.protein_hits.tsv"
+    hits_markup, hits_json = _hits_table(data, theme, tsv_name)
+    if hits_markup:
+        plot_div += f"\n<script>window.__teaidHits = {hits_json};</script>"
+
     path = str(path)
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(
@@ -1361,6 +1561,9 @@ def write_html(fig: go.Figure, path, data: SheetData, theme: Theme) -> None:
                 plot=plot_div,
                 reset=json.dumps(reset),
                 div_id=div_id,
+                hits_table=hits_markup,
+                tsv_name=tsv_name,
+                alarm=STATUS_BELOW_FLOOR,
             )
         )
 

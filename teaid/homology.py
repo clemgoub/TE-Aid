@@ -266,14 +266,44 @@ def search_repeatpeps(
     return hits
 
 
-def best_per_region(hits: list[ProteinHit], overlap: float = 0.5) -> list[ProteinHit]:
+def best_per_region(
+    hits: list[ProteinHit],
+    overlap: float = 0.5,
+    *,
+    per_source: bool = True,
+) -> list[ProteinHit]:
     """Collapse competing hits, keeping the best-scoring per region.
 
     The rule is RepeatClassifier's: where models compete over the same stretch
     of consensus, the strongest wins. Cited as the source in the docs, and
     borrowed for *evidence selection only* — never for the classification
     decision RepeatClassifier goes on to make.
+
+    **Competition is within a source, not across them.** Two reasons, and either
+    alone is sufficient:
+
+    - The scores are not comparable. A ``blastp`` bitscore over a 1,000-residue
+      ORF runs into the thousands; a profile-HMM bit score for a 200-position
+      domain is of order 100. Ranked together, tier 3 wins every contest by
+      construction and every interpretable Pfam domain disappears — which is
+      exactly what happened before this was split.
+    - They answer different questions. Tiers 1-2 say *which domain* a region
+      encodes; tier 3 says *which named element* it most resembles. A region
+      showing both is more informative than a region showing whichever number
+      happened to be larger.
     """
+    if per_source:
+        groups: dict[str, list[ProteinHit]] = {}
+        for hit in hits:
+            groups.setdefault(getattr(hit, "source", "pfam"), []).append(hit)
+        merged = [
+            h
+            for group in groups.values()
+            for h in best_per_region(group, overlap, per_source=False)
+        ]
+        merged.sort(key=lambda h: h.start)
+        return merged
+
     kept: list[ProteinHit] = []
     for hit in sorted(hits, key=lambda h: (-h.score, h.evalue)):
         span = hit.end - hit.start

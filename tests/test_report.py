@@ -439,3 +439,93 @@ class TestHomologyPanel:
         fig = report.build_figure(data, theme.LIGHT)
         assert len(fig.layout.yaxis5.ticktext) == report.MAX_HOMOLOGY_LANES
         assert any("not drawn" in n for n in data.notes)
+
+
+class TestHomologyLaneSelection:
+    """One selection function, so the panel and the hit table cannot disagree
+    about which hits were drawn."""
+
+    @staticmethod
+    def _hits(n, source="pfam", **over):
+        return [hit(query=f"D{i}", start=i * 300, end=i * 300 + 200,
+                    evalue=10.0 ** -(n - i), score=float(i), source=source, **over)
+                for i in range(n)]
+
+    def test_everything_is_drawn_when_it_fits(self):
+        hits = self._hits(5)
+        assert report.homology_lanes(hits) == hits
+
+    def test_the_cap_keeps_the_strongest_not_the_leftmost(self):
+        """Slicing the position-ordered list would keep the leftmost and drop
+        the strongest, while the note claims the opposite."""
+        hits = self._hits(report.MAX_HOMOLOGY_LANES + 6)
+        shown = report.homology_lanes(hits)
+        assert len(shown) == report.MAX_HOMOLOGY_LANES
+        strongest = min(hits, key=lambda h: h.evalue)
+        assert strongest in shown
+
+    def test_output_is_ordered_along_the_consensus(self):
+        shown = report.homology_lanes(self._hits(report.MAX_HOMOLOGY_LANES + 4))
+        assert [h.start for h in shown] == sorted(h.start for h in shown)
+
+    def test_neither_source_crowds_the_other_out(self):
+        """A blastp bitscore dwarfs a profile-HMM bit score, so a shared ranking
+        lets tier 3 take every lane."""
+        pfam = self._hits(20, source="pfam")
+        blast = [hit(query=f"E{i}", start=i * 300 + 50, end=i * 300 + 250,
+                     evalue=1e-99, score=2000.0, source="repeatpeps-blastp")
+                 for i in range(20)]
+        shown = report.homology_lanes(pfam + blast)
+        sources = {getattr(h, "source", "pfam") for h in shown}
+        assert sources == {"pfam", "repeatpeps-blastp"}
+
+    def test_the_table_agrees_with_the_panel(self, tmp_path):
+        hits = self._hits(report.MAX_HOMOLOGY_LANES + 5)
+        data = make_data(homology=hits, homology_all=hits)
+        fig = report.build_figure(data, theme.LIGHT)
+        path = tmp_path / "sheet.html"
+        report.write_html(fig, path, data, theme.LIGHT)
+        html = path.read_text()
+        drawn_in_table = html.count('<tr class="">')
+        assert drawn_in_table == len(fig.layout.yaxis5.ticktext)
+
+
+class TestHitsTable:
+    def test_lists_every_hit_including_collapsed_ones(self, tmp_path):
+        drawn = hit(query="kept", start=0, end=300)
+        collapsed = hit(query="dropped", start=10, end=290, score=1.0)
+        data = make_data(homology=[drawn], homology_all=[drawn, collapsed])
+        fig = report.build_figure(data, theme.LIGHT)
+        path = tmp_path / "sheet.html"
+        report.write_html(fig, path, data, theme.LIGHT)
+        html = path.read_text()
+        assert "kept" in html and "dropped" in html
+        assert "2 protein hits" in html
+        assert 'class="collapsed"' in html
+
+    def test_offers_export(self, tmp_path):
+        data = make_data(homology=[hit()], homology_all=[hit()])
+        fig = report.build_figure(data, theme.LIGHT)
+        path = tmp_path / "sheet.html"
+        report.write_html(fig, path, data, theme.LIGHT)
+        html = path.read_text()
+        assert "teaid-hits-download" in html
+        assert "teaid-hits-copy" in html
+        assert "__teaidHits" in html
+        assert "fam.protein_hits.tsv" in html
+
+    def test_no_table_when_there_are_no_hits(self, tmp_path):
+        data = make_data()
+        fig = report.build_figure(data, theme.LIGHT)
+        path = tmp_path / "sheet.html"
+        report.write_html(fig, path, data, theme.LIGHT)
+        # The stylesheet always carries the class; the element must not exist.
+        assert '<details class="teaid-hits">' not in path.read_text()
+
+    def test_frameshifts_are_flagged_in_the_table(self, tmp_path):
+        broken = hit(frameshifts=3, stop_codons=1)
+        data = make_data(homology=[broken], homology_all=[broken])
+        fig = report.build_figure(data, theme.LIGHT)
+        path = tmp_path / "sheet.html"
+        report.write_html(fig, path, data, theme.LIGHT)
+        assert "flag" in path.read_text()

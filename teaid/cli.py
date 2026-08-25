@@ -213,7 +213,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _protein_homology(args, consensus, found_orfs, notes) -> tuple[list, str | None]:
+def _protein_homology(args, consensus, found_orfs, notes) -> tuple[list, str | None, list]:
     """Protein hits for panel 5, degrading to an empty row rather than failing.
 
     A missing BATH install or an unbuildable library costs the sheet one panel;
@@ -235,7 +235,7 @@ def _protein_homology(args, consensus, found_orfs, notes) -> tuple[list, str | N
             )
     except proteins.LibraryError as exc:
         print(f"teaid: warning: protein row skipped: {exc}", file=sys.stderr)
-        return [], f"protein row skipped: {exc}"
+        return [], f"protein row skipped: {exc}", []
 
     try:
         hits = homology.search(
@@ -246,7 +246,7 @@ def _protein_homology(args, consensus, found_orfs, notes) -> tuple[list, str | N
         )
     except (homology.BathNotFound, RuntimeError) as exc:
         print(f"teaid: warning: protein row skipped: {exc}", file=sys.stderr)
-        return [], f"protein row skipped: {exc}"
+        return [], f"protein row skipped: {exc}", []
 
     # Tier 3: named-element evidence from RepeatPeps, via the ORF peptides.
     # Answers a different question from tiers 1-2 -- which named element this
@@ -258,8 +258,9 @@ def _protein_homology(args, consensus, found_orfs, notes) -> tuple[list, str | N
     dropped = len(hits) - len(kept)
     note = None
     if dropped:
-        note = f"{dropped} competing protein hit{'s' if dropped != 1 else ''} collapsed"
-    return kept, note
+        note = (f"{dropped} competing protein hit{'s' if dropped != 1 else ''} collapsed "
+                f"— all {len(hits)} are listed under the sheet")
+    return kept, note, hits
 
 
 def _seed_qc_fields(seed, enabled: bool) -> dict:
@@ -532,10 +533,13 @@ def main(argv: list[str] | None = None) -> int:
             notes.append(f"ORF track skipped: {exc}")
             print(f"teaid: warning: {exc}", file=sys.stderr)
 
-    protein_hits = []
+    protein_hits: list = []
+    all_hits: list = []
     class_check = None
     if not args.no_homology:
-        protein_hits, note = _protein_homology(args, consensus, found_orfs, notes)
+        protein_hits, note, all_hits = _protein_homology(
+            args, consensus, found_orfs, notes
+        )
         if note:
             notes.append(note)
         if protein_hits and seed is not None and args.seed_qc:
@@ -557,6 +561,7 @@ def main(argv: list[str] | None = None) -> int:
         sources=loaded.sources,
         notes=notes,
         homology=protein_hits,
+        homology_all=all_hits if not args.no_homology else [],
         class_check=class_check,
         **_seed_qc_fields(seed, args.seed_qc),
     )
