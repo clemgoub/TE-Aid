@@ -388,19 +388,40 @@ slice.
      comparison is drawn as *pending* rather than guessed at, since flagging
      against anything but homology evidence would be the sheet forming an
      opinion (§1).
-6. **← NEXT.** `te_domains.tsv` draft → maintainer review; RepeatPeps → pHMMs
-   via `bathbuild`; BATH protein row (fills panel 5, and unblocks the `TP`
-   mismatch flag of step 5). Order of work:
-   a. Build BATH from source — it is **not installed** (§8).
-   b. Draft `teaid/data/te_domains.tsv` per §5.4 and **send it to the maintainer
-      before wiring it in**; he specifically wants eyes on the CL0219
-      host-enzyme exclusions. This is a deliverable in its own right.
-   c. Fetch RepeatPeps, `bathbuild RepeatPeps.bhmm RepeatPeps.lib` (verified:
-      it accepts unaligned sequence files, one pHMM per sequence).
-   d. `bathsearch --fs` against (Pfam set ∪ RepeatPeps); render panel 5, which
-      then splits the bottom-right quadrant with panel 4 — the layout already
-      switches on `SheetData.homology` being non-empty.
+6. **← IN PROGRESS.** `te_domains.tsv` draft → maintainer review; RepeatPeps →
+   pHMMs; BATH protein row (fills panel 5, and unblocks the `TP` mismatch flag
+   of step 5).
+   a. ~~Build BATH from source.~~ **Done** — BATH 2.0 at
+      `~/Documents/BATH/opt/bin/` (`bathsearch`, `bathbuild`, `bathconvert`,
+      `bathfetch`, `bathstat`). Note for a rebuild: `easel` must be cloned
+      separately and checked out on its `BATH` branch, and `--prefix` must not
+      be `…/BATH/install`, which collides with the repo's own `INSTALL` file on
+      a case-insensitive filesystem.
+   b. ~~Draft `teaid/data/te_domains.tsv`.~~ **Done — awaiting review.** 130
+      domains across 17 orders, built by `tools/build_te_domains.py` from an
+      InterPro fetch, with every name verified at build time so a typo or dead
+      accession fails the build. 29 explicit exclusions plus 3 categories are
+      recorded with reasons. `tools/build_review_page.py` renders the review
+      page from the table itself.
+   c. **Blocked on a decision (see below): RepeatPeps as single-sequence pHMMs
+      is ~6.4 GB.**
+   d. `bathsearch --fs` against (Pfam set ∪ whatever (c) settles on); render
+      panel 5, which then splits the bottom-right quadrant with panel 4 — the
+      layout already switches on `SheetData.homology` being non-empty.
    e. Turn on the `TP` comparison in panel 8, which currently draws "pending".
+
+   **Two findings from (b) and (c) that change §5.1 and need the maintainer:**
+
+   - **RepeatPeps → one pHMM per protein is ~6.4 GB** (measured: 718 MB at
+     2,022 of 18,011 sequences; 16.2 M residues at ~396 bytes each). Reducing
+     redundancy first does not help — cd-hit at 90% identity removes 0.5% of the
+     library, at 80% it removes 3%; RepeatPeps is already non-redundant.
+     Suggested instead: build pHMMs only for the superfamilies Pfam cannot model
+     (~870 proteins, **~200 MB**) and search the rest with `blastp` as v1 did.
+   - **Pfam has no model at all for piggyBac, Maverick/Polinton or Crypton**, and
+     only a generic GIY-YIG for Penelope. RepeatPeps covers those four with 827
+     proteins. This is the concrete reason the query set needs both halves, and
+     why dropping RepeatPeps outright would be a bad trade.
 7. Benchmark (§5.5) → set the default protein path.
 8. Nucleotide row: famdb slice + `nhmmer` + cache + the documentation of §5.1.
 9. TSD detection in the flank path (§5.2) + `#=GF TD` output.
