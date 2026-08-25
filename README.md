@@ -88,6 +88,12 @@ once coding and has since been disrupted. Finding one is a different result from
 finding nothing, and an ORF-finder-then-align search cannot find it at all —
 which is the whole reason the search is BATH.
 
+Panel 5 draws only as many hits as it can show legibly, choosing the strongest
+within each tier. **Every hit found is listed in an expandable table under the
+grid**, with the collapsed ones dimmed, and can be exported with *Download TSV*
+or *Copy TSV* — so nothing the search found exists only in a note about how many
+were dropped.
+
 ## Usage
 
 ```bash
