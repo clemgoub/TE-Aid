@@ -36,8 +36,9 @@ The working brief for this rewrite, including every settled design decision, is
 | Interactive HTML sheet + static export, light and dark | ✅ done |
 | Panel 4 (structure: ORFs, TIR/LTR candidates) | ✅ done |
 | `--stk` Stockholm seed input, `--pipeline`, `--seed-qc` | ✅ done |
-| Panel 5 (protein homology, BATH) | ✅ done |
+| Panel 5 (ORFs + protein homology, BATH) | ✅ done |
 | `#=GF TP` disagreement flag | ✅ done |
+| Whole-library runs, batch mode | ⬜ next after the benchmark |
 | Panel 7 (consensus vs library entries) | ⬜ needs an agreed input hook |
 | Nucleotide row (Dfam slice + nhmmer) | ⬜ |
 | Benchmark (cost and relative sensitivity) | ⬜ |
@@ -45,8 +46,13 @@ The working brief for this rewrite, including every settled design decision, is
 
 The sheet keeps **v1's 2×2 quadrant layout** — copies vs divergence and coverage
 on top, the self dot-plot (square, 1:1) and structure below — so the whole family
-is readable at a glance. Panel 5 will split the bottom-right quadrant with panel
-4 once there is homology evidence to draw.
+is readable at a glance. The bottom-right quadrant splits: panel 4 shows what the
+dot-plot implies (terminal repeats), panel 5 shows what sequence annotation
+implies (ORFs with their protein domains inlaid).
+
+ORFs keep v1's strand convention — black outline forward, red reverse — and
+protein domains keep **v1's TE-class colours**: green LTR, blue LINE, salmon DNA
+transposon.
 
 ## Install
 

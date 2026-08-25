@@ -402,120 +402,69 @@ Arms: v1 (`getorf` + `blastp` vs RepeatPeps) · `hmmscan` vs the curated Pfam
 set · **BATH `--fs`** vs (Pfam set + RepeatPeps pHMMs) · `nhmmer` vs a Dfam
 slice.
 
----
-
-## 6. Work order
-
-1. ~~Cut `v1-legacy` from current `main`; README pointer. Open `v2`.~~ **Done.**
-2. ~~Python package skeleton + CLI (`teaid`, with the `TE-Aid` alias notice) +
-   annotation reader (`.out` / `.gff3` / BED16) + panels 1–3 from `--annot`.~~
-   **Done — milestone reached: v1 parity with no blastn.** Notes:
-   - Format is detected by *content*, not extension (the hub ships `.bed` files
-     converted from `.out`).
-   - The `.out` and BED16 readers were cross-validated: the same GenomeArk
-     annotation routed through VGP_TEbed's independent `rmout2bed.py` converter
-     yields byte-identical records from both readers (147,231 copies).
-   - Coverage uses a difference array, O(n + L); v1's dense
-     `n_copies × consensus_length` matrix reached ~2 GB on large families.
-   - Full-length is measured on half-open consensus coordinates, removing v1's
-     off-by-one (`abs(qend - qstart)` was one short of the true span).
-   - BED16 column 16 (`hit_id`) groups fragments of one interrupted insertion;
-     `Annotation.fragment_groups()` exposes this. It is the direct fix for the
-     fragment inflation that motivates v2, and panel 1 should use it once
-     panels 4–5 land.
-3. ~~Interactive HTML sheet + static export.~~ **Done** (Plotly HTML + kaleido
-   PNG/PDF/SVG, light and dark themes; PDF verified as real vector output). The
-   HTML carries a **Reset view** button that returns every quadrant to the full
-   consensus span in one click — Plotly's own "reset axes" autoscales each panel
-   to its own data instead, which leaves the quadrants on different x-ranges and
-   breaks the vertical alignment between them. Verified in a real browser:
-   measured data aspect of the dot-plot is exactly 1.0, and reset restores the
-   byte-identical on-load axis state.
-4. ~~Panels 4–5 split; `getorf` ORF track; self-blastn dot-plot per §5.2.~~
-   **Done except panel 5's content**, which needs BATH (step 6). Panel 4 draws
-   the ORF track and terminal-repeat candidates. Note on detection: anchoring
-   an LTR candidate on "first arm within 10% of position 0" was tried and is
-   too strict — RepeatModeler consensuses often carry extra sequence past the
-   true 5' boundary, which pushes a real LTR pair inward. Detection now keys on
-   the bracketed span (≥50% of the consensus) with non-overlapping arms, and
-   collapses blastn's reciprocal duplicate reporting.
-5. ~~`--stk` reader + `--seed-qc` panels 6–8 + `TP` mismatch flag.~~
-   **Mostly done — this is the join point with the pipeline (§7).** Delivered:
-   the Stockholm reader (multi-record, interleaved blocks, Smitten identifiers
-   in both the 2-part and 4-part forms), `--stk`, `--pipeline`, `--seed-qc`,
-   panel 6 and panel 8, and the fail-soft contract (distinct exit codes plus a
-   stable stderr slug, `teaid: error [bad-seed]: …`).
-   Still open:
-   - **Panel 7** (consensus vs contributing library entries) needs the source
-     entries, which only the pipeline has. The input hook is not yet defined —
-     agree it when `TEbed-seeds` exists. Note the pipeline's deposition unit is
-     a *cross-tool cluster*, not one program's family, so "contributing entries"
-     means every cluster member's library sequence; the cluster membership is
-     already in `report/data/dfam_shortlist_clusters.tsv` but the sequences are
-     not carried anywhere yet.
-   - **The `TP` flag itself** needs panel 5. The label is displayed and the
-     comparison is drawn as *pending* rather than guessed at, since flagging
-     against anything but homology evidence would be the sheet forming an
-     opinion (§1).
-6. **← IN PROGRESS.** `te_domains.tsv` draft → maintainer review; RepeatPeps →
-   pHMMs; BATH protein row (fills panel 5, and unblocks the `TP` mismatch flag
-   of step 5).
-   a. ~~Build BATH from source.~~ **Done** — BATH 2.0 at
-      `~/Documents/BATH/opt/bin/` (`bathsearch`, `bathbuild`, `bathconvert`,
-      `bathfetch`, `bathstat`). Note for a rebuild: `easel` must be cloned
-      separately and checked out on its `BATH` branch, and `--prefix` must not
-      be `…/BATH/install`, which collides with the repo's own `INSTALL` file on
-      a case-insensitive filesystem.
-   b. ~~Draft `teaid/data/te_domains.tsv`.~~ **Done — awaiting review.** 130
-      domains across 17 orders, built by `tools/build_te_domains.py` from an
-      InterPro fetch, with every name verified at build time so a typo or dead
-      accession fails the build. 29 explicit exclusions plus 3 categories are
-      recorded with reasons. `tools/build_review_page.py` renders the review
-      page from the table itself.
-   c. ~~RepeatPeps as pHMMs.~~ **Resolved 2026-08-25 — three tiers, §5.1a.**
-      Built and measured: tier 1 is 7.3 MB, tier 2 is 209 MB against the
-      ~200 MB estimate, 233 MB together versus 6.4 GB for the whole library.
-   d. ~~`bathsearch --fs`; render panel 5.~~ **Done.** `teaid/homology.py` runs
-      the search and parses `--tblout`, carrying the `shifts` and `stops`
-      columns so a disrupted domain is reported *and* marked. Competing hits
-      collapse by RepeatClassifier's best-per-region rule. Tier 3 (`blastp` of
-      ORF peptides vs all of RepeatPeps, as v1) is wired in alongside.
-   e. ~~Turn on the `TP` comparison in panel 8.~~ **Done** —
-      `teaid/classcheck.py`, firing only on a Class I / Class II contradiction.
-
-   **Validated on real data:** on `ltr-1_family-26` (LTR/Gypsy) the hits come
-   out in polyprotein order along the consensus — gag, aspartyl protease,
-   reverse transcriptase, RNase H, integrase. On `ltr-1_family-51` the RT,
-   integrase and rve domains are all frameshifted and marked, while the ORF
-   track shows no open frame over them: the case BATH exists for.
-
-   **Cost, for the §5.5 benchmark:** ~10 s per family for `bathsearch` against
-   the 233 MB library, dominated by loading the models. BATH has no `hmmpress`
-   equivalent, so there is no index step to amortise that.
-
-   **Two findings from (b) and (c) that change §5.1 and need the maintainer:**
-
-   - **RepeatPeps → one pHMM per protein is ~6.4 GB** (measured: 718 MB at
-     2,022 of 18,011 sequences; 16.2 M residues at ~396 bytes each). Reducing
-     redundancy first does not help — cd-hit at 90% identity removes 0.5% of the
-     library, at 80% it removes 3%; RepeatPeps is already non-redundant.
-     Suggested instead: build pHMMs only for the superfamilies Pfam cannot model
-     (~870 proteins, **~200 MB**) and search the rest with `blastp` as v1 did.
-   - **Pfam has no model at all for piggyBac, Maverick/Polinton or Crypton**, and
-     only a generic GIY-YIG for Penelope. RepeatPeps covers those four with 827
-     proteins. This is the concrete reason the query set needs both halves, and
-     why dropping RepeatPeps outright would be a bad trade.
-7. Benchmark (§5.5) → set the default protein path.
-8. Nucleotide row: famdb slice + `nhmmer` + cache + the documentation of §5.1.
-9. TSD detection in the flank path (§5.2) + `#=GF TD` output.
-10. `--blastn` legacy path (port, or shell out to v1) with the leakiness
-    warning documented.
-11. Tag `v2.0`.
-
-Step 5 is what downstream integrators depend on; the rest is independent of any
-of them.
+**One cost is already measured:** ~10 s per family for `bathsearch` against the
+233 MB tier-1+2 library, dominated by loading the models rather than by the
+search. BATH has no `hmmpress` equivalent, so there is no index step to amortise
+it — which is why a whole-library run wants one library load reused across
+families rather than more parallelism alone (§6).
 
 ---
+
+## 6. Work order and status
+
+Detail that a reader needs *while changing the code* lives in the module
+docstrings, not here — `analysis.py`, `homology.py`, `proteins.py`,
+`annotation_rows.py`, `report.py` and `readers/*` each explain their own traps.
+This section is status and direction only.
+
+| # | Step | State |
+|---|---|---|
+| 1 | `v1-legacy` cut, `v2` opened, README pointer | done |
+| 2 | Package, CLI, annotation readers, panels 1–3 | done — v1 parity without blastn |
+| 3 | Interactive HTML + PNG/PDF/SVG export, both themes | done |
+| 4 | Panels 4–5 split; `getorf` ORF track; self-blastn dot-plot | done |
+| 5 | `--stk`, `--pipeline`, `--seed-qc`, panels 6 and 8, fail-soft contract | done bar panel 7 |
+| 6 | `te_domains.tsv`, BATH, three-tier library, panel 5, `TP` flag | done, table **awaiting review** |
+| 7 | Benchmark (§5.5) → set the default protein path | next |
+| 8 | Nucleotide row: famdb slice + `nhmmer` + cache + docs | |
+| 9 | TSD detection in the flank path (§5.2) + `#=GF TD` | |
+| 10 | `--blastn` legacy path, with the leakiness warning | |
+| 11 | Tag `v2.0` | |
+
+### Open items, smallest first
+
+- **Cosmetic, panel 5.** Tick rosters still crowd where two long rows abut, and
+  a row's roster lists names without mapping them to individual bars within the
+  row.
+- **Judgement call, panel 5 colour.** `RVT_1` and other order-agnostic domains
+  render Unknown grey, because a bare reverse transcriptase is shared by every
+  Class I order and colouring it LTR would assert what the hit cannot support.
+  It does make the most important domains look uninformative. The alternative
+  is to let such a domain inherit the colour when every element-level hit on the
+  sheet agrees. Undecided.
+- **Panel 1 does not yet use `Annotation.fragment_groups()`.** BED16 column 16
+  (and the `.out` `ID` column) groups fragments of one interrupted insertion;
+  counting them separately inflates copy number, which is the specific failure
+  that motivates v2. The grouping is implemented and tested; panel 1 still
+  counts rows.
+- **Panel 7** (consensus vs contributing library entries) needs the source
+  entries, which only a seed *producer* has. Design the hook generically — a
+  FASTA of candidate source entries — rather than around any one pipeline.
+- **`te_domains.tsv` review** is with the maintainer: 130 domains, 29 explicit
+  exclusions, 3 excluded categories.
+
+### Direction after step 7 (raised 2026-08-25, not yet scoped)
+
+- **Whole-library runs and parallelism.** Today `teaid` is one family per
+  invocation. A 400-family library at ~10 s of `bathsearch` each is over an
+  hour serially, and the model load dominates that (§5.5). Wants: a batch mode,
+  a worker pool, and probably one library load reused across families.
+- **CLI update.** The flag surface has grown organically across steps 2–6 and
+  deserves a pass: grouping, defaults, and a `--version`-style summary of which
+  external tools were found.
+- **GUI.** Unscoped. Note the sheet is already a self-contained HTML page, so
+  the smallest useful version may be an index over many sheets rather than a
+  new application.
 
 ## 7. Scope, input routes, and downstream integrators
 
@@ -626,6 +575,19 @@ Not in git, so not obvious from a clean checkout:
 - **`getorf` is MacPorts, at `/opt/local/bin`**, which is not on the default
   PATH here — `export PATH=$PATH:/opt/local/bin` before any run that draws the
   ORF track, or the panel degrades to "no ORFs" without saying why.
+- **BATH 2.0** is built at `~/Documents/BATH/opt/bin/` (`bathsearch`,
+  `bathbuild`, `bathconvert`, `bathfetch`, `bathstat`); add it to `PATH` for the
+  protein row. Two traps if it is ever rebuilt: `easel` must be cloned
+  separately and checked out on its own `BATH` branch, and `--prefix` must not
+  be `…/BATH/install`, which collides with the repo's own `INSTALL` file on a
+  case-insensitive filesystem.
+- **The protein library** caches under `$TEAID_CACHE` (or `~/.teaid/proteins`).
+  A prebuilt tier-1+2 library sits in `dev-data/protein-cache/` — 233 MB,
+  gitignored; export `TEAID_CACHE` to that path to avoid a rebuild, which
+  re-fetches 130 Pfam models from InterPro.
+- **`RepeatPeps.lib`** is at `~/Downloads/RepeatMasker/Libraries/RepeatPeps.lib`
+  and is auto-discovered; it ships inside RepeatMasker and is no longer in that
+  project's git.
 - **Verifying the HTML in a browser**: `file://` URLs are blocked by the Chrome
   tooling, so serve the directory (`python3 -m http.server`) and open
   `http://localhost:…`. Worth doing for anything interactive — two bugs got
