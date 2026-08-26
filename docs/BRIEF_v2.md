@@ -521,9 +521,11 @@ This section is status and direction only.
 
 ### Open items, smallest first
 
-- **Cosmetic, panel 5.** Tick rosters still crowd where two long rows abut, and
-  a row's roster lists names without mapping them to individual bars within the
-  row.
+- **Cosmetic, panel 5.** Tick rosters still crowd where two long rows abut. The
+  roster now reads top-to-bottom in the order the arrows sit (fixed 2026-08-26),
+  but a row whose hits share one sub-lane still lists several names against a
+  single y — so the ordering is right while a strict one-name-to-one-bar mapping
+  is not. Direct-labelling each bar, or leader lines, would close it.
 - **Cosmetic, one red means two things.** `report.STATUS_BELOW_FLOOR` (the Dfam
   floor warning, panel 6) is the same `#d03b3b` as `theme.orf_reverse` (v1's
   reverse-strand ORF outline, panel 5). On a `--seed-qc` sheet both are visible.

@@ -1033,9 +1033,15 @@ def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col
                 col=col,
             )
 
-        names: list[str] = []
+        # Spread the arrows over the sub-lanes actually *used*, not over the row's
+        # nominal height. The height is also driven by the tick roster
+        # (NAMES_PER_SUBLANE), so a row with six domains on one lane is three
+        # units tall -- sizing the spread by that pushed the single row of arrows
+        # to the bottom of the row while its label stayed centred.
+        used = (max(entry.lanes) + 1) if entry.lanes else 1
+        roster: list[tuple[float, int, str]] = []
         for hit, lane in zip(entry.hits, entry.lanes):
-            hy = centre + (lane - (height - 1) / 2) * _SUBLANE
+            hy = centre + (lane - (used - 1) / 2) * _SUBLANE
             key = tetypes.classify_hit(hit, orders)
             tint = tetypes.colour(key)
             disrupted = getattr(hit, "is_disrupted", False)
@@ -1072,7 +1078,16 @@ def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col
                 if hit.stop_codons:
                     bits.append(f"{hit.stop_codons}⊗")
                 mark = " " + " ".join(bits)
-            names.append(("= " if derived else "") + label + mark)
+            roster.append((hy, hit.start, ("= " if derived else "") + label + mark))
+
+        # The roster must read top-to-bottom in the order the arrows actually
+        # sit, or it names the wrong bar. Sub-lane 0 draws at the *bottom* of the
+        # row (hy rises with the lane index), while the hits arrive sorted by
+        # start -- so listing them as they come inverted the pairing on every
+        # multi-lane row. Sort by descending y, then left-to-right among arrows
+        # sharing a lane.
+        roster.sort(key=lambda item: (-item[0], item[1]))
+        names = [label for _, _, label in roster]
 
         if names:
             ticktext.append("<br>".join(names))
@@ -1416,7 +1431,13 @@ def _layout(
             _add_help_marker(fig, annotation, help_text, theme)
 
 
-_HTML_TEMPLATE = """<!doctype html>
+# A **raw** string. The body is JavaScript and CSS, so a backslash in it is
+# meant for the browser, not for Python: as a normal string, the `'\t'` and
+# `'\n'` in the TSV export below became a real tab and a real newline, and a
+# literal newline inside a JS string literal is a SyntaxError that kills the
+# whole <script> block -- taking the reset button, which sits in the same block
+# and had nothing wrong with it, down with it. Keep the `r` prefix.
+_HTML_TEMPLATE = r"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">

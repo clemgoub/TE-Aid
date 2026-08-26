@@ -532,3 +532,117 @@ class TestHitsTable:
         path = tmp_path / "sheet.html"
         report.write_html(fig, path, data, theme.LIGHT)
         assert "flag" in path.read_text()
+
+
+class TestTheInlineScriptParses:
+    """The page's one <script> block holds both the reset handler and the TSV
+    export. A syntax error anywhere in it silently disables both, and nothing
+    server-side notices -- which is exactly what happened: ``_HTML_TEMPLATE``
+    was a non-raw Python string, so the JS escapes ``'\\t'`` and ``'\\n'`` in the
+    TSV builder became a real tab and a real newline, and a literal newline
+    inside a JS string literal is an unterminated-string SyntaxError.
+    """
+
+    def test_the_template_holds_no_raw_control_characters(self):
+        """A literal tab or a stray carriage return in the template can only
+        arrive by Python interpreting an escape meant for the browser."""
+        assert "\t" not in report._HTML_TEMPLATE
+        assert "\r" not in report._HTML_TEMPLATE
+
+    def test_tsv_escapes_reach_the_browser_as_escapes(self, tmp_path):
+        data = make_data(homology=[hit()], homology_all=[hit()])
+        fig = report.build_figure(data, theme.LIGHT)
+        path = tmp_path / "sheet.html"
+        report.write_html(fig, path, data, theme.LIGHT)
+        text = path.read_text()
+        assert r"join('\t')" in text, "tab separator must stay a JS escape"
+        assert r"join('\n')" in text, "row separator must stay a JS escape"
+
+    def test_the_tsv_builder_stays_on_its_own_lines(self, tmp_path):
+        """The specific failure mode: the row separator turned into a real
+        newline, splitting ``.join('\\n')`` across two source lines and leaving
+        an unterminated string. Pin that the expression is intact on one line."""
+        data = make_data(homology=[hit()], homology_all=[hit()])
+        fig = report.build_figure(data, theme.LIGHT)
+        path = tmp_path / "sheet.html"
+        report.write_html(fig, path, data, theme.LIGHT)
+        joins = [ln for ln in path.read_text().splitlines() if ".join('" in ln]
+        assert joins, "expected the TSV builder in the page"
+        for line in joins:
+            assert line.count("'") % 2 == 0, (
+                f"quote left open, string spans a newline: {line.strip()[:90]!r}"
+            )
+
+
+class TestRosterMatchesTheArrows:
+    """Panel 5 names each row's domains in the y-axis gutter. The names must
+    read top-to-bottom in the order the arrows actually sit, or the roster
+    labels the wrong bar -- sub-lane 0 draws at the *bottom* of a row, while the
+    hits arrive sorted by start, so listing them as they came inverted it.
+    """
+
+    @staticmethod
+    def _roster_and_positions(fig):
+        roster = None
+        for name in fig.layout:
+            if not name.startswith("yaxis"):
+                continue
+            ticktext = fig.layout[name].ticktext
+            if ticktext and any("LOWER" in t for t in ticktext):
+                roster = next(t for t in ticktext if "LOWER" in t)
+        drawn = {}
+        for trace in fig.data:
+            tpl = getattr(trace, "hovertemplate", None) or ""
+            for label in ("LOWER", "UPPER"):
+                if f"<b>{label}</b>" in tpl and label not in drawn:
+                    drawn[label] = trace.y[0]
+        return roster, drawn
+
+    def _two_lane_figure(self):
+        # Both hits share the ORF's reading frame (frame 1) and overlap each
+        # other, so the packer must give them separate sub-lanes.
+        orf = ORF(0, 900, "+", "M" * 300)
+        lower = hit(query="LOWER", start=0, end=600)
+        upper = hit(query="UPPER", start=300, end=900)
+        data = make_data(orfs=[orf], homology=[lower, upper])
+        return report.build_figure(data, theme.LIGHT)
+
+    def test_the_two_hits_really_do_land_on_different_lanes(self):
+        """Guards the fixture: if they shared a lane the test would pass for
+        the wrong reason."""
+        _, drawn = self._roster_and_positions(self._two_lane_figure())
+        assert set(drawn) == {"LOWER", "UPPER"}
+        assert drawn["LOWER"] != drawn["UPPER"]
+
+    def test_the_name_listed_first_is_the_arrow_drawn_highest(self):
+        roster, drawn = self._roster_and_positions(self._two_lane_figure())
+        assert roster is not None, "expected a roster naming both hits"
+        listed = roster.split("<br>")
+        highest = max(drawn, key=lambda k: drawn[k])
+        assert listed[0].strip().endswith(highest), (
+            f"roster reads {listed} but {highest} is drawn on top"
+        )
+
+    def test_a_single_lane_row_centres_its_arrow_on_its_label(self):
+        """Row height also grows with the tick roster, so sizing the arrow
+        spread by height dropped a lone arrow below its own centred label."""
+        orf = ORF(0, 6000, "+", "M" * 2000)
+        hits = [hit(query=f"D{i}", start=i * 900, end=i * 900 + 300)
+                for i in range(6)]
+        data = make_data(consensus_length=8000, orfs=[orf], homology=hits,
+                         coverage=np.ones(8000, dtype=np.int64))
+        fig = report.build_figure(data, theme.LIGHT)
+        ys = {t.y[0] for t in fig.data
+              if "<b>D" in (getattr(t, "hovertemplate", None) or "")}
+        assert len(ys) == 1, "six non-overlapping hits belong on one lane"
+        centres = []
+        for name in fig.layout:
+            if name.startswith("yaxis") and fig.layout[name].ticktext:
+                for val, txt in zip(fig.layout[name].tickvals,
+                                    fig.layout[name].ticktext):
+                    if "D0" in txt:
+                        centres.append(val)
+        assert centres, "expected the roster tick for this row"
+        assert ys.pop() == pytest.approx(centres[0]), (
+            "the arrow must sit on the same y as the label naming it"
+        )
