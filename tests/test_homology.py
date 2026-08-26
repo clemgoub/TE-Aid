@@ -189,6 +189,100 @@ class TestCuratedTable:
         assert proteins._signature(True, None) != proteins._signature(False, None)
 
 
+class TestPartialBuildsAreNeverReused:
+    """Every reuse guard in ``proteins`` reads "exists" as "finished", and the
+    two slow producers are the ones users interrupt. A truncated file surviving
+    into the cache means every later run searches part of the library and says
+    nothing about it — which is how a real cache ended up holding 69 of 130
+    models while its stamp read ``pfam:130``.
+    """
+
+    def _serve(self, monkeypatch, fail_after: int | None = None):
+        calls = {"n": 0}
+
+        def fake_urlopen(request, timeout=None):
+            calls["n"] += 1
+            if fail_after is not None and calls["n"] > fail_after:
+                raise KeyboardInterrupt("user hit Ctrl-C mid-fetch")
+
+            class Response:
+                @staticmethod
+                def read():
+                    return b"HMMER3/f model\nNAME  fake\n//\n"
+
+            return Response()
+
+        monkeypatch.setattr(proteins.urllib.request, "urlopen", fake_urlopen)
+        monkeypatch.setattr(proteins.time, "sleep", lambda _: None)
+        return calls
+
+    def test_an_interrupted_fetch_leaves_nothing_to_reuse(self, tmp_path, monkeypatch):
+        self._serve(monkeypatch, fail_after=2)
+        dest = tmp_path / "pfam.hmm"
+        with pytest.raises(KeyboardInterrupt):
+            proteins.fetch_pfam_hmms(["PF1", "PF2", "PF3", "PF4"], dest, log=lambda *_: None)
+        assert not dest.exists(), "a truncated fetch must not look like a finished one"
+        assert not dest.with_name("pfam.hmm.partial").exists()
+        assert not dest.with_name("pfam.hmm.count").exists()
+
+    def test_a_finished_fetch_records_what_it_actually_got(self, tmp_path, monkeypatch):
+        self._serve(monkeypatch)
+        dest = tmp_path / "pfam.hmm"
+        got = proteins.fetch_pfam_hmms(["PF1", "PF2"], dest, log=lambda *_: None)
+        assert got == 2 and dest.exists()
+        assert dest.with_name("pfam.hmm.count").read_text().strip() == "2/2"
+
+    def test_unreachable_accessions_are_counted_not_assumed(self, tmp_path, monkeypatch):
+        """The sidecar carries the searchable count, so the stamp cannot claim
+        models the library does not hold."""
+        def fake_urlopen(request, timeout=None):
+            if "PF2" in request.full_url:
+                raise OSError("upstream gone")
+
+            class Response:
+                @staticmethod
+                def read():
+                    return b"HMMER3/f model\nNAME  fake\n//\n"
+
+            return Response()
+
+        monkeypatch.setattr(proteins.urllib.request, "urlopen", fake_urlopen)
+        monkeypatch.setattr(proteins.time, "sleep", lambda _: None)
+        dest = tmp_path / "pfam.hmm"
+        got = proteins.fetch_pfam_hmms(["PF1", "PF2", "PF3"], dest, log=lambda *_: None)
+        assert got == 2
+        assert dest.with_name("pfam.hmm.count").read_text().strip() == "2/3"
+
+    def test_a_failed_build_leaves_no_output(self, tmp_path):
+        dest = tmp_path / "tier.bhmm"
+
+        def produce(out):
+            out.write_bytes(b"half a model")
+            raise proteins.LibraryError("bathbuild died")
+
+        with pytest.raises(proteins.LibraryError):
+            proteins._build_atomic(dest, produce)
+        assert not dest.exists()
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_successful_build_lands_at_the_final_path(self, tmp_path):
+        dest = tmp_path / "tier.bhmm"
+        proteins._build_atomic(dest, lambda out: out.write_bytes(b"a whole model"))
+        assert dest.read_bytes() == b"a whole model"
+        assert not dest.with_name("tier.bhmm.partial").exists()
+
+    def test_a_finished_stamp_does_not_vouch_for_a_truncated_fetch(self, tmp_path):
+        """The completion stamp is written once at the end, so it survives a
+        build whose fetch was cut short. Reuse has to check tier 1 itself."""
+        (tmp_path / "pfam.hmm").write_text("HMMER3/f\nNAME  only-one\n//\n")
+        assert not proteins._tier1_trustworthy(tmp_path, deep=False)
+        (tmp_path / "pfam.hmm.count").write_text("130/130\n")
+        assert proteins._tier1_trustworthy(tmp_path, deep=False)
+
+    def test_a_deep_library_has_no_tier_one_to_vouch_for(self, tmp_path):
+        assert proteins._tier1_trustworthy(tmp_path, deep=True)
+
+
 class TestRepeatPepsClassMapping:
     """Tier-2 hits have no Pfam accession, so without this the four
     superfamilies tier 2 exists to cover could never reach the class check."""

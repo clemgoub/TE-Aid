@@ -34,15 +34,20 @@ The working brief for this rewrite, including every settled design decision, is
 | Package skeleton, CLI, annotation readers (`.out` / GFF3 / BED16) | ✅ done |
 | Panels 1–3 (copies vs divergence · coverage · self dot-plot) | ✅ done |
 | Interactive HTML sheet + static export, light and dark | ✅ done |
-| Panel 4 (structure: ORFs, TIR/LTR candidates) | ✅ done |
+| Panel 4 (structure: terminal-repeat candidates) | ✅ done |
 | `--stk` Stockholm seed input, `--pipeline`, `--seed-qc` | ✅ done |
 | Panel 5 (ORFs + protein homology, BATH) | ✅ done |
 | `#=GF TP` disagreement flag | ✅ done |
-| Whole-library runs, batch mode | ⬜ next after the benchmark |
-| Panel 7 (consensus vs library entries) | ⬜ needs an agreed input hook |
+| Benchmark (cost and relative sensitivity) | ⬜ **next** |
 | Nucleotide row (Dfam slice + nhmmer) | ⬜ |
-| Benchmark (cost and relative sensitivity) | ⬜ |
+| TSD detection, `#=GF TD` output | ⬜ |
 | `--blastn` legacy path | ⬜ |
+| Panel 7 (consensus vs library entries) | ⬜ needs an agreed input hook |
+| Whole-library runs, batch mode · CLI pass · GUI | ⬜ raised, not yet scoped |
+
+The remaining steps are numbered and tracked in
+[`docs/BRIEF_v2.md`](docs/BRIEF_v2.md) §6, which is the authority on order and
+on what "done" means for each; this table is a summary of it.
 
 The sheet keeps **v1's 2×2 quadrant layout** — copies vs divergence and coverage
 on top, the self dot-plot (square, 1:1) and structure below — so the whole family
@@ -73,26 +78,57 @@ Requires Python ≥ 3.10, plus external tools on `PATH`:
 Any may be absent: the sheet still renders, and the affected quadrant says what
 is missing rather than disappearing.
 
+> **The v1 files are still in this branch and are not used by v2.** `TE-Aid`,
+> `consensus2genome.R`, `blastndotplot.R`, `Run-c2g.R`, `reduce.cpp`,
+> `loop_TE-Aid.sh`, `extractfasta.sh`, `getlength.sh`, `dev/` and `Example/` are
+> the published shell+R implementation, kept here until the `v2.0` tag. In
+> particular **do not use `TE_AID.yml`** — it is v1's conda environment, pinning
+> R and EMBOSS with no Python and no BATH. Use the venv above.
+
 ### The protein library
 
-Panel 5 searches a library built and cached on first use under `~/.teaid/proteins/`,
-in three tiers:
+Panel 5 searches a library in three tiers:
 
 | Tier | What | Size |
 |---|---|---|
-| 1 | 130 curated Pfam TE domains ([`teaid/data/te_domains.tsv`](teaid/data/te_domains.tsv)) | 7 MB |
-| 2 | pHMMs for the superfamilies Pfam cannot model — piggyBac, Maverick, Crypton, Penelope | 209 MB |
+| 1 | 130 curated Pfam TE domains ([`teaid/data/te_domains.tsv`](teaid/data/te_domains.tsv)) | 7.3 MB |
+| 2 | pHMMs for the superfamilies Pfam cannot model — piggyBac, Maverick, Crypton, Penelope | 225 MB |
 | 3 | `blastp` of ORF peptides against all of RepeatPeps, as v1 did | 17 MB |
 
-Tiers 2 and 3 need `RepeatPeps.lib`, which ships inside RepeatMasker; point at it
-with `--repeatpeps` if it is somewhere unusual. `--deep` swaps tiers 1–2 for the
-whole of RepeatPeps as pHMMs, which is **~6.4 GB** — see
-[`docs/BRIEF_v2.md`](docs/BRIEF_v2.md) §5.1a for why that is not the default.
+**The first run builds it, and that takes a while:** roughly 130 sequential
+requests to InterPro plus two `bathbuild` passes — about **5 minutes and ~240 MB**,
+network permitting. Every later run reuses the cache and costs ~10 s per family.
+The build is safe to interrupt: it writes through temporary files and renames, so
+a cancelled build leaves nothing behind and simply restarts.
 
-A hit marked **✕** carries a frameshift or an in-frame stop: a domain that was
-once coding and has since been disrupted. Finding one is a different result from
-finding nothing, and an ORF-finder-then-align search cannot find it at all —
-which is the whole reason the search is BATH.
+The cache lives under `$TEAID_CACHE`, or `~/.teaid/proteins/` if that is unset,
+and is keyed by a hash of the domain table, so editing the table rebuilds rather
+than silently reusing a stale library. Three flags cover the awkward cases:
+
+- `--proteins FILE` — search a **prebuilt** library and skip the build entirely.
+  The route for offline or read-only machines. Note it also disables tier 3.
+- `--rebuild-proteins` — force a rebuild, if a cache is ever suspect.
+- `--repeatpeps FILE` — point at `RepeatPeps.lib` explicitly.
+
+Tiers 2 and 3 need **`RepeatPeps.lib`**, which is not separately downloadable: it
+ships inside a [RepeatMasker](https://www.repeatmasker.org/) installation, under
+`Libraries/`. TE-Aid looks in `~/`, `~/Downloads/RepeatMasker/Libraries/`,
+`/usr/local/RepeatMasker/Libraries/`, `/opt/RepeatMasker/Libraries/` and
+`/opt/homebrew/share/RepeatMasker/Libraries/`. **Without it you still get a
+useful protein row** from tier 1 alone — you lose only the four superfamilies
+Pfam cannot model, and the sheet says so.
+
+`--deep` searches the whole of RepeatPeps as pHMMs, which is **~6.4 GB**. It
+*replaces* tiers 1–2 rather than adding to them, and turns off tier 3 too, so a
+deep run has no Pfam accessions and panel 5 loses its order-derived colours. See
+[`docs/BRIEF_v2.md`](docs/BRIEF_v2.md) §5.1a for why it is not the default.
+
+A hit labelled **`2fs`** or **`1⊗`** carries that many frameshifts or in-frame
+stops: a domain that was once coding and has since been disrupted. Finding one is
+a different result from finding nothing, and an ORF-finder-then-align search
+cannot find it at all — which is the whole reason the search is BATH. A hollow
+arrow labelled **`=`** is a tier-3 `blastp` match to a *named element* rather
+than a domain model.
 
 Panel 5 draws only as many hits as it can show legibly, choosing the strongest
 within each tier. **Every hit found is listed in an expandable table under the
@@ -127,6 +163,11 @@ independently and so leaves them on different x-ranges. Each panel title carries
 a faded **?**: hover it for what the panel shows and the trap it exists to avoid.
 The markers are dropped from static exports, where a question mark would have no
 answer.
+
+The HTML sheet loads plotly.js from a CDN, so **viewing** it needs network access
+— it is written fine offline but renders blank without one. Static exports
+(`--static png|pdf|svg`) are self-contained and are the right choice for
+archiving or for an air-gapped machine.
 
 The annotation format is detected from the file's content, not its extension —
 `.bed` files converted from `.out` are common enough that extensions cannot be
@@ -197,24 +238,30 @@ produced the file.
 
 ### Exit codes
 
-Non-zero codes are distinct so a pipeline can tell why a family failed:
-
-| Code | stderr slug | Meaning |
-|---|---|---|
-| 0 | — | success |
-| 2 | `usage` | usage error |
-| 3 | `no-input` | an input file is missing or unreadable |
-| 4 | `no-family` | the family is not in the consensus library |
-| 5 | `no-evidence` | the family has nothing plottable |
-| 6 | `bad-seed` | the Stockholm file could not be parsed |
-
-Failures also print a stable slug on stderr, so a pipeline can branch on either:
+Non-zero codes are distinct so a pipeline can tell why a family failed, and the
+ones TE-Aid diagnoses itself also print a stable slug on stderr:
 
 ```
 teaid: error [no-family]: family 'x' not in families.fa
 ```
 
-Parse the slug, not the prose.
+| Code | stderr slug | Meaning |
+|---|---|---|
+| 0 | — | a sheet was written (possibly with panels dropped — see below) |
+| 1 | *none* | uncaught internal error; a traceback |
+| 2 | *none* | argument error, straight from `argparse` |
+| 3 | `no-input` | an input file is missing or unreadable |
+| 4 | `no-family` | the family is not in the consensus library |
+| 5 | `no-evidence` | the family has nothing plottable |
+| 6 | `bad-seed` | the Stockholm file could not be parsed |
+
+Parse the slug, not the prose — and note that codes 1 and 2 carry **no** slug, so
+branch on the code first. **Exit 0 does not mean a complete sheet:** a missing
+`blastn`, `getorf` or `bathsearch` drops the affected panel with a
+`teaid: warning: …` line and still exits 0. Callers that need a full sheet must
+check stderr for warnings.
+
+[`docs/INTEGRATION.md`](docs/INTEGRATION.md) §3 is the full contract.
 
 ## Building on TE-Aid
 
@@ -229,8 +276,34 @@ track upstream.
 
 ```bash
 pip install -e '.[dev]'
-pytest
+pytest                        # ~250 tests, about 30 seconds
 ```
+
+The suite never touches your real protein cache: `tests/conftest.py` redirects
+`TEAID_CACHE` to a temporary directory unless you set it yourself. To exercise
+the real library instead, point it at a prebuilt one:
+
+```bash
+TEAID_CACHE=dev-data/protein-cache pytest
+```
+
+A quick check that a tree is healthy rather than subtly broken — `teaid --version`
+should print `teaid 2.0.0.dev0`, and:
+
+```bash
+teaid --annot dev-data/GCA_963082875.1.fa.out \
+      --consensus dev-data/GCA_963082875.1-families.fa \
+      --family ltr-1_family-65 -o /tmp/check
+```
+
+should end with exactly:
+
+```
+ltr-1_family-65: 16 copies, 0 full length, consensus 2,092 bp, terminal-repeat candidates: 1 LTR-like, 1 TIR-like
+```
+
+If BATH is not on `PATH` you also get `warning: protein row skipped: …` and still
+exit 0 — that is the fail-soft contract working, not a broken tree.
 
 Test data used during development comes from the
 [GenomeArk systematic repeat annotations](https://genomeark.s3.amazonaws.com/index.html?prefix=downstream_analyses/repeats/systematic_annotations/RepeatModeler-v2.0.8/)

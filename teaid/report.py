@@ -144,9 +144,15 @@ _SUBLANE = 1.0
 _ROW_HALF = 0.42
 _ROW_GAP = 0.55
 
-# Reserved status colour, never used for a data series. Marks the one threshold
-# on the sheet that is a pass/fail requirement rather than a measurement, and it
-# always ships with the label naming the floor -- colour alone carries nothing.
+# Status colour for the one threshold on the sheet that is a pass/fail
+# requirement rather than a measurement. It always ships with the label naming
+# the floor, so colour alone carries nothing.
+#
+# It is the same hex as theme.orf_reverse (v1's reverse-strand ORF red), and on
+# a --seed-qc sheet both are visible: reverse ORFs in panel 5, the Dfam floor in
+# panel 6. Two meanings for one red. They never share a panel, and both readings
+# are labelled, so this is recorded rather than resolved -- see the open items
+# in docs/BRIEF_v2.md §6.
 STATUS_BELOW_FLOOR = "#d03b3b"
 
 # What each panel is, and the trap it exists to avoid. Shown on hovering the '?'
@@ -179,7 +185,7 @@ PANEL_HELP = {
         "same signature, so these are suggestions for you to judge, never calls."
     ),
     4: (
-        "Terminal-repeat candidates and ORFs, on the consensus axis.<br><br>"
+        "Terminal-repeat candidates, on the consensus axis.<br><br>"
         "Arrowheads carry orientation: a <b>direct</b> pair points the same way "
         "(→ … →), an <b>inverted</b> pair points inward (→ … ←).<br><br>"
         "Lanes are labelled by what was measured — direct or inverted — not by a "
@@ -187,16 +193,15 @@ PANEL_HELP = {
         "tandem unit, not a terminal repeat."
     ),
     5: (
-        "Protein homology from a frameshift-aware translated pHMM search "
-        "(BATH), one lane per hit, sharing panel 4's axis so a domain lines up "
-        "with the ORF it overlaps.<br><br>"
-        "A lane marked <b>✕</b> carries a frameshift or an in-frame stop. That "
-        "is not a failed hit — it is a domain that was once coding and has since "
-        "been disrupted, which an ORF-finder-then-align search cannot see at "
-        "all. Finding a broken domain and finding nothing are different results."
-        "<br><br>"
-        "Hits are evidence, never a classification. Where models compete over "
-        "the same stretch, the strongest is kept."
+        "ORFs as rectangles — <b>black outline forward, red reverse</b>, as v1 "
+        "drew them — with domain hits as arrows on the ORF sharing their "
+        "reading frame. A domain in another frame gets its own bare row.<br><br>"
+        "A label like <b>2fs</b> or <b>1⊗</b> counts frameshifts and in-frame "
+        "stops in that hit: a domain that was once coding and has decayed. "
+        "Finding a broken domain and finding nothing are different results, and "
+        "an ORF-finder-then-align search cannot tell them apart.<br><br>"
+        "A hollow arrow marked <b>=</b> is a named element from blastp, not a "
+        "domain model. Hits are evidence, never a classification."
     ),
     6: (
         "The seed alignment, in the shape of Dfam's own seed track.<br><br>"

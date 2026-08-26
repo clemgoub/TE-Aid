@@ -17,10 +17,12 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 
+# Deliberately small. Biopython was listed here and imported nowhere: the FASTA
+# and Stockholm parsing is a flat parse with no alphabet handling (see
+# teaid/sequences.py), so pulling in Biopython bought an install cost and no code.
 dependencies = [
     "numpy>=1.24",
     "plotly>=5.20",
-    "biopython>=1.81",
 ]
 
 [project.optional-dependencies]

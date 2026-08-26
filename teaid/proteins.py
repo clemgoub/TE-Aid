@@ -9,28 +9,45 @@ The tiering is a **cost** decision taken deliberately (see ``docs/BRIEF_v2.md``
   of RepeatPeps; it is already a non-redundant curated library.
 - But RepeatPeps cannot be dropped either, because **Pfam has no model at all**
   for piggyBac, Maverick/Polinton and Crypton, and only a generic GIY-YIG for
-  Penelope. Those four superfamilies are 827 RepeatPeps proteins.
+  Penelope. Those four superfamilies are 870 RepeatPeps proteins.
 
-So:
+So (sizes measured on the built cache, not estimates):
 
 ===== ============================================ ========= ===================
 Tier  What                                         Size      When
 ===== ============================================ ========= ===================
-1     curated Pfam TE domains as pHMMs             ~10 MB    always
-2     pHMMs for *only* the superfamilies Pfam       ~200 MB   always
+1     curated Pfam TE domains as pHMMs             7.3 MB    always
+2     pHMMs for *only* the superfamilies Pfam      225 MB    always
       cannot model
-3     ``blastp`` against the whole RepeatPeps       17 MB     fallback
+3     ``blastp`` against the whole RepeatPeps      17 MB     fallback
       FASTA, as v1 did
-deep  the whole of RepeatPeps as pHMMs             ~6.4 GB   opt-in
+deep  the whole of RepeatPeps as pHMMs            ~6.4 GB    opt-in
 ===== ============================================ ========= ===================
+
+Tiers 1+2 concatenate to the 233 MB ``default.bhmm`` that is actually searched.
+
+``--deep`` **replaces** tiers 1–2 rather than adding to them, and also turns off
+tier 3 (``cli.py``): a deep run therefore has no Pfam accessions, so panel 5
+loses the order-derived colours that ``tetypes`` takes from the curated table.
 
 **This is not a sensitivity claim.** Whether tiers 1–2 recover what ``--deep``
 would is what the §5.5 benchmark exists to measure; the framework is built first
 so the benchmark has something to run against.
 
-Everything is cached under ``~/.teaid/proteins/``, keyed by a signature of the
-inputs, so editing ``te_domains.tsv`` rebuilds rather than silently reusing a
-stale library.
+Everything is cached under ``~/.teaid/proteins/`` (or ``$TEAID_CACHE``), keyed by
+a signature of the inputs, so editing ``te_domains.tsv`` rebuilds rather than
+silently reusing a stale library.
+
+**Every reuse guard here reads "the file exists" as "the file is finished."**
+That is only safe because the two slow producers — the ~5-minute Pfam fetch and
+the minutes-long ``bathbuild`` — now write to a temporary path and rename, so an
+interrupted build leaves no output rather than a truncated one. Anything added
+here that writes an output directly is a silent-partial-library bug waiting to
+happen; route it through ``_build_atomic``.
+
+``build()`` takes no lock, so concurrent first-runs would race on the same
+cache directory. A batch caller must warm the cache with one serial run before
+fanning out.
 """
 
 from __future__ import annotations
@@ -149,30 +166,47 @@ def fetch_pfam_hmms(accessions: list[str], dest: Path, *, log=print) -> int:
     Fetched rather than vendored: the models are large, they are versioned
     upstream, and a stale copy in the repo would silently drift from the
     accession list beside it.
+
+    Written to a temporary file and renamed into place only once the whole run
+    is through, because the fetch is ~130 sequential requests over minutes and
+    is therefore *the* step users interrupt. Writing ``dest`` directly left a
+    truncated file that the ``not raw.exists()`` guard below then accepted as
+    complete, so every later run searched a fraction of the library and said
+    nothing. The rename is atomic, so ``dest`` either has every model this run
+    could reach or does not exist.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
+    partial = dest.with_name(dest.name + ".partial")
     written = 0
-    with dest.open("w") as out:
-        for index, acc in enumerate(accessions, start=1):
-            for attempt in range(4):
-                try:
-                    request = urllib.request.Request(
-                        _HMM_URL.format(acc), headers={"Accept": "*/*"}
-                    )
-                    raw = urllib.request.urlopen(request, timeout=60).read()
-                    break
-                except (urllib.error.URLError, TimeoutError, OSError):
-                    if attempt == 3:
-                        raw = b""
-                    time.sleep(1.5 * (attempt + 1))
-            if not raw:
-                log(f"  warning: could not fetch {acc}; skipping")
-                continue
-            text = gzip.decompress(raw).decode() if raw[:2] == b"\x1f\x8b" else raw.decode()
-            out.write(text if text.endswith("\n") else text + "\n")
-            written += 1
-            if index % 25 == 0:
-                log(f"  fetched {index}/{len(accessions)} Pfam models")
+    try:
+        with partial.open("w") as out:
+            for index, acc in enumerate(accessions, start=1):
+                for attempt in range(4):
+                    try:
+                        request = urllib.request.Request(
+                            _HMM_URL.format(acc), headers={"Accept": "*/*"}
+                        )
+                        raw = urllib.request.urlopen(request, timeout=60).read()
+                        break
+                    except (urllib.error.URLError, TimeoutError, OSError):
+                        if attempt == 3:
+                            raw = b""
+                        time.sleep(1.5 * (attempt + 1))
+                if not raw:
+                    log(f"  warning: could not fetch {acc}; skipping")
+                    continue
+                text = gzip.decompress(raw).decode() if raw[:2] == b"\x1f\x8b" else raw.decode()
+                out.write(text if text.endswith("\n") else text + "\n")
+                written += 1
+                if index % 25 == 0:
+                    log(f"  fetched {index}/{len(accessions)} Pfam models")
+        partial.replace(dest)
+    finally:
+        partial.unlink(missing_ok=True)
+    # Beside the models, so a resumed build can tell "130 requested, 130 got"
+    # from "130 requested, 69 got before the network went". Its absence is what
+    # marks a cache written by a version that could leave a truncated file.
+    dest.with_name(dest.name + ".count").write_text(f"{written}/{len(accessions)}\n")
     return written
 
 
@@ -211,7 +245,7 @@ def build(
     stamp = home / ("deep.done" if deep else "default.done")
     tiers: list[str] = []
 
-    if stamp.exists() and hmm.exists() and not force:
+    if stamp.exists() and hmm.exists() and not force and _tier1_trustworthy(home, deep):
         tiers = stamp.read_text().split(",")
         return Library(hmm=hmm, repeatpeps=peps, tiers=tuple(t for t in tiers if t))
 
@@ -227,22 +261,33 @@ def build(
             )
         log("building the deep library: all of RepeatPeps as pHMMs (~6.4 GB, slow)")
         deep_hmm = home / "repeatpeps.bhmm"
-        _run([_require("bathbuild"), str(deep_hmm), str(peps)])
+        _build_atomic(deep_hmm, lambda out: _run([_require("bathbuild"), str(out), str(peps)]))
         parts.append(deep_hmm)
         tiers.append("deep:RepeatPeps")
     else:
         # Tier 1 — the curated Pfam domains.
         accessions = [acc for acc, _ in curated_accessions()]
         raw = home / "pfam.hmm"
-        if not raw.exists() or force:
-            log(f"fetching {len(accessions)} Pfam models from InterPro")
+        # The sidecar, not the file, is what says the fetch finished: a cache
+        # left by a build that was interrupted mid-fetch has the models but no
+        # sidecar, and re-fetching it is exactly right.
+        counted = raw.with_name(raw.name + ".count")
+        if not (raw.exists() and counted.exists()) or force:
+            log(f"fetching {len(accessions)} Pfam models from InterPro "
+                f"(~5 minutes; interrupting it is safe, it restarts cleanly)")
             got = fetch_pfam_hmms(accessions, raw, log=log)
-            log(f"  {got}/{len(accessions)} models fetched")
+        else:
+            got = int(counted.read_text().split("/")[0])
+        if got < len(accessions):
+            log(f"  warning: tier 1 has {got} of {len(accessions)} Pfam models; "
+                f"the rest were unreachable. Re-run with --rebuild-proteins to retry")
         pfam = home / "pfam.bhmm"
         if not pfam.exists() or force:
-            _run([_require("bathconvert"), str(pfam), str(raw)])
+            _build_atomic(pfam, lambda out: _run([_require("bathconvert"), str(out), str(raw)]))
         parts.append(pfam)
-        tiers.append(f"pfam:{len(accessions)}")
+        # The count that is actually searchable, not the count requested — this
+        # string is the sheet's provenance line and a benchmark arm's label.
+        tiers.append(f"pfam:{got}")
 
         # Tier 2 — only the superfamilies Pfam cannot model.
         if peps is not None:
@@ -252,8 +297,10 @@ def build(
                 log(f"extracting {n} RepeatPeps proteins Pfam cannot model")
             blind = home / "pfam_blind.bhmm"
             if not blind.exists() or force:
-                log("building tier-2 pHMMs (~200 MB)")
-                _run([_require("bathbuild"), str(blind), str(subset)])
+                log("building tier-2 pHMMs (~200 MB, a few minutes)")
+                _build_atomic(
+                    blind, lambda out: _run([_require("bathbuild"), str(out), str(subset)])
+                )
             parts.append(blind)
             tiers.append("repeatpeps-gaps")
         else:
@@ -275,6 +322,38 @@ def build(
             part.unlink(missing_ok=True)
     stamp.write_text(",".join(tiers))
     return Library(hmm=hmm, repeatpeps=peps, tiers=tuple(tiers))
+
+
+def _tier1_trustworthy(home: Path, deep: bool) -> bool:
+    """Whether a finished-looking cache can be believed about tier 1.
+
+    The completion stamp is written once at the end, so it survives a build
+    whose *fetch* was truncated — a real cache reached ``pfam:130`` while
+    holding 69 models. The ``.count`` sidecar is written only by a fetch that
+    ran to the end, so its absence marks a cache from before that guarantee and
+    the honest move is to rebuild rather than to keep searching a fraction of
+    the library. A deep build has no tier 1 to check.
+    """
+    if deep:
+        return True
+    return (home / "pfam.hmm.count").exists()
+
+
+def _build_atomic(dest: Path, produce) -> None:
+    """Run ``produce(tmp)`` and move its output to ``dest`` only on success.
+
+    Same reasoning as the Pfam fetch: ``bathbuild`` over tier 2 takes minutes,
+    and every ``not X.exists()`` guard in this module reads presence as
+    completeness. Without the rename, one Ctrl-C leaves a half-written pHMM
+    file that is reused forever and silently searches part of the library.
+    """
+    tmp = dest.with_name(dest.name + ".partial")
+    tmp.unlink(missing_ok=True)
+    try:
+        produce(tmp)
+        tmp.replace(dest)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _run(command: list[str]) -> None:

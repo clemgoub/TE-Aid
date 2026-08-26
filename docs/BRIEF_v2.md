@@ -53,16 +53,16 @@ opinion. Do not add a "predicted class" line.
 | Standalone input priority | 1) `--annot` (RM `.out`/`.gff3`/BED16) · 2) `--blastn` (legacy) · 3) `--stk` |
 | Pipeline mode | `--pipeline` reverses to Stk-first |
 | Language / output | Python 3; interactive HTML sheet + static export |
-| Plotting stack | Whatever looks best — Plotly is the recommended default (polished out of the box, `kaleido` for static export). Prototype panel 1 in Plotly before committing. |
+| Plotting stack | Plotly, with `kaleido` for static export. The HTML sheet loads plotly.js from a CDN, so it needs network to *view*; static exports are self-contained |
 | v1 compatibility | **Not** maintained in v2. `v1-legacy` cut from `main` (done); README points at it. |
 | EMBOSS | **Kept** — `getorf` for the ORF track (§5.3). `dotmatcher` retired (self-blastn dot plot replaces it, §5.2) |
-| Seed-QC panels | Flag-gated `--seed-qc`; off by default. Appended as a row *below* the 2×2 grid, so the default sheet is byte-identical whether or not the input was a seed |
+| Seed-QC panels | Flag-gated `--seed-qc`; off by default. Appended as a row *below* the 2×2 grid, so the default sheet has the **same layout** whatever the input was — only the provenance line under the title differs |
 | Classification | Never asserted (§1) |
-| Protein library | **Three tiers (decided 2026-08-25, see §5.1a).** Default = curated Pfam pHMMs ∪ pHMMs for only the superfamilies Pfam cannot model (~200 MB). Fallback = `blastp` vs full RepeatPeps, as v1. `--deep` = full RepeatPeps as single-sequence pHMMs (~6.4 GB), built on demand and cached. The original "Pfam ∪ all of RepeatPeps as pHMMs" is **superseded**: it is a 6.4 GB model file |
+| Protein library | **Three tiers (decided 2026-08-25, see §5.1a).** Default = curated Pfam pHMMs ∪ pHMMs for only the superfamilies Pfam cannot model — 233 MB searched. Fallback = `blastp` vs full RepeatPeps, as v1. `--deep` = full RepeatPeps as single-sequence pHMMs (~6.4 GB), built on demand and cached; it **replaces** tiers 1–2 and turns off tier 3. The original "Pfam ∪ all of RepeatPeps as pHMMs" is **superseded**: it is a 6.4 GB model file |
 | Nucleotide library | Dfam FamDB only requirement; user-supplied merged famdb works via the same path |
-| Benchmark set | ~20 goby families stratified by order **plus** a Dfam-curated subset for recall |
+| Benchmark set | ~20 families from `GCA_963082875.1` (the dev-data goby) stratified by order, **plus** a Dfam-curated subset for recall — see §5.5 |
 | Sheet layout | **v1's 2×2 quadrant grid is load-bearing and must be preserved** — the whole sheet readable at a glance, with the dot-plot at a true 1:1 aspect. This is a large part of why v1 is used. Do not replace it with a vertical stack. |
-| Panel 4 | Split into stacked sub-panels *within the bottom-right quadrant*: structure ∥ homology evidence |
+| Panel 4 / 5 | The bottom-right quadrant splits into stacked sub-panels (0.42 / 0.58) **by provenance**: panel 4 is what the *dot-plot* implies (terminal-repeat candidates only), panel 5 is what *sequence annotation* implies (ORFs with their domain hits). Revised 2026-08-25 — ORFs moved out of panel 4 |
 | Package naming | Importable `teaid`; CLI entry point `teaid` **plus** a `TE-Aid` alias that prints a one-line notice pointing at the new name |
 | Third-party branches (`Jiangzhao`, `simonorozcoarias`) | Left alone — independent active projects |
 | RepeatAfterMe | Out of scope |
@@ -106,10 +106,11 @@ divergence as zero** — leave the point out and say so in the axis label.
 +---------------------------+---------------------------+
 | 1  copies vs divergence   | 2  consensus coverage     |
 +---------------------------+---------------------------+
-|                           | 4  structure              |
+|                           | 4  terminal repeats  0.42 |
 | 3  self dot-plot (square) +---------------------------+
-|                           | 5  homology evidence      |
+|                           | 5  ORFs + domains    0.58 |
 +---------------------------+---------------------------+
+        what the dot-plot says  |  what annotation says
 ```
 
 1. Genomic hits vs divergence (from the annotation / seed / blastn).
@@ -157,18 +158,12 @@ divergence as zero** — leave the point out and say so in the axis label.
    curators are used to; colour is never the only channel, since every row names
    its contents in the tick gutter. Also: best nucleotide hits (§5.1), pending.
 
-   **Housing tests reading frame, not merely coordinate overlap.** This is
-   load-bearing. Overlap alone will occasionally seat a frameshifted domain
-   inside a stop-to-stop block belonging to a *different* register, and the
-   panel then asserts "intact coding domain" for the exact finding the sheet
-   exists to surface. It costs one arithmetic line and it makes "a notched bar
-   inside a rectangle" impossible to draw.
-
-   Two consequences of `getorf -find 0` (translate between stops) that the
-   layout leans on, and which a different `-find` would silently invalidate:
-   two domains in one frame cannot overlap, and **an ORF rectangle's edge is the
-   exact base where the frame closes** — so a domain that opens in frame and
-   dies is drawn running out past that edge, at coordinate resolution.
+   Two rules the layout depends on, both argued in full where the code lives:
+   **a hit is housed by reading frame, not by coordinate overlap**
+   (`annotation_rows.py`), and **`getorf` keeps its default `-find 0`**
+   (`orfs.py`). Either one changed silently invalidates the panel — the first by
+   letting it assert "intact coding domain" for a frameshifted hit, the second
+   by making an ORF rectangle's edge stop meaning "where the frame closes".
 
    The silhouette is the deliverable: a compact block of framed rows above a run
    of bare, notched ones is a decayed element, and no ORF-finder-then-align
@@ -177,8 +172,9 @@ divergence as zero** — leave the point out and say so in the axis label.
 
 Panels 4 and 5 are the split of v1's single crowded structure quadrant. They
 occupy that quadrant stacked, sharing one consensus x-axis so features line up
-vertically; the quadrant grid itself is not disturbed. Until there is homology
-evidence to draw, panel 4 takes the whole quadrant rather than leaving a hole.
+vertically; the quadrant grid itself is not disturbed. The quadrant splits as
+soon as there is **either** an ORF track **or** homology evidence to draw; with
+neither, panel 4 takes the whole quadrant rather than leaving a hole.
 
 **The grid is the product, not a styling choice.** Everything visible at once,
 in fixed positions, is how curators read these sheets; a vertical stack that
@@ -187,10 +183,21 @@ the square dot-plot.
 
 **`--seed-qc` adds:**
 
-6. **Seed depth** — per-consensus-position alignment depth from the Stockholm
-   seed, with the **Dfam ≥3-sequences floor drawn as a horizontal rule**.
-   Curators need to see instantly whether the seed meets the requirement and
-   where it is thin.
+6. **Seed depth**, shaped after [Dfam's own seed-alignment track](https://dfam.org/family/DF000001423/browser)
+   (decided 2026-08-25): a coverage band split into sequences that **match** the
+   consensus and sequences that **differ**, drawn over a pileup of the individual
+   seed sequences as their aligned runs, so an internal deletion shows as a gap
+   in a lane rather than being smoothed away. The **Dfam ≥3-sequences floor** is a
+   horizontal rule across the band, and stretches falling short are shaded.
+
+   Splitting by agreement is the point: a column with 43 aligned sequences of
+   which 25 disagree is not 43 sequences of support, and a single depth curve
+   hides that. Both series are counts of sequences, so the panel has **one**
+   y-axis (`sequences · pileup`), not two.
+
+   Two silent caps, because an unbounded pileup stops being readable:
+   `MAX_PILEUP_LANES = 40` sequences drawn, and `MAX_HOMOLOGY_LANES = 14` for
+   panel 5's hits. Both are noted on the sheet rather than applied invisibly.
 
    **Panel 6 is not panel 2 restated, and the difference is load-bearing.**
    Panel 2 counts copies that *span* a position — everything between a copy's
@@ -203,9 +210,7 @@ the square dot-plot.
    This is not a corner case: across the 409 GenomeArk seeds for
    `GCA_963082875.1`, **362 differ**, by as many as 37 sequences at a single
    position (`rnd-1_family-137` position 179: 44 copies span it, 21 of them
-   have a deletion there, so the depth is 23). Panel 6 therefore draws the
-   spanning curve faintly behind the base-level one, and the axes are named for
-   different quantities (`copies spanning` vs `sequences with a base`).
+   have a deletion there, so the depth is 23).
 
    **Consequence for anyone gating seeds on "depth ≥ 3".** Decide which quantity
    you mean. A gate computed from consensus coordinates measures *spanning* and
@@ -263,22 +268,22 @@ single-sequence pHMMs — does not survive contact with the sizes:
   non-redundant curated library, so the size is intrinsic.
 - **But RepeatPeps cannot simply be dropped**, because Pfam has *no model at
   all* for **piggyBac**, **Maverick/Polinton** and **Crypton**, and only a
-  generic GIY-YIG for **Penelope**. RepeatPeps covers those four with 827
+  generic GIY-YIG for **Penelope**. RepeatPeps covers those four with 870
   proteins. The two halves are genuinely complementary, not redundant.
 
-So the library is **three tiers**:
+So the library is **three tiers**, with `--deep` as an opt-in fourth. The
+measured sizes and the mechanics live in **`teaid/proteins.py`'s docstring**,
+beside the code that builds them; what belongs here is only the decision:
 
-| Tier | What | Size | When |
-|---|---|---|---|
-| 1 | curated Pfam TE domains (§5.4) as pHMMs, searched with `bathsearch --fs` | small | always |
-| 2 | pHMMs for RepeatPeps proteins of the superfamilies Pfam cannot model | **~200 MB** | always; this is what keeps piggyBac/Maverick/Crypton/Penelope covered |
-| 3 | `blastp` vs the *whole* RepeatPeps FASTA, as v1 did | 17 MB | fallback, for named-family evidence outside tiers 1–2 |
-| — | `--deep`: the whole of RepeatPeps as single-sequence pHMMs | ~6.4 GB | opt-in only, built on demand and cached |
-
-Tiers 1–2 get frameshift-aware search where the conserved catalytic domains
-are; tier 3 keeps v1's named-family hits at negligible cost; `--deep` exists for
-anyone who wants frameshift-aware search across all of RepeatPeps and has the
-disk for it.
+- **Tiers 1–2 are always searched**, frameshift-aware, and cover the conserved
+  catalytic domains — the curated Pfam set plus pHMMs for *only* the four
+  superfamilies Pfam cannot model. 233 MB, ~10 s per family.
+- **Tier 3 is `blastp` vs the whole RepeatPeps FASTA, as v1 did**, kept because
+  it answers a different question — *which named element does this resemble*,
+  rather than *which domain does it encode* — at negligible cost.
+- **`--deep` replaces tiers 1–2** with all of RepeatPeps as single-sequence
+  pHMMs (~6.4 GB), and turns tier 3 off as well. For anyone who wants
+  frameshift-aware search across everything and has the disk.
 
 **What is deliberately *not* claimed here.** This is a cost decision, not a
 sensitivity one. Whether tiers 1–2 actually recover what tier 3 or `--deep`
@@ -381,6 +386,43 @@ for review** — he specifically wants eyes on the CL0219 host-enzyme
 exclusions. Keep it versioned in the repo; it is small and reviewable, and it
 is what makes the protein panel defensible.
 
+**The shipped TSV is generated — do not hand-edit it.** The chain lives in
+`tools/`, run in order:
+
+| Script | Does |
+|---|---|
+| `fetch_pfam.py` | pulls candidate domains and clan memberships from InterPro |
+| `verify_pfam.py` | checks each accession resolves and reports clan sizes |
+| `build_te_domains.py` | applies the inclusion/exclusion rules → `teaid/data/te_domains.tsv` |
+| `build_review_page.py` | renders the maintainer's review artifact |
+
+**The exclusions awaiting review live in `build_te_domains.py`**, as
+`EXCLUDED` (29 accessions, each with a reason) and `EXCLUDED_CATEGORIES` (3) —
+not in the shipped TSV, which records only what survived. Review the script,
+not just the table.
+
+`te_order` is a **closed vocabulary with two hard-coded consumers that must be
+edited together**: `classcheck._ORDER_CLASS` (Class I/II — drives the `#=GF TP`
+disagreement flag) and `tetypes._ORDER_TO_CLASS` (v1's colours). A value absent
+from either fails *silently*: it simply never votes, or renders Unknown grey.
+
+The 17 values currently in use — `Class I`, `DIRS/Crypton`, `LINE`, `LTR`,
+`LTR/ERV`, `PLE`, `RC`, `RC/Helitron`, `TIR`, `TIR/CACTA`, `TIR/hAT`,
+`TIR/KDZ`, `TIR/Mutator`, `TIR/P-element`, `TIR/PIF-Harbinger`,
+`TIR/Tc1-mariner`, `domesticated` — are covered, with **three deliberate gaps**:
+
+| Value | Class vote | Colour | Why |
+|---|---|---|---|
+| `Class I` | I | Unknown grey | implies a class but no single order — an RT is shared by every Class I order |
+| `DIRS/Crypton` | *none* | DIRS | the class assignment is contested; the colour is safe, the vote is not |
+| `domesticated` | *none* | Unknown grey | a host-domesticated domain is evidence of neither |
+
+Adding a value means adding it to both dicts **and** deciding which of these
+three shapes it takes. Do not let it default.
+
+Editing the TSV changes `proteins._signature()` and therefore **invalidates the
+whole cached protein library**, forcing a ~5-minute rebuild on the next run.
+
 ### 5.5 Benchmark: cost and relative sensitivity
 
 There is no ground-truth TE annotation for the test genome, so the benchmark
@@ -400,7 +442,37 @@ measures cost and *relative* sensitivity, not accuracy:
 
 Arms: v1 (`getorf` + `blastp` vs RepeatPeps) · `hmmscan` vs the curated Pfam
 set · **BATH `--fs`** vs (Pfam set + RepeatPeps pHMMs) · `nhmmer` vs a Dfam
-slice.
+slice · **`--deep`** vs all of RepeatPeps as pHMMs.
+
+The `--deep` arm is what makes §5.1a's claim testable — without it the benchmark
+cannot say whether tiers 1–2 recover what `--deep` would, which is the specific
+thing §5.1a refuses to assert. Budget ~6.4 GB and a long one-off build for it;
+run it last, and if it is dropped, record here that §5.1a's claim stays open.
+
+**What is still undecided, and must be fixed before the first arm runs.** These
+are the things that make results comparable; deciding them mid-run invalidates
+everything already measured.
+
+- **Family set.** ~20 families from `GCA_963082875.1` (the goby already in
+  `dev-data/`), stratified by the `.out` class label so each of LTR / LINE /
+  SINE / TIR / RC / Unknown is represented. Write the chosen list into this
+  section — a set re-derived per run is not a benchmark.
+- **Dfam curated subset.** Name the release, the partition, the family count and
+  the local path. "Dfam curated families" is not yet a reproducible input.
+- **One E-value across all arms.** The defaults differ — `homology.search` uses
+  `1e-3`, `search_repeatpeps` uses `1e-5` — so an arm comparison at defaults
+  measures the thresholds, not the methods.
+- **What counts as "the same domain" found by two arms.** Reuse
+  `best_per_region`'s 0.5 reciprocal-overlap rule rather than inventing a second
+  one.
+- **A pre-registered pass/fail rule, written before the numbers exist**, plus
+  where the verdict is recorded (here, in §5.1a, or both).
+
+**Two invocation traps.** `--proteins FILE` constructs `Library(repeatpeps=None)`
+and so **silently disables tier 3** — an arm meant to include it must not use
+that flag. And no CLI flag exposes `homology.search(frameshift_aware=…)` or
+`cpus`, so the `--fs` on/off comparison and any threading have to drive the
+Python API directly, not the CLI.
 
 **One cost is already measured:** ~10 s per family for `bathsearch` against the
 233 MB tier-1+2 library, dominated by loading the models rather than by the
@@ -436,6 +508,12 @@ This section is status and direction only.
 - **Cosmetic, panel 5.** Tick rosters still crowd where two long rows abut, and
   a row's roster lists names without mapping them to individual bars within the
   row.
+- **Cosmetic, one red means two things.** `report.STATUS_BELOW_FLOOR` (the Dfam
+  floor warning, panel 6) is the same `#d03b3b` as `theme.orf_reverse` (v1's
+  reverse-strand ORF outline, panel 5). On a `--seed-qc` sheet both are visible.
+  They never share a panel and both are labelled, so nothing is unreadable — but
+  a reserved status colour that is also a routine data colour is a smell. Either
+  move the status red, or accept it and delete the "reserved" framing.
 - **Judgement call, panel 5 colour.** `RVT_1` and other order-agnostic domains
   render Unknown grey, because a bare reverse transcriptase is shared by every
   Class I order and colouring it LTR would assert what the hit cannot support.
@@ -459,12 +537,32 @@ This section is status and direction only.
   invocation. A 400-family library at ~10 s of `bathsearch` each is over an
   hour serially, and the model load dominates that (§5.5). Wants: a batch mode,
   a worker pool, and probably one library load reused across families.
+
+  **Everything a batch mode must hoist out of the per-family path** — all of it
+  is currently repeated for every single family:
+
+  | Repeated work | Where |
+  |---|---|
+  | full re-parse of the `.fa.out` (147k records) | `cli.py` |
+  | `stockholm.read()` reads *all* 409 records to return one | `readers/stockholm.py` |
+  | `makeblastdb` over RepeatPeps into a fresh temp dir | `homology.py` |
+  | cold protein-library build, unlocked and racy | `proteins.build()` |
+
+  Two constraints on the obvious shortcuts. **One multi-family `bathsearch`
+  cannot be split back apart**: `ProteinHit` drops tblout's `target` column, so
+  there is nothing to group hits by — adding that field is a prerequisite. And
+  **`proteins.build()` takes no lock**, so a pool must warm the cache with one
+  serial run before fanning out. `homology.search(cpus=)` exists but no flag
+  reaches it.
 - **CLI update.** The flag surface has grown organically across steps 2–6 and
   deserves a pass: grouping, defaults, and a `--version`-style summary of which
   external tools were found.
-- **GUI.** Unscoped. Note the sheet is already a self-contained HTML page, so
-  the smallest useful version may be an index over many sheets rather than a
-  new application.
+- **GUI.** Unscoped. The sheet is already a standalone HTML page, so the
+  smallest useful version may be an index over many sheets rather than a new
+  application. One correction to that idea: the sheet is **not** self-contained
+  — `report.py` writes `include_plotlyjs="cdn"`, so it renders blank without
+  network. A GUI meant for offline or air-gapped use has to switch that to an
+  inlined bundle (~3 MB per sheet) or serve one shared copy.
 
 ## 7. Scope, input routes, and downstream integrators
 
@@ -482,21 +580,16 @@ belongs in the fork.
 
 ### The four input routes
 
-| Route | Input | What it gives |
-|---|---|---|
-| **a** | `--annot` — RepeatMasker `.out`, GFF3, or BED16, plus `--consensus` | copies, loci, divergence and consensus coordinates, read not re-derived |
-| **b** | `--blastn` — the v1 rediscovery path (not yet implemented) | copies found by searching a genome, with v1's leakiness |
-| **c** | `--stk` — a Stockholm seed, e.g. raw from a RepeatModeler2 run | copies, loci, the alignment *and* the consensus, all from one file |
-| **d** | `--annot` **+** `--stk` together | the family as it exists in the genome (panels 1–2) against the copies the seed actually used (panel 6) |
+**The routes and their contract are specified in `docs/INTEGRATION.md` §2** —
+that file is the one callers read, so it is the one that stays right. What
+belongs here is only the design intent behind them:
 
-Route **d** is the reason `--stk` and `--annot` are **not alternatives**. The
-seed says which copies were *chosen*; the annotation says which *exist*. Given
-both, the seed stays primary — it supplies the consensus and the seed-QC panels
-— while panels 1–2 show every annotated copy, and the comparison ("the seed used
-44 of 515 copies") is the QC signal. A family absent from the annotation warns
-and falls back to the seed's own sequences rather than failing. In practice
-route **d** is available whenever a RepeatModeler2 run supplies both its `.out`
-and its `.stk`, which is the common case.
+Routes `--annot` (a), `--blastn` (b, unimplemented), `--stk` (c) and both
+together (d) are **designed to compose, not to compete**. Route **d** is the
+point: the seed says which copies were *chosen*, the annotation says which
+*exist*, and the ratio between them ("the seed used 44 of 515 copies") is a QC
+signal neither input produces alone. It is available whenever a RepeatModeler2
+run supplies both its `.out` and its `.stk`, which is the common case.
 
 Two seed use cases, both first-class, and they differ in what is *trustworthy*
 rather than in what is drawn:
@@ -514,17 +607,12 @@ that file first if you are building a tool that calls or forks TE-Aid.
 
 - **Invocation** is per family. `--pipeline` reverses the standalone input
   priority to seed-first, for callers whose primary artefact is a seed.
-- **Fail-soft**: every failure gives a distinct exit code *and* a stable stderr
-  slug (`teaid: error [bad-seed]: …`). A caller that must keep going on a bad
-  packet can branch on either. TE-Aid does not validate seeds beyond what it
-  needs to draw them; it fails informatively on a malformed one.
-- **Stockholm identifiers** are Smitten, and both shapes are accepted:
-  `GCA_951799975.1:OX637595.1:15848-16090_+` (assembly, sequence, span, strand)
-  and the shorter `OY720097.1:14692470-14693460_+`. Coordinates are **1-based
-  fully closed** and are converted to 0-based half-open on read; do not mix them
-  with BED16's convention. A producer with an assembly accession to hand should
-  emit the 4-part form, but the 2-part form is what RepeatModeler writes and
-  what all 482 GenomeArk seed sets use.
+- **Fail-soft**: failures TE-Aid diagnoses carry a distinct exit code *and* a
+  stable stderr slug. Argparse-level errors and uncaught exceptions do not —
+  `INTEGRATION.md` §3 has the full table and the exit-0-is-not-complete caveat.
+  TE-Aid does not validate seeds beyond what it needs to draw them.
+- **Stockholm identifiers** are Smitten, in either the 4-part or 2-part shape,
+  1-based fully closed on the way in. Specified in `INTEGRATION.md` §4.
 - **Dfam seed conventions**: `.` as the gap character, `#=GF` fields (`DE`, `AU`,
   `TP`, `OC`, `SQ`) and a `#=GC RF` consensus line. Spec: `Dfam_Seeds.md` in
   `https://github.com/Dfam-consortium/dfam-curator`, which also ships `stk lint`
@@ -542,13 +630,10 @@ consensus, and emits Stockholm seeds for a curator to approve or reject, with
 TE-Aid as the curator-facing QC step. **It will fork this repo.** Recorded here
 only so its findings are not lost, and explicitly *not* as design constraints:
 
-- Its candidate gate **G2** is "MSA depth ≥3 over ≥99% of the consensus",
-  computed as per-position copy depth from *consensus coordinates* — the
-  **spanning** quantity of §4 panel 2. Dfam's actual requirement concerns bases
-  at a column, the base-level quantity of panel 6. **G2 is therefore
-  optimistic**: a family can pass it and still have fewer than three real bases
-  inside common deletions. Any seed producer using a span-based depth gate has
-  the same issue.
+- Its candidate gate **G2** ("MSA depth ≥3 over ≥99% of the consensus") is
+  computed from consensus coordinates, so it measures *spanning* and is
+  therefore optimistic — the trap set out under §4 panel 6. Recorded here as a
+  real instance of it, not as a second explanation.
 - Its deposition unit is a *cross-tool cluster*, not one program's family, so
   "contributing library entries" for panel 7 means every cluster member's
   sequence. That shape is a property of that pipeline, and panel 7's input hook
@@ -572,22 +657,31 @@ Not in git, so not obvious from a clean checkout:
   `https://genomeark.s3.amazonaws.com/downstream_analyses/repeats/systematic_annotations/RepeatModeler-v2.0.8/`
   under `RepeatMasker/`, `fasta/` and `stk/`. 482 assemblies are available, each
   with all three files; this one is the smallest complete triple.
-- **`getorf` is MacPorts, at `/opt/local/bin`**, which is not on the default
-  PATH here — `export PATH=$PATH:/opt/local/bin` before any run that draws the
-  ORF track, or the panel degrades to "no ORFs" without saying why.
+- **`getorf` is MacPorts, at `/opt/local/bin/getorf`**, and that directory *is*
+  on this machine's PATH already — no export needed. If it ever is missing,
+  `orfs.py` says so explicitly rather than silently dropping the track.
 - **BATH 2.0** is built at `~/Documents/BATH/opt/bin/` (`bathsearch`,
-  `bathbuild`, `bathconvert`, `bathfetch`, `bathstat`); add it to `PATH` for the
-  protein row. Two traps if it is ever rebuilt: `easel` must be cloned
-  separately and checked out on its own `BATH` branch, and `--prefix` must not
-  be `…/BATH/install`, which collides with the repo's own `INSTALL` file on a
-  case-insensitive filesystem.
+  `bathbuild`, `bathconvert`, `bathfetch`, `bathstat`) and is **not** on the
+  default PATH — `export PATH=$PATH:$HOME/Documents/BATH/opt/bin` before any run
+  that should draw the protein row, or it degrades to a warning and exit 0.
+  Two traps if it is ever rebuilt: `easel` must be cloned separately and checked
+  out on its own `BATH` branch, and `--prefix` must not be `…/BATH/install`,
+  which collides with the repo's own `INSTALL` file on a case-insensitive
+  filesystem.
 - **The protein library** caches under `$TEAID_CACHE` (or `~/.teaid/proteins`).
-  A prebuilt tier-1+2 library sits in `dev-data/protein-cache/` — 233 MB,
-  gitignored; export `TEAID_CACHE` to that path to avoid a rebuild, which
-  re-fetches 130 Pfam models from InterPro.
-- **`RepeatPeps.lib`** is at `~/Downloads/RepeatMasker/Libraries/RepeatPeps.lib`
-  and is auto-discovered; it ships inside RepeatMasker and is no longer in that
-  project's git.
+  A prebuilt, verified-complete tier-1+2 library sits in
+  `dev-data/protein-cache/` (gitignored; 233 MB searched, 473 MB on disk because
+  it also keeps the rebuildable tier parts). **`export TEAID_CACHE=dev-data/protein-cache`**
+  to avoid a rebuild, which re-fetches 130 Pfam models from InterPro and takes
+  ~5 minutes. The test suite isolates itself (`tests/conftest.py`), so plain
+  `pytest` never touches either cache.
+- **`RepeatPeps.lib`** is auto-discovered. Discovery returns the **first** of
+  `~/RepeatPeps.lib`, `~/Downloads/RepeatMasker/Libraries/RepeatPeps.lib`,
+  `/usr/local/…`, `/opt/…`, `/opt/homebrew/…` — on this machine both of the
+  first two exist and `~/RepeatPeps.lib` wins. It ships inside RepeatMasker and
+  is no longer in that project's git. `proteins._signature()` keys on
+  `name:size`, so any same-named copy of the same file keeps a prebuilt cache
+  valid.
 - **Verifying the HTML in a browser**: `file://` URLs are blocked by the Chrome
   tooling, so serve the directory (`python3 -m http.server`) and open
   `http://localhost:…`. Worth doing for anything interactive — two bugs got
@@ -610,15 +704,12 @@ Useful families in the dev data, for eyeballing a change:
 
 ## 8. Ask the maintainer before assuming
 
-1. ~~Path to the VGP repeat-hub repo~~ **Answered:** `~/Documents/VGP_TEbed`
-   (`docs/INPUT_FORMAT.md` confirmed present).
-2. ~~Whether a BATH install already exists locally~~ **Answered by inspection:**
-   no `bathsearch`/`bathbuild` on this machine, so step 6 must include building
-   BATH from source. Present and usable: `blastn`/`blastp`/`makeblastdb`
-   (Homebrew), EMBOSS `getorf` and `dotmatcher` (MacPorts, `/opt/local/bin`),
-   `nhmmer` and `hmmscan` (Homebrew). Python 3.13.7.
-3. ~~Test genome + consensus sequences for development~~ **Answered:** use
-   RepeatMasker `.out` + `.fasta` libraries from GenomeArk systematic
-   annotations:
-   `https://genomeark.s3.amazonaws.com/index.html?prefix=downstream_analyses/repeats/systematic_annotations/RepeatModeler-v2.0.8/`
-4. `te_domains.tsv` review, once drafted (§5.4). **Open.**
+Everything else raised here has been answered and folded into §7b (tool
+inventory and paths) and §5.4 (test data). One item is still open:
+
+- **`te_domains.tsv` review** — 130 domains, plus the 29 explicit exclusions and
+  3 excluded categories that live in `tools/build_te_domains.py` rather than in
+  the shipped table (§5.4). The maintainer specifically wants eyes on the CL0219
+  host-enzyme exclusions. This is the same item as the last bullet of §6's open
+  list; it is recorded twice on purpose, because it is the only thing blocking
+  on a human rather than on code.
