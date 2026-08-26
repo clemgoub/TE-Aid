@@ -453,10 +453,26 @@ run it last, and if it is dropped, record here that §5.1a's claim stays open.
 are the things that make results comparable; deciding them mid-run invalidates
 everything already measured.
 
-- **Family set.** ~20 families from `GCA_963082875.1` (the goby already in
-  `dev-data/`), stratified by the `.out` class label so each of LTR / LINE /
-  SINE / TIR / RC / Unknown is represented. Write the chosen list into this
-  section — a set re-derived per run is not a benchmark.
+- **Family set.** ~~Write the chosen list into this section~~ **Done differently
+  (2026-08-25):** `tools/select_families.py` is a deterministic stratified
+  selector over any RM2 library — three passes (documented edge cases → one per
+  distinct class label → size-band fill), no randomness, so the list regenerates
+  from the two input files instead of being pasted around.
+
+  ```
+  tools/select_families.py --annot dev-data/GCA_963082875.1.fa.out \
+      --consensus dev-data/GCA_963082875.1-families.fa --count 50
+  ```
+
+  On the dev goby that yields 50 families over all 8 TE classes, 267 bp–11.6 kb,
+  12–10,851 copies.
+
+  **`--count` is a floor, not a cap.** The class-label coverage pass is never
+  trimmed to fit, and on this library it alone produces **40** families — so
+  `--count 20` also returns 40. A 20-family benchmark set therefore cannot come
+  from lowering `--count`; either accept 40, or decide explicitly which class
+  labels the benchmark may skip. **Pin the count actually emitted and the library
+  it ran against** — the selector is reproducible only against the same inputs.
 - **Dfam curated subset.** Name the release, the partition, the family count and
   the local path. "Dfam curated families" is not yet a reproducible input.
 - **One E-value across all arms.** The defaults differ — `homology.search` uses
@@ -687,6 +703,15 @@ Not in git, so not obvious from a clean checkout:
   `http://localhost:…`. Worth doing for anything interactive — two bugs got
   through every static check and were caught only this way (a reset button that
   silently did nothing, and hover tooltips rendering a page wide).
+
+- **`dev-data/examples/`** (gitignored, 28 MB) holds 50 rendered sheets — HTML
+  and PNG — over the stratified sample, plus `index.html`, a contact sheet
+  grouped by TE class. Open that file directly to review the design across types
+  in one scroll. Regenerate with `tools/select_families.py` →
+  `teaid … --static png` per family → `tools/build_example_index.py`; the
+  `selection.tsv` and `results.tsv` beside the sheets are the two inputs the
+  index needs. Rendering all 50 costs ~24 min of CPU, ~5 min wall at 5-way
+  parallelism, and none of it is in the test suite.
 
 Useful families in the dev data, for eyeballing a change:
 
