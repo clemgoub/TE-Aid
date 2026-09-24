@@ -179,8 +179,12 @@ curated domain table. Three consequences for anyone calling TE-Aid:
 
 - **Point `TEAID_CACHE` at shared, writable storage** so every invocation reuses
   one library rather than each user building their own.
-- **`build()` takes no lock.** Concurrent first-runs race on the same directory.
-  A batch caller must warm the cache with **one serial run** before fanning out.
+- **`build()` locks while it builds.** Concurrent first runs queue on an
+  exclusive `flock` at `<cache>/<signature>.lock`: the first builds, and the rest
+  wait and then reuse what it finished. Warming the cache with one serial run is
+  no longer required, but it still avoids a long silent wait in the workers. The
+  lock needs a writable cache directory; on a read-only one, prebuild the
+  library and pass `--proteins`.
 - **`--proteins FILE` searches a prebuilt library and skips the build entirely**,
   which suits an offline or read-only environment. It replaces tiers 1–2 only:
   tier 3 still runs against `--repeatpeps` or the discovered RepeatPeps.lib, as in

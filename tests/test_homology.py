@@ -395,6 +395,33 @@ class TestTierTwoIsNeverStale:
         assert calls == []
         assert (home / "pfam_blind.fa.keys").exists()
 
+    def test_concurrent_first_builds_queue_instead_of_racing(self, toolchain, monkeypatch):
+        """Two builds of one cold library: the second must wait for the first and
+        then reuse it, so each tool runs once. Without the lock both build, and
+        they write the same files at the same time."""
+        import threading
+        import time
+
+        peps, home, calls = toolchain
+        slow = proteins._run
+
+        def slow_run(command):
+            time.sleep(0.3)
+            slow(command)
+
+        monkeypatch.setattr(proteins, "_run", slow_run)
+        results = []
+        workers = [threading.Thread(target=lambda: results.append(
+            proteins.build(repeatpeps=peps, log=self.quiet))) for _ in range(2)]
+        workers[0].start()
+        time.sleep(0.05)
+        workers[1].start()
+        for worker in workers:
+            worker.join(timeout=10)
+        assert len(results) == 2
+        assert calls.count("bathbuild") == 1 and calls.count("bathconvert") == 1
+        assert (home / "default.done").exists()
+
     def test_a_deep_or_peps_less_cache_has_no_tier_two_to_vouch_for(self, tmp_path):
         assert proteins._tier2_current(tmp_path, deep=True, peps=None)
         assert proteins._tier2_current(tmp_path, deep=False, peps=None)

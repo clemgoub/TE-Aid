@@ -575,12 +575,11 @@ This section is status and direction only.
   | `makeblastdb` over RepeatPeps into a fresh temp dir | `homology.py` |
   | cold protein-library build, unlocked and racy | `proteins.build()` |
 
-  Two constraints on the obvious shortcuts. **One multi-family `bathsearch`
-  cannot be split back apart**: `ProteinHit` drops tblout's `target` column, so
-  there is nothing to group hits by — adding that field is a prerequisite. And
-  **`proteins.build()` takes no lock**, so a pool must warm the cache with one
-  serial run before fanning out. `homology.search(cpus=)` exists but no flag
-  reaches it.
+  Two constraints on the obvious shortcuts, both lifted on 2026-09-24:
+  `ProteinHit` now keeps tblout's `target` column, so one multi-family
+  `bathsearch` can be split back apart; and `proteins.build()` holds an
+  exclusive lock while it builds, so a pool no longer races on a cold cache.
+  `homology.search(cpus=)` exists but no flag reaches it.
 - **CLI update.** The flag surface has grown organically across steps 2–6 and
   deserves a pass: grouping, defaults, and a `--version`-style summary of which
   external tools were found.
