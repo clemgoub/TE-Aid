@@ -75,9 +75,13 @@ def select(annot: str, consensus: str, count: int) -> list[dict]:
     for c in ann.copies:
         copies[c.family.split("#", 1)[0]] += 1
     # Reported beside the row count, never selected on: see the module docstring.
-    insertions: dict[str, int] = defaultdict(int)
-    for i in ann.insertions():
-        insertions[i.family.split("#", 1)[0]] += 1
+    # Grouped within each family, as the sheet does: an ID that spans two
+    # families is one copy in each of them, not a copy of whichever came first.
+    rows_of: dict[str, list] = defaultdict(list)
+    for c in ann.copies:
+        rows_of[c.family.split("#", 1)[0]].append(c)
+    insertions = {name: len(type(ann)(copies=rows).insertions())
+                  for name, rows in rows_of.items()}
 
     fam = {}
     for entry in lib:
