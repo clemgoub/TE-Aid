@@ -106,7 +106,8 @@ and is keyed by a hash of the domain table, so editing the table rebuilds rather
 than silently reusing a stale library. Three flags cover the awkward cases:
 
 - `--proteins FILE` — search a **prebuilt** library and skip the build entirely.
-  The route for offline or read-only machines. Note it also disables tier 3.
+  The route for offline or read-only machines. It replaces tiers 1–2 only;
+  tier 3 still runs when RepeatPeps.lib is found.
 - `--rebuild-proteins` — force a rebuild, if a cache is ever suspect.
 - `--repeatpeps FILE` — point at `RepeatPeps.lib` explicitly.
 

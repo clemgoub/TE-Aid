@@ -273,3 +273,62 @@ class TestLegacyAlias:
         )
         assert code == cli.EXIT_OK
         assert "'TE-Aid' is now 'teaid'" in capsys.readouterr().err
+
+
+class TestProteinProvenance:
+    """Panel 5 must say which library produced it, and why tier 3 did not run."""
+
+    @pytest.fixture
+    def captured(self, monkeypatch):
+        from teaid import homology, orfs, report
+
+        seen = {"repeatpeps": None}
+
+        def fake_repeatpeps(found, path, **kw):
+            seen["repeatpeps"] = path
+            return []
+
+        monkeypatch.setattr(homology, "search", lambda *a, **k: [])
+        monkeypatch.setattr(homology, "search_repeatpeps", fake_repeatpeps)
+        monkeypatch.setattr(orfs, "find_orfs", lambda *a, **k: [])
+        original = report.build_figure
+
+        def keep(data, theme):
+            seen["data"] = data
+            return original(data, theme)
+
+        monkeypatch.setattr(report, "build_figure", keep)
+        return seen
+
+    def test_a_prebuilt_library_still_honours_repeatpeps(self, inputs, tmp_path, captured):
+        fasta, annot = inputs
+        prebuilt = tmp_path / "mine.bhmm"
+        prebuilt.write_text("")
+        peps = tmp_path / "RepeatPeps.lib"
+        peps.write_text(">x\nMK\n")
+        run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path, "--no-dotplot",
+             "--proteins", prebuilt, "--repeatpeps", peps])
+        assert captured["repeatpeps"] == peps
+
+    def test_the_sheet_names_the_protein_library_it_searched(self, inputs, tmp_path, captured):
+        fasta, annot = inputs
+        prebuilt = tmp_path / "mine.bhmm"
+        prebuilt.write_text("")
+        run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path, "--no-dotplot",
+             "--proteins", prebuilt])
+        assert any("mine.bhmm" in s for s in captured["data"].sources)
+
+    def test_a_tier_three_that_did_not_run_says_why(self, inputs, tmp_path, captured, monkeypatch):
+        from teaid import proteins
+
+        fasta, annot = inputs
+        library = proteins.Library(hmm=tmp_path / "x.bhmm", repeatpeps=None,
+                                   tiers=("pfam:130", "repeatpeps-gaps"))
+        monkeypatch.setattr(proteins, "build", lambda **k: library)
+        base = ["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path, "--no-dotplot"]
+        for extra, reason in (([], "RepeatPeps.lib not found"),
+                              (["--no-orfs"], "--no-orfs"),
+                              (["--deep"], "--deep")):
+            run(base + extra)
+            notes = " | ".join(captured["data"].notes)
+            assert "tier 3" in notes and reason in notes, (extra, notes)

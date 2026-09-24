@@ -202,7 +202,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     homology_group.add_argument(
         "--proteins", metavar="FILE",
-        help="a prebuilt BATH pHMM library to search, instead of building one",
+        help="a prebuilt BATH pHMM library to search instead of building tiers 1-2; "
+             "tier 3 (blastp vs RepeatPeps) still runs",
     )
     homology_group.add_argument(
         "--repeatpeps", metavar="FILE",
@@ -227,19 +228,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _protein_homology(args, consensus, found_orfs, notes) -> tuple[list, str | None, list]:
+def _protein_homology(args, consensus, found_orfs, notes, sources) -> tuple[list, list]:
     """Protein hits for panel 5, degrading to an empty row rather than failing.
 
     A missing BATH install or an unbuildable library costs the sheet one panel;
     it must not cost it the whole run, since the other four panels are
-    independent of it.
+    independent of it. Returns (hits kept for drawing, every hit found), and
+    appends to ``notes`` and ``sources`` so the sheet says which library was
+    searched and, when tier 3 did not run, why.
     """
     from pathlib import Path as _Path
 
     try:
         if args.proteins:
-            library = proteins.Library(hmm=_Path(args.proteins), repeatpeps=None,
-                                       tiers=("prebuilt",))
+            # A prebuilt pHMM library replaces tiers 1-2 only. Tier 3 still
+            # follows --repeatpeps and the usual discovery, as in any other run.
+            library = proteins.Library(
+                hmm=_Path(args.proteins),
+                repeatpeps=proteins.find_repeatpeps(args.repeatpeps),
+                tiers=(f"prebuilt {_Path(args.proteins).name}",),
+            )
         else:
             library = proteins.build(
                 deep=args.deep,
@@ -249,7 +257,8 @@ def _protein_homology(args, consensus, found_orfs, notes) -> tuple[list, str | N
             )
     except proteins.LibraryError as exc:
         print(f"teaid: warning: protein row skipped: {exc}", file=sys.stderr)
-        return [], f"protein row skipped: {exc}", []
+        notes.append(f"protein row skipped: {exc}")
+        return [], []
 
     try:
         hits = homology.search(
@@ -260,21 +269,31 @@ def _protein_homology(args, consensus, found_orfs, notes) -> tuple[list, str | N
         )
     except (homology.BathNotFound, RuntimeError) as exc:
         print(f"teaid: warning: protein row skipped: {exc}", file=sys.stderr)
-        return [], f"protein row skipped: {exc}", []
+        notes.append(f"protein row skipped: {exc}")
+        return [], []
+    sources.append(f"proteins <b>{', '.join(library.tiers)}</b> (bathsearch)")
 
     # Tier 3: named-element evidence from RepeatPeps, via the ORF peptides.
     # Answers a different question from tiers 1-2 -- which named element this
     # resembles, rather than which domain it encodes -- and costs 17 MB.
-    if library.repeatpeps is not None and not args.no_orfs and not args.deep:
+    if args.deep:
+        notes.append("tier 3 (blastp vs RepeatPeps) off: --deep already searches "
+                     "all of RepeatPeps")
+    elif args.no_orfs:
+        notes.append("tier 3 (blastp vs RepeatPeps) off: it searches the ORF "
+                     "peptides, and --no-orfs turned those off")
+    elif library.repeatpeps is None:
+        notes.append("tier 3 (blastp vs RepeatPeps) off: RepeatPeps.lib not found")
+    else:
         hits += homology.search_repeatpeps(found_orfs, library.repeatpeps)
+        sources.append(f"<b>{library.repeatpeps.name}</b> (blastp)")
 
     kept = homology.best_per_region(hits)
     dropped = len(hits) - len(kept)
-    note = None
     if dropped:
-        note = (f"{dropped} competing protein hit{'s' if dropped != 1 else ''} collapsed "
-                f"— all {len(hits)} are listed under the sheet")
-    return kept, note, hits
+        notes.append(f"{dropped} competing protein hit{'s' if dropped != 1 else ''} "
+                     f"collapsed — all {len(hits)} are listed under the sheet")
+    return kept, hits
 
 
 def _seed_qc_fields(seed, enabled: bool) -> dict:
@@ -551,11 +570,9 @@ def main(argv: list[str] | None = None) -> int:
     all_hits: list = []
     class_check = None
     if not args.no_homology:
-        protein_hits, note, all_hits = _protein_homology(
-            args, consensus, found_orfs, notes
+        protein_hits, all_hits = _protein_homology(
+            args, consensus, found_orfs, notes, loaded.sources
         )
-        if note:
-            notes.append(note)
         if protein_hits and seed is not None and args.seed_qc:
             class_check = classcheck.check(seed.expected_class, protein_hits)
 

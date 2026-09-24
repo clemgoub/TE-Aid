@@ -484,11 +484,10 @@ everything already measured.
 - **A pre-registered pass/fail rule, written before the numbers exist**, plus
   where the verdict is recorded (here, in §5.1a, or both).
 
-**Two invocation traps.** `--proteins FILE` constructs `Library(repeatpeps=None)`
-and so **silently disables tier 3** — an arm meant to include it must not use
-that flag. And no CLI flag exposes `homology.search(frameshift_aware=…)` or
-`cpus`, so the `--fs` on/off comparison and any threading have to drive the
-Python API directly, not the CLI.
+**One invocation trap.** No CLI flag exposes `homology.search(frameshift_aware=…)`
+or `cpus`, so the `--fs` on/off comparison and any threading have to drive the
+Python API directly, not the CLI. (A second trap, `--proteins FILE` silently
+disabling tier 3, was fixed on 2026-09-24.)
 
 **One cost is already measured:** ~10 s per family for `bathsearch` against the
 233 MB tier-1+2 library, dominated by loading the models rather than by the

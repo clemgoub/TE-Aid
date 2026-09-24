@@ -181,9 +181,11 @@ curated domain table. Three consequences for anyone calling TE-Aid:
   one library rather than each user building their own.
 - **`build()` takes no lock.** Concurrent first-runs race on the same directory.
   A batch caller must warm the cache with **one serial run** before fanning out.
-- **`--proteins FILE` searches a prebuilt library and skips the build entirely** —
-  the right flag for an offline or read-only environment. It also leaves
-  `repeatpeps=None`, which **silently disables the tier-3 `blastp` fallback**.
+- **`--proteins FILE` searches a prebuilt library and skips the build entirely**,
+  which suits an offline or read-only environment. It replaces tiers 1–2 only:
+  tier 3 still runs against `--repeatpeps` or the discovered RepeatPeps.lib, as in
+  any other run. The sheet's provenance line names the library searched, and a
+  note says why whenever tier 3 did not run.
 
 `--rebuild-proteins` forces a rebuild; it is the recovery path if a cache is
 ever suspect. `--deep` **replaces** tiers 1–2 rather than adding to them, and
