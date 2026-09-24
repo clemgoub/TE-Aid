@@ -692,6 +692,16 @@ class TestInsertionsOnTheSheet:
             assert list(trace.text) == list(trace.meta["far"])
 
 
+class TestResetIsNotAliased:
+    def test_the_button_hands_plotly_a_copy_of_the_reset_ranges(self):
+        """Plotly adopts the arrays passed to relayout as its live axis ranges and
+        edits them in place on a scroll-zoom. Passing RESET itself worked once,
+        then restored the last zoom: seen in a browser on ltr-1_family-26, where
+        panel 1 reset to [-93, 10921] instead of the padded [-290, 11883]."""
+        assert "Plotly.relayout(gd, RESET)" not in report._HTML_TEMPLATE
+        assert "JSON.parse(JSON.stringify(RESET))" in report._HTML_TEMPLATE
+
+
 class TestThePageScriptRuns:
     def test_the_page_script_is_valid_javascript(self, tmp_path):
         """Static checks missed a SyntaxError here once. Parse it for real."""

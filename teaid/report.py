@@ -1642,7 +1642,10 @@ _HTML_TEMPLATE = r"""<!doctype html>
     var button = document.getElementById('teaid-reset');
     if (!gd || !button) return;
     button.addEventListener('click', function () {{
-      Plotly.relayout(gd, RESET);
+      // A fresh copy every time. Plotly keeps the range arrays it is handed as
+      // the live axis ranges and edits them in place on the next scroll-zoom,
+      // so passing RESET itself makes the button restore the last zoom instead.
+      Plotly.relayout(gd, JSON.parse(JSON.stringify(RESET)));
     }});
   }})();
 
