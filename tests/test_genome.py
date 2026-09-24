@@ -149,6 +149,9 @@ class TestTheV1CommandLine:
         assert any("genome.fa" in s and "blastn" in s for s in data.sources)
         assert any("misses diverged copies" in n for n in data.notes)
         assert data.divergence_kind is DivergenceKind.BLASTN_IDENTITY
+        titles = [a.text for a in report.build_figure(data, __import__("teaid").theme.LIGHT)
+                  .layout.annotations if a.text and a.text.startswith("1 · ")]
+        assert titles and titles[0].startswith("1 · Genomic hits vs identity")
 
 
 class TestGenomeRouteFailures:

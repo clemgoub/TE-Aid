@@ -328,7 +328,10 @@ def build_figure(data: SheetData, theme: Theme) -> go.Figure:
     # specs below, not assembled up front. Supplying one title short shifts
     # every later panel's title onto the wrong panel, silently.
     titles = [
-        "1 · Annotated copies vs divergence",
+        # A blastn hit is neither annotated nor measured in divergence.
+        "1 · Genomic hits vs identity"
+        if data.divergence_kind is DivergenceKind.BLASTN_IDENTITY
+        else "1 · Annotated copies vs divergence",
         "2 · Consensus coverage",
         "3 · Self dot-plot",
         "4 · Structure",
