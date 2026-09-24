@@ -85,22 +85,20 @@ teaid: error [bad-seed]: families.stk: no record with #=GF ID 'absent'
 |---|---|---|
 | 0 | — | a sheet was written — but see *exit 0 is not "complete"* below |
 | 1 | *none* | uncaught internal error; a Python traceback, not a message |
-| 2 | *none* | argument error, straight from `argparse` |
+| 2 | `usage` | argument error: an unknown flag, a missing input, a value out of range, or `--family` omitted for a multi-entry library |
 | 3 | `no-input` | an input file is missing or unreadable |
 | 4 | `no-family` | the family is not in the consensus library |
 | 5 | `no-evidence` | the family exists but carries nothing plottable |
 | 6 | `bad-seed` | the Stockholm file could not be parsed |
 
-**Two of these have no slug, so branch on the code first.** Exit 2 comes from
-`argparse` before TE-Aid's own error path runs, so it prints `teaid: error: …`
-with no `[slug]` bracket — that covers unknown flags, a missing `--annot`/`--stk`,
-and an out-of-range `--full-length-threshold`. Exit 1 is an unhandled exception.
-Treat *any* failure whose stderr has no `[slug]` bracket as fatal-unknown and
-log the stderr verbatim; do not try to parse it.
+**Only exit 1 has no slug.** It is an unhandled exception and prints a Python
+traceback. Treat any failure whose stderr has no `[slug]` bracket as
+fatal-unknown and log the stderr verbatim; do not try to parse it. Argument
+errors from `argparse` itself carry the `usage` slug too, and they arrive as
+`SystemExit(2)` when TE-Aid is called in-process.
 
-There is no `usage` slug. A multi-record seed given without `--family` is not an
-argument error — it reports `bad-seed` and exit 6, because the file was read and
-found ambiguous.
+A multi-record seed given without `--family` is not an argument error. It reports
+`bad-seed` and exit 6, because the file was read and found ambiguous.
 
 **Exit 0 is not "complete".** The sheet is fail-soft by design: if `blastn`,
 `getorf` or `bathsearch` is missing or fails, the affected panel is dropped, a

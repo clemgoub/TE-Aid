@@ -249,14 +249,14 @@ teaid: error [no-family]: family 'x' not in families.fa
 |---|---|---|
 | 0 | — | a sheet was written (possibly with panels dropped — see below) |
 | 1 | *none* | uncaught internal error; a traceback |
-| 2 | *none* | argument error, straight from `argparse` |
+| 2 | `usage` | argument error |
 | 3 | `no-input` | an input file is missing or unreadable |
 | 4 | `no-family` | the family is not in the consensus library |
 | 5 | `no-evidence` | the family has nothing plottable |
 | 6 | `bad-seed` | the Stockholm file could not be parsed |
 
-Parse the slug, not the prose — and note that codes 1 and 2 carry **no** slug, so
-branch on the code first. **Exit 0 does not mean a complete sheet:** a missing
+Parse the slug, not the prose. Only code 1, an uncaught exception, carries no
+slug. **Exit 0 does not mean a complete sheet:** a missing
 `blastn`, `getorf` or `bathsearch` drops the affected panel with a
 `teaid: warning: …` line and still exits 0. Callers that need a full sheet must
 check stderr for warnings.

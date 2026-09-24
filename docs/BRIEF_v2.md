@@ -526,12 +526,12 @@ This section is status and direction only.
   but a row whose hits share one sub-lane still lists several names against a
   single y — so the ordering is right while a strict one-name-to-one-bar mapping
   is not. Direct-labelling each bar, or leader lines, would close it.
-- **Cosmetic, one red means two things.** `report.STATUS_BELOW_FLOOR` (the Dfam
-  floor warning, panel 6) is the same `#d03b3b` as `theme.orf_reverse` (v1's
-  reverse-strand ORF outline, panel 5). On a `--seed-qc` sheet both are visible.
-  They never share a panel and both are labelled, so nothing is unreadable — but
-  a reserved status colour that is also a routine data colour is a smell. Either
-  move the status red, or accept it and delete the "reserved" framing.
+- **Closed 2026-09-24: one red, two meanings.** `report.STATUS_BELOW_FLOOR` (the
+  Dfam floor, panel 6) shares `#d03b3b` with `theme.orf_reverse` (v1's
+  reverse-strand ORF outline, panel 5) in the light theme only; the dark theme
+  draws reverse ORFs in `#e8756a`. The two never share a panel and both are
+  labelled, so we left the colours as they are and dropped the "reserved
+  colour" framing from the comment in `report.py`.
 - **Judgement call, panel 5 colour.** `RVT_1` and other order-agnostic domains
   render Unknown grey, because a bare reverse transcriptase is shared by every
   Class I order and colouring it LTR would assert what the hit cannot support.

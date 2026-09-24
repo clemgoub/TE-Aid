@@ -7,6 +7,9 @@ exit code alone.
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pytest
 
 from teaid import cli
@@ -236,6 +239,22 @@ class TestFailSoftContract:
             assert f"[{slug}]" in capsys.readouterr().err
             seen.add(code)
         assert len(seen) == len(cases), "exit codes must be distinguishable"
+
+    def test_an_argparse_error_also_carries_the_usage_slug(self, capsys):
+        with pytest.raises(SystemExit) as raised:
+            run(["--no-such-flag"])
+        assert raised.value.code == cli.EXIT_USAGE
+        assert "[usage]" in capsys.readouterr().err
+
+    def test_the_documented_exit_table_matches_the_code(self):
+        # INTEGRATION.md is what callers read, so its table is the contract.
+        doc = Path(__file__).resolve().parents[1] / "docs" / "INTEGRATION.md"
+        rows = re.findall(r"^\| (\d) \| ([^|]+?) \|", doc.read_text(), re.M)
+        documented = {int(code): cell.strip().strip("`") for code, cell in rows}
+        for code, slug in cli._SLUG.items():
+            assert documented.get(code) == slug, f"exit {code}"
+        assert documented[1] == "*none*"
+        assert set(documented) == set(cli._SLUG) | {0, 1}
 
     def test_slugs_and_codes_stay_in_step(self):
         for code in (

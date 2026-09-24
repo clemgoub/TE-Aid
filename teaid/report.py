@@ -148,11 +148,10 @@ _ROW_GAP = 0.55
 # requirement rather than a measurement. It always ships with the label naming
 # the floor, so colour alone carries nothing.
 #
-# It is the same hex as theme.orf_reverse (v1's reverse-strand ORF red), and on
-# a --seed-qc sheet both are visible: reverse ORFs in panel 5, the Dfam floor in
-# panel 6. Two meanings for one red. They never share a panel, and both readings
-# are labelled, so this is recorded rather than resolved -- see the open items
-# in docs/BRIEF_v2.md §6.
+# In the light theme it is the same hex as theme.orf_reverse (v1's reverse-strand
+# ORF red); the dark theme uses #e8756a for the ORFs. On a light --seed-qc sheet
+# both reds are visible, reverse ORFs in panel 5 and the Dfam floor in panel 6.
+# They never share a panel and both are labelled, so we left it as it is.
 STATUS_BELOW_FLOOR = "#d03b3b"
 
 # What each panel is, and the trap it exists to avoid. Shown on hovering the '?'
@@ -246,8 +245,8 @@ class SheetData:
     # format, which is otherwise chosen silently.
     sources: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
-    # Panel 5 content; empty until the BATH protein row and Dfam nucleotide row
-    # land (work order steps 6 and 8).
+    # Panel 5 content: the BATH and blastp protein hits kept by best_per_region.
+    # The Dfam nucleotide row (work order step 8) will add its hits here too.
     homology: list = field(default_factory=list)
     # Every protein hit found, including those collapsed by best_per_region and
     # those past the lane cap. Panel 5 draws a readable subset; this is what the
@@ -528,12 +527,11 @@ def _panel_dotplot(fig: go.Figure, data: SheetData, theme: Theme, row: int, col:
 
 
 def _panel_structure(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: int) -> None:
-    """Panel 4: terminal-repeat candidates and ORFs on the consensus axis.
+    """Panel 4: terminal-repeat candidates on the consensus axis.
 
-    Colour carries the same meaning as in the dot-plot — blue for direct
-    repeats, aqua for inverted — so the two panels read together. ORF strand is
-    shown by arrowhead direction rather than colour, keeping direction as a
-    shape channel and leaving colour free to mean 'coding feature'.
+    Colour carries the same meaning as in the dot-plot, blue for direct repeats
+    and aqua for inverted, so the two panels read together. ORFs are drawn in
+    panel 5, beside the protein hits that sit in them.
     """
     y = 0.0
     tickvals: list[float] = []

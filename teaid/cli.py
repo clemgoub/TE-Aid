@@ -58,8 +58,22 @@ def fail(code: int, message: str, hint: str | None = None) -> int:
     return code
 
 
+class _Parser(argparse.ArgumentParser):
+    """argparse, with its errors reported in the fail-soft form.
+
+    Stock argparse prints ``teaid: error: ...`` with no slug, so a batch caller
+    could not tell a mistyped flag from a crash. With this override every error
+    TE-Aid diagnoses carries a slug, and only an uncaught exception (exit 1)
+    has none. The exit code stays 2 and argparse still raises SystemExit.
+    """
+
+    def error(self, message: str):
+        self.print_usage(sys.stderr)
+        self.exit(EXIT_USAGE, f"teaid: error [{_SLUG[EXIT_USAGE]}]: {message}\n")
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         prog="teaid",
         description=(
             "Build an evidence sheet for one TE family, to support manual curation. "
