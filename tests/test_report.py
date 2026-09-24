@@ -12,7 +12,7 @@ from teaid import report, theme
 from teaid.analysis import SelfHit
 from teaid.homology import ProteinHit
 from teaid.orfs import ORF
-from teaid.records import Copy, DivergenceKind
+from teaid.records import Copy, DivergenceKind, Insertion
 
 
 def hit(**overrides) -> ProteinHit:
@@ -39,11 +39,12 @@ def make_data(**overrides) -> report.SheetData:
             consensus_end=900,
         )
     ]
+    insertions = [Insertion([c]) for c in copies]
     base = dict(
         family="fam",
         consensus_length=1000,
-        copies=copies,
-        full_length=copies,
+        insertions=insertions,
+        full_length=insertions,
         coverage=np.ones(1000, dtype=np.int64),
     )
     base.update(overrides)
@@ -646,3 +647,68 @@ class TestRosterMatchesTheArrows:
         assert ys.pop() == pytest.approx(centres[0]), (
             "the arrow must sit on the same y as the label naming it"
         )
+
+
+def fragmented_data(**overrides):
+    """One copy split into three rows: an insertion join, then a deletion join."""
+    rows = [
+        Copy(chrom="chr1", start=0, end=300, strand="+", family="fam", divergence=5.0,
+             divergence_kind=DivergenceKind.CONSENSUS, consensus_start=0,
+             consensus_end=300, hit_id="7"),
+        Copy(chrom="chr1", start=1300, end=1600, strand="+", family="fam", divergence=5.0,
+             divergence_kind=DivergenceKind.CONSENSUS, consensus_start=300,
+             consensus_end=600, hit_id="7"),
+        Copy(chrom="chr1", start=1600, end=1800, strand="+", family="fam", divergence=5.0,
+             divergence_kind=DivergenceKind.CONSENSUS, consensus_start=800,
+             consensus_end=1000, hit_id="7"),
+    ]
+    insertions = [Insertion(rows)]
+    return make_data(insertions=insertions, full_length=[], **overrides)
+
+
+class TestInsertionsOnTheSheet:
+    def test_panel_1_counts_copies_not_rows(self):
+        fig = report.build_figure(fragmented_data(), theme.LIGHT)
+        names = [t.name for t in fig.data if t.name]
+        assert "partial (n=1)" in names
+
+    def test_the_subtitle_names_both_counts(self):
+        fig = report.build_figure(fragmented_data(), theme.LIGHT)
+        title = fig.layout.title.text
+        assert "1 copy " in title and "3 annotation rows" in title
+
+    def test_both_junction_kinds_are_drawn_and_legended(self):
+        fig = report.build_figure(fragmented_data(), theme.LIGHT)
+        names = [t.name for t in fig.data if t.name]
+        assert "insertion in the copy (n=1)" in names
+        assert "deletion in the copy (n=1)" in names
+
+    def test_junction_sizes_wait_for_a_zoom(self):
+        fig = report.build_figure(fragmented_data(), theme.LIGHT)
+        carried = [t for t in fig.data if t.meta and t.meta.get("teaidJunction")]
+        texts = {tuple(t.meta["near"]) for t in carried}
+        assert ("[1,000 bp]",) in texts and ("200 bp",) in texts
+        for trace in carried:
+            assert list(trace.text) == list(trace.meta["far"])
+
+
+class TestThePageScriptRuns:
+    def test_the_page_script_is_valid_javascript(self, tmp_path):
+        """Static checks missed a SyntaxError here once. Parse it for real."""
+        import shutil
+        import subprocess
+
+        node = shutil.which("node")
+        if node is None:
+            pytest.skip("node not installed")
+        data = fragmented_data(homology=[hit()], homology_all=[hit()])
+        fig = report.build_figure(data, theme.LIGHT)
+        page = tmp_path / "sheet.html"
+        report.write_html(fig, page, data, theme.LIGHT)
+        text = page.read_text()
+        # The sheet's own block is the last one; plotly's come before it.
+        script = text[text.rindex("<script>") + len("<script>"):text.rindex("</script>")]
+        source = tmp_path / "sheet.js"
+        source.write_text(script)
+        result = subprocess.run([node, "--check", str(source)], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr

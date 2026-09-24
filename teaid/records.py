@@ -160,7 +160,8 @@ class Junction:
     ``consensus_at`` and ``consensus_to`` bound the consensus interval the join
     skips (a deletion) or the point where it sits (an insertion or a flush
     join, where the two are equal). ``size`` is the indel length in bp, 0 when
-    flush.
+    flush. A join can skip some consensus and also carry extra genome; it is
+    classified by the net difference, and both gaps are kept here.
     """
 
     consensus_at: int

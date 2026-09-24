@@ -332,3 +332,52 @@ class TestProteinProvenance:
             run(base + extra)
             notes = " | ".join(captured["data"].notes)
             assert "tier 3" in notes and reason in notes, (extra, notes)
+
+
+SPLIT = """\
+   SW   perc perc perc  query       position in query              matching          repeat                position in repeat
+score   div. del. ins.  sequence    begin    end          (left)   repeat            class/family      begin   end    (left)     ID
+
+ 1000    5.0  0.0  0.0  chr1            1000     1159    (5000) + fam1              LTR/Gypsy               1    160   (160)     4
+  900    5.0  0.0  0.0  chr1            2160     2319    (4000) + fam1              LTR/Gypsy             161    320     (0)     4
+"""
+
+
+class TestFragmentGrouping:
+    """Two rows sharing an ID are one copy interrupted by 1,000 bp of genome."""
+
+    @pytest.fixture
+    def split(self, tmp_path):
+        fasta = tmp_path / "families.fa"
+        fasta.write_text(FASTA)
+        annot = tmp_path / "split.fa.out"
+        annot.write_text(SPLIT)
+        return fasta, annot
+
+    def test_rows_sharing_an_id_are_one_copy(self, split, tmp_path, capsys):
+        fasta, annot = split
+        assert run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path,
+                    "--no-dotplot", "--no-orfs", "--no-homology"]) == cli.EXIT_OK
+        assert "fam1: 1 copy (2 annotation rows), 1 full length" in capsys.readouterr().out
+
+    def test_no_group_fragments_counts_rows(self, split, tmp_path, capsys):
+        fasta, annot = split
+        run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path,
+             "--no-dotplot", "--no-orfs", "--no-homology", "--no-group-fragments"])
+        assert "fam1: 2 copies, 0 full length" in capsys.readouterr().out
+
+    def test_the_sheet_says_how_rows_became_copies(self, split, tmp_path, monkeypatch):
+        from teaid import report
+
+        seen = {}
+        original = report.build_figure
+
+        def keep(data, theme):
+            seen["notes"] = data.notes
+            return original(data, theme)
+
+        monkeypatch.setattr(report, "build_figure", keep)
+        fasta, annot = split
+        run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path,
+             "--no-dotplot", "--no-orfs", "--no-homology"])
+        assert any("2 annotation rows grouped into 1 copy" in n for n in seen["notes"])

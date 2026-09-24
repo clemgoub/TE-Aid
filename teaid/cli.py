@@ -161,7 +161,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.9,
         metavar="FRAC",
-        help="fraction of the consensus a copy must span to count as full length (default 0.9)",
+        help="fraction of the consensus a copy must cover to count as full length (default 0.9)",
+    )
+    tuning.add_argument(
+        "--no-group-fragments",
+        action="store_true",
+        help="count every annotation row as a copy, instead of joining the rows "
+             "that share an ID (RepeatMasker ID, BED16 column 16) into one insertion",
     )
     tuning.add_argument(
         "--word-size",
@@ -296,6 +302,22 @@ def _protein_homology(args, consensus, found_orfs, notes, sources) -> tuple[list
     return kept, hits
 
 
+def _grouping_note(rows: Annotation, insertions: list, disabled: bool) -> str | None:
+    """Say on the sheet how rows became copies, so the count can be checked.
+
+    Naming the largest group matters: a producer that writes one constant into
+    the ID column would otherwise collapse a family to a single 'copy' silently.
+    """
+    if disabled:
+        return f"fragment grouping off: each of {len(rows):,} annotation rows counted as a copy"
+    if len(insertions) == len(rows):
+        return None
+    largest = max(i.n_fragments for i in insertions)
+    return (f"{len(rows):,} annotation rows grouped into "
+            f"{report._count(len(insertions), 'copy', 'copies')} by their shared ID "
+            f"(largest: {largest} rows)")
+
+
 def _seed_qc_fields(seed, enabled: bool) -> dict:
     """Seed-QC inputs for the sheet, or nothing when the panels are off.
 
@@ -312,7 +334,8 @@ def _seed_qc_fields(seed, enabled: bool) -> dict:
         # The same positions counted the way panel 2 counts them, so panel 6 can
         # show both and make the difference between 'spans' and 'has a base'
         # visible rather than leaving it to be inferred across two panels.
-        "seed_span": analysis.coverage(seed.to_annotation(), len(depth)),
+        # Seed sequences carry no hit_id, so grouping leaves them one per row.
+        "seed_span": analysis.coverage(seed.to_annotation().insertions(), len(depth)),
         "seed_mismatches": np.asarray(seed.mismatches(), dtype=np.int64),
         "seed_blocks": seed.aligned_blocks(),
         "expected_class": seed.expected_class,
@@ -520,8 +543,9 @@ def main(argv: list[str] | None = None) -> int:
                 f"annotation <b>{Path(args.annot).name}</b> "
                 f"({genomic.source_format})"
             )
+            copies = len(genomic.insertions(group=not args.no_group_fragments))
             loaded.notes.append(
-                f"panels 1-2 show {len(genomic):,} annotated genomic copies; "
+                f"panels 1-2 show {copies:,} annotated genomic copies; "
                 f"the seed uses {len(loaded.annotation):,}"
             )
 
@@ -535,8 +559,13 @@ def main(argv: list[str] | None = None) -> int:
     # alongside a seed that is every annotated copy; otherwise it is whatever
     # the single source gave us.
     shown = loaded.genomic if loaded.genomic is not None else subset
-    coverage = analysis.coverage(shown, consensus_length)
-    full = analysis.full_length(shown, consensus_length, args.full_length_threshold)
+    # The one place the grouping is decided; everything downstream takes these.
+    insertions = shown.insertions(group=not args.no_group_fragments)
+    grouping = _grouping_note(shown, insertions, args.no_group_fragments)
+    if grouping:
+        notes.append(grouping)
+    coverage = analysis.coverage(insertions, consensus_length)
+    full = analysis.full_length(insertions, consensus_length, args.full_length_threshold)
 
     self_hits = []
     terminal: dict[str, list] = {}
@@ -579,7 +608,7 @@ def main(argv: list[str] | None = None) -> int:
     data = report.SheetData(
         family=consensus.bare_name,
         consensus_length=consensus_length,
-        copies=list(shown),
+        insertions=insertions,
         full_length=full,
         coverage=coverage,
         self_hits=self_hits,
@@ -618,9 +647,10 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
 
+    rows = f" ({len(shown):,} annotation rows)" if len(shown) != len(insertions) else ""
     summary = (
-        f"{consensus.bare_name}: {len(shown):,} copies, {len(full):,} full length, "
-        f"consensus {consensus_length:,} bp"
+        f"{consensus.bare_name}: {report._count(len(insertions), 'copy', 'copies')}{rows}, "
+        f"{len(full):,} full length, consensus {consensus_length:,} bp"
     )
     if terminal.get("LTR") or terminal.get("TIR"):
         summary += (
