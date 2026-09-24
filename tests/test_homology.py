@@ -523,3 +523,27 @@ class TestRepeatPepsDatabaseIsBuiltOnce:
         second = homology.repeatpeps_database(peps, scratch=tmp_path)
         assert first == second and first is not None
         assert calls.count("makeblastdb") == 1
+
+
+class TestModelCoverageFloor:
+    """A hit spanning 8% of a model and one spanning 80% can share an E-value;
+    only coverage separates them. The floor is off by default until the
+    calibration against known genomes sets it."""
+
+    def test_the_floor_is_off_by_default(self):
+        short = hit(hmm_from=1, hmm_to=16, hmm_len=200)
+        kept, dropped = homology.apply_coverage_floor([short], 0.0)
+        assert kept == [short] and dropped == []
+
+    def test_hits_below_the_floor_are_set_aside(self):
+        short = hit(hmm_from=1, hmm_to=16, hmm_len=200)      # 8% of the model
+        long = hit(hmm_from=1, hmm_to=160, hmm_len=200)      # 80%
+        kept, dropped = homology.apply_coverage_floor([short, long], 0.5)
+        assert kept == [long] and dropped == [short]
+
+    def test_tier_three_is_exempt(self):
+        """A blastp hit's 'coverage' is the fraction of its ORF, not of a model,
+        so the floor does not apply to it."""
+        blastp = hit(hmm_from=1, hmm_to=10, hmm_len=200, source="repeatpeps-blastp")
+        kept, _ = homology.apply_coverage_floor([blastp], 0.5)
+        assert kept == [blastp]

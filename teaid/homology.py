@@ -336,6 +336,28 @@ def search_repeatpeps(
     return hits
 
 
+def apply_coverage_floor(hits, floor: float) -> tuple[list, list]:
+    """Split hits into those spanning at least ``floor`` of their model, and the rest.
+
+    E-value alone does not separate a hit covering 8% of a model from one
+    covering 80%, and the short ones are what a curator reported as spurious:
+    brief tier-2 Maverick hits on LTR elements that survive wherever no strong
+    hit overlaps them, since ``best_per_region`` only removes a hit that loses to
+    another. ``floor=0`` keeps everything, and is the default until a
+    calibration against genomes with curated classes sets a number.
+
+    Tier 3 is exempt: a blastp hit's coverage is the fraction of its ORF, not of
+    a model, so the same floor would mean something else there.
+    """
+    if floor <= 0:
+        return list(hits), []
+    kept, dropped = [], []
+    for hit in hits:
+        exempt = getattr(hit, "source", "pfam") == "repeatpeps-blastp"
+        (kept if exempt or hit.coverage >= floor else dropped).append(hit)
+    return kept, dropped
+
+
 def best_per_region(
     hits: list[ProteinHit],
     overlap: float = 0.5,

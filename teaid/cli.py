@@ -274,6 +274,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="skip the protein row (no bathsearch call)",
     )
     homology_group.add_argument(
+        "--min-model-coverage", type=float, default=0.0, metavar="FRAC",
+        help=("leave out tier 1-2 hits spanning less than FRAC of their model (0-1). "
+              "Off by default until calibrated; left-out hits stay in the hit table"),
+    )
+    homology_group.add_argument(
         "--cpus", type=int, default=None, metavar="N",
         help="threads for bathsearch (default: BATH's own, 2)",
     )
@@ -373,8 +378,13 @@ def _protein_homology(args, consensus, found_orfs, notes, sources,
                                            target=consensus.bare_name)
         sources.append(f"<b>{library.repeatpeps.name}</b> (blastp)")
 
-    kept = homology.best_per_region(hits)
-    dropped = len(hits) - len(kept)
+    covered, short = homology.apply_coverage_floor(hits, args.min_model_coverage)
+    if short:
+        notes.append(f"{len(short)} protein hit{'s' if len(short) != 1 else ''} spanning "
+                     f"under {args.min_model_coverage:.0%} of their model left out "
+                     f"(--min-model-coverage); they are in the table")
+    kept = homology.best_per_region(covered)
+    dropped = len(covered) - len(kept)
     if dropped:
         notes.append(f"{dropped} competing protein hit{'s' if dropped != 1 else ''} "
                      f"collapsed — all {len(hits)} are listed under the sheet")
@@ -680,6 +690,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if not 0 < args.full_length_threshold <= 1:
         parser.error("--full-length-threshold must be in (0, 1]")
+    if not 0 <= args.min_model_coverage <= 1:
+        parser.error("--min-model-coverage must be in [0, 1]")
 
     # Input priority: --annot, then --genome (v1's blastn route), then --stk;
     # --pipeline reverses to seed-first. Whichever source is chosen, everything

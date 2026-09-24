@@ -301,6 +301,15 @@ would is exactly what the §5.5 benchmark measures, and the framework is being
 built first so that benchmark has something to run. Do not present the tiering
 as validated until it has been.
 
+**Specificity is the open question the maintainer raised (2026-09-24).** On LTR
+elements, tiers 1–2 return many short hits from Polinton integrase models: on
+`ltr-1_family-26`, `-20` and `-45`, 91 such hits spanning 20–59% of their
+model, all hidden behind a stronger hit. Where no stronger hit overlaps, they
+would be drawn. E-value does not separate them, so `--min-model-coverage FRAC`
+exists and defaults to 0 (off). Its value, and whether the E-value default
+should move, are to be set by calibrating against genomes with curated
+classes (D. melanogaster, then human), not chosen by hand.
+
 **Nucleotide row — `nhmmer` against a taxonomic slice of Dfam FamDB.**
 - `--species <taxon>` extracts a famdb slice, cached under
   `~/.teaid/famdb_slices/<taxon>-<dfam_version>/`.
