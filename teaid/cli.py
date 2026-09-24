@@ -39,6 +39,7 @@ EXIT_NO_INPUT = 3  # a required file is missing or unreadable
 EXIT_NO_FAMILY = 4  # the requested family is not in the annotation or library
 EXIT_NO_EVIDENCE = 5  # the family exists but carries nothing plottable
 EXIT_BAD_SEED = 6  # the Stockholm file could not be parsed
+EXIT_BATCH_INCOMPLETE = 8  # batch mode: at least one family failed; see results.tsv
 
 # Exit code paired with the slug printed on stderr, so a caller can branch on
 # either. Keep the two in step.
@@ -48,6 +49,7 @@ _SLUG = {
     EXIT_NO_FAMILY: "no-family",
     EXIT_NO_EVIDENCE: "no-evidence",
     EXIT_BAD_SEED: "bad-seed",
+    EXIT_BATCH_INCOMPLETE: "batch-incomplete",
 }
 
 
@@ -77,7 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = _Parser(
         prog="teaid",
         description=(
-            "Build an evidence sheet for one TE family, to support manual curation. "
+            "Build an evidence sheet per TE family, to support manual curation. "
             "TE-Aid renders evidence; it never asserts a classification."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -108,9 +110,9 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     source.add_argument(
+        "-g",
         "--genome",
         "--blastn",
-        "-g",
         dest="genome",
         metavar="FASTA",
         help=(
@@ -157,6 +159,26 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         dest="seed_qc",
         help="add the seed-QC panels: alignment depth and the expected class label",
+    )
+
+    batch = parser.add_argument_group("batch (many families in one run)")
+    batch.add_argument(
+        "--all", action="store_true",
+        help=("every family: each record of the seed, each consensus with annotated "
+              "copies (--annot), or each consensus (--genome)"),
+    )
+    batch.add_argument(
+        "--families", metavar="FILE",
+        help=("the families to draw, one per line ('-' reads stdin). Only the first "
+              "tab-separated column is read, so tools/select_families.py output works"),
+    )
+    batch.add_argument(
+        "-j", "--jobs", type=int, default=1, metavar="N",
+        help="families drawn at once, in separate processes (default 1)",
+    )
+    batch.add_argument(
+        "--no-index", action="store_true",
+        help="do not write index.html, the contact sheet over the batch",
     )
 
     output = parser.add_argument_group("output")
@@ -252,6 +274,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="skip the protein row (no bathsearch call)",
     )
     homology_group.add_argument(
+        "--cpus", type=int, default=None, metavar="N",
+        help="threads for bathsearch (default: BATH's own, 2)",
+    )
+    homology_group.add_argument(
         "--proteins", metavar="FILE",
         help="a prebuilt BATH pHMM library to search instead of building tiers 1-2; "
              "tier 3 (blastp vs RepeatPeps) still runs",
@@ -279,7 +305,8 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _protein_homology(args, consensus, found_orfs, notes, sources) -> tuple[list, list]:
+def _protein_homology(args, consensus, found_orfs, notes, sources,
+                      prep: _Prepared) -> tuple[list, list]:
     """Protein hits for panel 5, degrading to an empty row rather than failing.
 
     A missing BATH install or an unbuildable library costs the sheet one panel;
@@ -290,8 +317,13 @@ def _protein_homology(args, consensus, found_orfs, notes, sources) -> tuple[list
     """
     from pathlib import Path as _Path
 
+    if prep.protein_error:
+        notes.append(f"protein row skipped: {prep.protein_error}")
+        return [], []
     try:
-        if args.proteins:
+        if prep.protein_library is not None:
+            library = prep.protein_library
+        elif args.proteins:
             # A prebuilt pHMM library replaces tiers 1-2 only. Tier 3 still
             # follows --repeatpeps and the usual discovery, as in any other run.
             library = proteins.Library(
@@ -317,6 +349,7 @@ def _protein_homology(args, consensus, found_orfs, notes, sources) -> tuple[list
             library,
             name=consensus.bare_name,
             evalue=args.homology_evalue,
+            cpus=args.cpus,
         )
     except (homology.BathNotFound, RuntimeError) as exc:
         print(f"teaid: warning: protein row skipped: {exc}", file=sys.stderr)
@@ -390,6 +423,25 @@ def _seed_qc_fields(seed, enabled: bool) -> dict:
 
 
 @dataclass(slots=True)
+class _Prepared:
+    """Inputs already read, handed to one family's run.
+
+    Empty for a single family, which then reads everything itself. Batch mode
+    reads each input once, and gives every family its own slice of it.
+    """
+
+    annotation: Annotation | None = None  # this family's rows, or the whole file
+    library: object | None = None  # a ConsensusLibrary
+    seed: object | None = None
+    genome_db: Path | None = None
+    protein_library: object | None = None
+    protein_error: str | None = None
+    stem: str | None = None
+    # Filled in by the run, for the batch manifest and index.
+    facts: dict = dataclass_field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class _Loaded:
     """One family, resolved from whichever input source was chosen."""
 
@@ -405,7 +457,7 @@ class _Loaded:
     genomic: Annotation | None = None
 
 
-def _load_genomic_context(args, family: str) -> Annotation | int | None:
+def _load_genomic_context(args, family: str, prep: _Prepared) -> Annotation | int | None:
     """Annotated genomic copies of ``family``, for seed QC against the genome.
 
     Returns None — not a failure — when the annotation simply has no rows for
@@ -413,16 +465,11 @@ def _load_genomic_context(args, family: str) -> Annotation | int | None:
     worth knowing about, but it is not a reason to refuse the sheet.
     """
     annot_path = Path(args.annot)
-    if not annot_path.exists():
-        return fail(EXIT_NO_INPUT, f"annotation not found: {annot_path}")
-
-    kwargs = {}
-    if args.divergence_kind:
-        kwargs["divergence_kind"] = DivergenceKind(args.divergence_kind)
-    try:
-        annotation = readers.read(annot_path, fmt=args.annot_format, **kwargs)
-    except readers.FormatDetectionError as exc:
-        return fail(EXIT_NO_INPUT, str(exc))
+    annotation = prep.annotation
+    if annotation is None:
+        annotation = _read_annotation(args)
+        if isinstance(annotation, int):
+            return annotation
 
     subset = annotation.for_family(family, exact=False)
     if not len(subset):
@@ -435,18 +482,37 @@ def _load_genomic_context(args, family: str) -> Annotation | int | None:
     return subset
 
 
-def _resolve_consensus(args, route: str) -> tuple[Path, Consensus] | int:
-    """The one consensus a route draws, from ``--consensus`` and ``--family``."""
+def _read_annotation(args) -> Annotation | int:
+    annot_path = Path(args.annot)
+    if not annot_path.exists():
+        return fail(EXIT_NO_INPUT, f"annotation not found: {annot_path}")
+    kwargs = {}
+    if args.divergence_kind:
+        kwargs["divergence_kind"] = DivergenceKind(args.divergence_kind)
+    try:
+        return readers.read(annot_path, fmt=args.annot_format, **kwargs)
+    except readers.FormatDetectionError as exc:
+        return fail(EXIT_NO_INPUT, str(exc))
+
+
+def _read_library(args, route: str):
     if not args.consensus:
         return fail(EXIT_USAGE, f"--consensus is required with {route}")
     consensus_path = Path(args.consensus)
     if not consensus_path.exists():
         return fail(EXIT_NO_INPUT, f"consensus FASTA not found: {consensus_path}")
-
     library = read_fasta(consensus_path)
     if not len(library):
         return fail(EXIT_NO_INPUT, f"no sequences in {consensus_path}")
+    return library
 
+
+def _resolve_consensus(args, route: str, prep: _Prepared) -> tuple[Path, Consensus] | int:
+    """The one consensus a route draws, from ``--consensus`` and ``--family``."""
+    library = prep.library if prep.library is not None else _read_library(args, route)
+    if isinstance(library, int):
+        return library
+    consensus_path = Path(args.consensus)
     family = args.family
     if family is None:
         if len(library) != 1:
@@ -467,26 +533,24 @@ def _resolve_consensus(args, route: str) -> tuple[Path, Consensus] | int:
     return consensus_path, consensus
 
 
-def _load_annotation(args) -> _Loaded | int:
+def _load_annotation(args, prep: _Prepared) -> _Loaded | int:
     """The ``--annot`` path: an annotation plus a separate consensus FASTA."""
     annot_path = Path(args.annot)
     if not args.consensus:
         return fail(EXIT_USAGE, "--consensus is required with --annot")
-    if not annot_path.exists():
+    if prep.annotation is None and not annot_path.exists():
         return fail(EXIT_NO_INPUT, f"annotation not found: {annot_path}")
-    resolved = _resolve_consensus(args, "--annot")
+    resolved = _resolve_consensus(args, "--annot", prep)
     if isinstance(resolved, int):
         return resolved
     consensus_path, consensus = resolved
     family = consensus.bare_name
 
-    kwargs = {}
-    if args.divergence_kind:
-        kwargs["divergence_kind"] = DivergenceKind(args.divergence_kind)
-    try:
-        annotation = readers.read(annot_path, fmt=args.annot_format, **kwargs)
-    except readers.FormatDetectionError as exc:
-        return fail(EXIT_NO_INPUT, str(exc))
+    annotation = prep.annotation
+    if annotation is None:
+        annotation = _read_annotation(args)
+        if isinstance(annotation, int):
+            return annotation
 
     subset = annotation.for_family(family, exact=False)
     if not len(subset):
@@ -506,13 +570,13 @@ def _load_annotation(args) -> _Loaded | int:
     return _Loaded(consensus.bare_name, consensus, subset, notes, sources)
 
 
-def _genome_copies(args, consensus: Consensus) -> Annotation | int:
+def _genome_copies(args, consensus: Consensus, prep: _Prepared) -> Annotation | int:
     """Copies of ``consensus`` found by blastn against ``--genome`` (the v1 route)."""
     genome_path = Path(args.genome)
     if not genome_path.exists():
         return fail(EXIT_NO_INPUT, f"genome not found: {genome_path}")
     try:
-        database = genome.ensure_database(
+        database = prep.genome_db or genome.ensure_database(
             genome_path, log=lambda m: print(f"teaid: {m}", file=sys.stderr))
         copies = genome.search(consensus.sequence, consensus.bare_name, database,
                                evalue=args.genome_evalue, family=consensus.bare_name,
@@ -526,13 +590,13 @@ def _genome_copies(args, consensus: Consensus) -> Annotation | int:
     return copies
 
 
-def _load_genome(args) -> _Loaded | int:
+def _load_genome(args, prep: _Prepared) -> _Loaded | int:
     """The ``--genome`` path: v1's route, a consensus searched against a genome."""
-    resolved = _resolve_consensus(args, "--genome")
+    resolved = _resolve_consensus(args, "--genome", prep)
     if isinstance(resolved, int):
         return resolved
     consensus_path, consensus = resolved
-    copies = _genome_copies(args, consensus)
+    copies = _genome_copies(args, consensus, prep)
     if isinstance(copies, int):
         return copies
     if not len(copies):
@@ -555,7 +619,7 @@ def _load_genome(args) -> _Loaded | int:
     return _Loaded(consensus.bare_name, consensus, copies, notes, sources)
 
 
-def _load_seed(args) -> _Loaded | int:
+def _load_seed(args, prep: _Prepared) -> _Loaded | int:
     """The ``--stk`` path: one Stockholm record supplies everything.
 
     Copies, loci, consensus and alignment all come from the seed, so no separate
@@ -563,11 +627,11 @@ def _load_seed(args) -> _Loaded | int:
     silently disagree with the alignment the depth panel is drawn from.
     """
     seed_path = Path(args.stk)
-    if not seed_path.exists():
+    if prep.seed is None and not seed_path.exists():
         return fail(EXIT_NO_INPUT, f"seed alignment not found: {seed_path}")
 
     try:
-        seed = stockholm.read(seed_path, args.family)
+        seed = prep.seed if prep.seed is not None else stockholm.read(seed_path, args.family)
     except stockholm.MalformedSeedError as exc:
         hint = None
         if args.family:
@@ -632,8 +696,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.stk and (args.annot or args.genome):
         chosen = "stk"
 
+    if args.all or args.families:
+        return _batch(args, chosen)
+    return _draw(args, chosen, _Prepared())
+
+
+def _draw(args, chosen: str, prep: _Prepared) -> int:
+    """Everything after route selection, for one family."""
     loaders = {"stk": _load_seed, "annot": _load_annotation, "genome": _load_genome}
-    loaded = loaders[chosen](args)
+    loaded = loaders[chosen](args, prep)
     if isinstance(loaded, int):
         return loaded
     if chosen == "annot" and args.genome:
@@ -646,11 +717,11 @@ def main(argv: list[str] | None = None) -> int:
     # and only the comparison distinguishes them.
     if chosen == "stk" and (args.annot or args.genome):
         if args.annot:
-            genomic = _load_genomic_context(args, loaded.family)
+            genomic = _load_genomic_context(args, loaded.family, prep)
             label = f"annotation <b>{Path(args.annot).name}</b>"
             kind = "annotated genomic copies"
         else:
-            genomic = _genome_copies(args, loaded.consensus)
+            genomic = _genome_copies(args, loaded.consensus, prep)
             label = f"genome <b>{Path(args.genome).name}</b>"
             kind = "genomic copies found by blastn"
             if not isinstance(genomic, int) and not len(genomic):
@@ -717,7 +788,7 @@ def main(argv: list[str] | None = None) -> int:
     class_check = None
     if not args.no_homology:
         protein_hits, all_hits = _protein_homology(
-            args, consensus, found_orfs, notes, loaded.sources
+            args, consensus, found_orfs, notes, loaded.sources, prep
         )
         if protein_hits and seed is not None and args.seed_qc:
             class_check = classcheck.check(seed.expected_class, protein_hits)
@@ -747,7 +818,7 @@ def main(argv: list[str] | None = None) -> int:
 
     out_dir = Path(args.output)
     out_dir.mkdir(parents=True, exist_ok=True)
-    stem = _safe_stem(consensus.bare_name)
+    stem = prep.stem or _safe_stem(consensus.bare_name)
     html_path = out_dir / f"{stem}.teaid.html"
     report.write_html(figure, html_path, data, theme.get(args.theme))
     print(f"wrote {html_path}")
@@ -782,14 +853,255 @@ def main(argv: list[str] | None = None) -> int:
         longest = max(o.length_aa for o in found_orfs)
         summary += f", {len(found_orfs)} ORFs (longest {longest:,} aa)"
     print(summary)
+    prep.facts.update(
+        copies=len(insertions), rows=len(shown), full_length=len(full),
+        class_label=consensus.class_label or "", length=consensus_length,
+    )
     return EXIT_OK
+
+
+def _family_list(args, names: list[str]) -> list[str] | int:
+    """The families a batch draws: all of ``names``, or those named in --families."""
+    if args.all:
+        return names
+    source = sys.stdin if args.families == "-" else None
+    if source is None:
+        path = Path(args.families)
+        if not path.exists():
+            return fail(EXIT_NO_INPUT, f"family list not found: {path}")
+        text = path.read_text()
+    else:
+        text = source.read()
+    wanted = []
+    for line in text.splitlines():
+        name = line.split("\t", 1)[0].strip()
+        if name and not name.startswith("#"):
+            wanted.append(name)
+    return wanted
+
+
+def _unique_stems(names: list[str]) -> dict[str, str]:
+    """A file stem per family, suffixed where two names would share one.
+
+    One family per invocation could leave collisions to the caller. Once TE-Aid
+    runs the loop it has to handle them, or two sheets silently become one.
+    """
+    stems: dict[str, str] = {}
+    seen: dict[str, int] = {}
+    for name in names:
+        base = _safe_stem(name.split("#", 1)[0])
+        seen[base] = seen.get(base, 0) + 1
+        stems[name] = base if seen[base] == 1 else f"{base}.{seen[base]}"
+    return stems
+
+
+def _batch_one(args, chosen: str, family: str, prep: _Prepared) -> dict:
+    """Draw one family of a batch, capturing its output. Runs in a worker."""
+    import contextlib
+    import io
+    import time
+    import traceback
+
+    args = argparse.Namespace(**{**vars(args), "family": family, "all": False, "families": None})
+    out, err = io.StringIO(), io.StringIO()
+    start = time.perf_counter()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        try:
+            code = _draw(args, chosen, prep)
+        except SystemExit as exc:
+            code = exc.code if isinstance(exc.code, int) else 1
+        except Exception:  # one family's crash must not end the batch
+            traceback.print_exc()
+            code = 1
+    return dict(family=family, stem=prep.stem, code=code,
+                seconds=time.perf_counter() - start,
+                stdout=out.getvalue(), stderr=err.getvalue(), facts=prep.facts)
+
+
+_MANIFEST = ["family", "stem", "exit", "slug", "seconds", "copies", "annotation_rows",
+             "full_length", "class", "consensus_length", "warnings", "error"]
+
+
+def _batch(args, chosen: str) -> int:
+    """Draw many families in one run, reading each input once.
+
+    Writes each sheet as usual, plus ``results.tsv`` (one row per family) and
+    ``index.html``. Exits 0 only when every family drew; otherwise exit 8,
+    ``batch-incomplete``, with the reasons in the manifest.
+    """
+    import concurrent.futures
+
+    from . import index as index_page
+    from .records import _bare_name
+
+    if args.family:
+        return fail(EXIT_USAGE, "--family draws one family; drop it to use --all or --families")
+    if args.jobs < 1:
+        return fail(EXIT_USAGE, "--jobs must be at least 1")
+    log = lambda message: print(f"teaid: {message}", file=sys.stderr)  # noqa: E731
+    base = _Prepared()
+    skipped_note = None
+
+    if chosen == "stk":
+        seed_path = Path(args.stk)
+        if not seed_path.exists():
+            return fail(EXIT_NO_INPUT, f"seed alignment not found: {seed_path}")
+        try:
+            seeds = {s.identifier or f"seed-{i}": s
+                     for i, s in enumerate(stockholm.read_all(seed_path), start=1)}
+        except stockholm.MalformedSeedError as exc:
+            return fail(EXIT_BAD_SEED, str(exc))
+        names = list(seeds)
+    else:
+        library = _read_library(args, f"--{chosen}")
+        if isinstance(library, int):
+            return library
+        base.library = library
+        names = [entry.bare_name for entry in library]
+
+    by_family: dict[str, list] = {}
+    annotation = None
+    if args.annot:
+        annotation = _read_annotation(args)
+        if isinstance(annotation, int):
+            return annotation
+        for copy in annotation.copies:
+            by_family.setdefault(_bare_name(copy.family), []).append(copy)
+        if chosen == "annot" and args.all:
+            absent = [n for n in names if _bare_name(n) not in by_family]
+            names = [n for n in names if _bare_name(n) in by_family]
+            if absent:
+                skipped_note = (f"{len(absent):,} library families have no annotated copies "
+                                f"and were not drawn")
+    if args.genome and chosen != "annot":
+        genome_path = Path(args.genome)
+        if not genome_path.exists():
+            return fail(EXIT_NO_INPUT, f"genome not found: {genome_path}")
+        try:
+            base.genome_db = genome.ensure_database(genome_path, log=log)
+        except (genome.BlastnNotFound, RuntimeError) as exc:
+            return fail(EXIT_NO_INPUT, str(exc))
+    if not args.no_homology and not args.proteins:
+        # Built once here, so no worker waits on the lock with nothing to show.
+        try:
+            base.protein_library = proteins.build(deep=args.deep, repeatpeps=args.repeatpeps,
+                                                  force=args.rebuild_proteins, log=log)
+        except proteins.LibraryError as exc:
+            base.protein_error = str(exc)
+            log(f"warning: protein row skipped for every family: {exc}")
+
+    families = _family_list(args, names)
+    if isinstance(families, int):
+        return families
+    if not families:
+        return fail(EXIT_NO_FAMILY, "no families to draw")
+    stems = _unique_stems(families)
+    renamed = [f for f in families if stems[f] != _safe_stem(f.split("#", 1)[0])]
+    for family in renamed:
+        log(f"warning: {family!r} is written as {stems[family]}.teaid.html; "
+            f"its name collides with another family's")
+
+    def prep_for(family: str) -> _Prepared:
+        prep = _Prepared(library=base.library, genome_db=base.genome_db,
+                         protein_library=base.protein_library,
+                         protein_error=base.protein_error, stem=stems[family])
+        if chosen == "stk":
+            prep.seed = seeds.get(family)
+        if annotation is not None:
+            # Only this family's rows travel to the worker, not the whole file.
+            prep.annotation = type(annotation)(
+                copies=by_family.get(_bare_name(family), []),
+                source_path=annotation.source_path,
+                source_format=annotation.source_format,
+                skipped=annotation.skipped,
+            )
+        return prep
+
+    out_dir = Path(args.output)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    results = []
+    total = len(families)
+
+    def report_one(result: dict) -> None:
+        results.append(result)
+        sys.stdout.write(result["stdout"])
+        slug = _SLUG.get(result["code"], "error" if result["code"] else "")
+        status = "ok" if result["code"] == EXIT_OK else f"failed [{slug}]"
+        log(f"[{len(results)}/{total}] {result['family']}: {status} "
+            f"({result['seconds']:.0f} s)")
+
+    if args.jobs == 1:
+        for family in families:
+            if chosen == "stk" and family not in seeds:
+                report_one(_missing(family, stems[family], "not a record in the seed"))
+                continue
+            report_one(_batch_one(args, chosen, family, prep_for(family)))
+    else:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=args.jobs) as pool:
+            futures = []
+            for family in families:
+                if chosen == "stk" and family not in seeds:
+                    report_one(_missing(family, stems[family], "not a record in the seed"))
+                    continue
+                futures.append(pool.submit(_batch_one, args, chosen, family, prep_for(family)))
+            for future in concurrent.futures.as_completed(futures):
+                report_one(future.result())
+
+    order = {family: i for i, family in enumerate(families)}
+    results.sort(key=lambda r: order[r["family"]])
+    manifest = out_dir / "results.tsv"
+    with manifest.open("w") as handle:
+        handle.write("\t".join(_MANIFEST) + "\n")
+        for r in results:
+            handle.write("\t".join(str(v) for v in _manifest_row(r)) + "\n")
+    print(f"wrote {manifest}")
+    if not args.no_index:
+        page = index_page.write(out_dir, results, title=_batch_title(args, chosen),
+                                note=skipped_note)
+        print(f"wrote {page}")
+
+    failed = [r for r in results if r["code"] != EXIT_OK]
+    summary = f"{total - len(failed):,} of {total:,} families drawn"
+    if skipped_note:
+        summary += f"; {skipped_note}"
+    if failed:
+        log(f"{summary}; {len(failed):,} failed, see {manifest}")
+        return fail(EXIT_BATCH_INCOMPLETE, f"{len(failed):,} of {total:,} families failed; "
+                                           f"see {manifest}")
+    log(summary)
+    return EXIT_OK
+
+
+def _missing(family: str, stem: str, why: str) -> dict:
+    line = f"teaid: error [{_SLUG[EXIT_NO_FAMILY]}]: {family!r} {why}\n"
+    return dict(family=family, stem=stem, code=EXIT_NO_FAMILY, seconds=0.0,
+                stdout="", stderr=line, facts={})
+
+
+def _manifest_row(r: dict) -> list:
+    facts = r.get("facts") or {}
+    lines = [ln.strip() for ln in r["stderr"].splitlines() if ln.strip()]
+    warnings = " | ".join(ln.split("warning:", 1)[1].strip() for ln in lines if "warning:" in ln)
+    errors = " | ".join(ln for ln in lines if "error" in ln and "warning:" not in ln)
+    slug = "" if r["code"] == EXIT_OK else _SLUG.get(r["code"], "error")
+    return [r["family"], r["stem"], r["code"], slug, f"{r['seconds']:.1f}",
+            facts.get("copies", ""), facts.get("rows", ""), facts.get("full_length", ""),
+            facts.get("class_label", ""), facts.get("length", ""),
+            warnings.replace("\t", " "), errors.replace("\t", " ")[:500]]
+
+
+def _batch_title(args, chosen: str) -> str:
+    source = {"stk": args.stk, "annot": args.annot, "genome": args.genome}[chosen]
+    return f"TE-Aid sheets: {Path(source).name}"
 
 
 def main_legacy_alias(argv: list[str] | None = None) -> int:
     """Entry point for the historical ``TE-Aid`` command name."""
+    # Say exactly what carries over from v1, rather than promising it all.
     print(
-        "note: 'TE-Aid' is now 'teaid'. This alias will keep working; "
-        "please update your scripts.",
+        "note: 'TE-Aid' is now 'teaid', and this alias runs it. From v1, -q, -g, -o, "
+        "-e, -m, -R and -r work as before; -t, -T, -f, -a, -F, -y and -D do not yet "
+        "(-t and -f mean other things in v2). See docs/INTEGRATION.md.",
         file=sys.stderr,
     )
     return main(argv)

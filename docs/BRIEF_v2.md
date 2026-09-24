@@ -560,10 +560,14 @@ This section is status and direction only.
 
 ### Direction after step 7 (raised 2026-08-25, not yet scoped)
 
-- **Whole-library runs and parallelism.** Today `teaid` is one family per
-  invocation. A 400-family library at ~10 s of `bathsearch` each is over an
-  hour serially, and the model load dominates that (§5.5). Wants: a batch mode,
-  a worker pool, and probably one library load reused across families.
+- **Whole-library runs and parallelism.** *Batch mode landed 2026-09-24*
+  (`--all`, `--families`, `-j`, `results.tsv`, `index.html`; see
+  `docs/INTEGRATION.md` §5), with every item in the table below hoisted. Still
+  open: one `bathsearch` over many families. Model load is ~98% of a BATH run
+  (10.44 s for a 60 bp dummy query, 10.61 s for `ltr-1_family-22`), so that is
+  the remaining order-of-magnitude saving, and `ProteinHit.target` now makes it
+  possible. Originally: a 400-family library at ~10 s of `bathsearch` each is
+  over an hour serially.
 
   **Everything a batch mode must hoist out of the per-family path** — all of it
   is currently repeated for every single family:

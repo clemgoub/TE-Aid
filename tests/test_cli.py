@@ -272,7 +272,8 @@ class TestLegacyAlias:
             ["--annot", str(annot), "-c", str(fasta), "-f", "fam1", "-o", str(tmp_path), "--no-dotplot"]
         )
         assert code == cli.EXIT_OK
-        assert "'TE-Aid' is now 'teaid'" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "'TE-Aid' is now 'teaid'" in err and "-t and -f mean other things" in err
 
 
 class TestProteinProvenance:

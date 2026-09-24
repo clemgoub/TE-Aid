@@ -43,7 +43,8 @@ The working brief for this rewrite, including every settled design decision, is
 | TSD detection, `#=GF TD` output | ⬜ |
 | `--genome` route (v1's blastn search) and v1's input flags | ✅ done |
 | Panel 7 (consensus vs library entries) | ⬜ needs an agreed input hook |
-| Whole-library runs, batch mode · CLI pass · GUI | ⬜ raised, not yet scoped |
+| Batch mode: `--all`, `--families`, `-j`, `results.tsv`, `index.html` | ✅ done |
+| CLI pass · GUI | ⬜ raised, not yet scoped |
 
 The remaining steps are numbered and tracked in
 [`docs/BRIEF_v2.md`](docs/BRIEF_v2.md) §6, which is the authority on order and
@@ -231,6 +232,19 @@ artefact is a seed.
 
 Run `teaid --help` for the full option list.
 
+### A whole library at once
+
+```bash
+teaid --annot genome.fa.out --consensus families.fa --all -j 8 -o sheets/
+```
+
+`--all` draws every family with annotated copies, or every seed record with
+`--stk`. `--families FILE` draws a list instead, one name per line; the output
+of `tools/select_families.py` works as it is. Each input is read once, and
+`-j` draws that many families at a time. Beside the sheets go `results.tsv`,
+one row per family with its exit code and warnings, and `index.html`, a contact
+sheet grouped by TE class. The run exits 8 if any family failed.
+
 ### A note on divergence
 
 `perc_div` does not mean the same thing in every file. For homology-based tools
@@ -260,6 +274,7 @@ teaid: error [no-family]: family 'x' not in families.fa
 | 4 | `no-family` | the family is not in the consensus library |
 | 5 | `no-evidence` | the family has nothing plottable |
 | 6 | `bad-seed` | the Stockholm file could not be parsed |
+| 8 | `batch-incomplete` | batch mode: at least one family failed; see `results.tsv` |
 
 Parse the slug, not the prose. Only code 1, an uncaught exception, carries no
 slug. **Exit 0 does not mean a complete sheet:** a missing

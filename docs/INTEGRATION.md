@@ -105,6 +105,7 @@ teaid: error [bad-seed]: families.stk: no record with #=GF ID 'absent'
 | 4 | `no-family` | the family is not in the consensus library |
 | 5 | `no-evidence` | the family exists but carries nothing plottable |
 | 6 | `bad-seed` | the Stockholm file could not be parsed |
+| 8 | `batch-incomplete` | batch mode (`--all`, `--families`): at least one family failed; `results.tsv` says which and why |
 
 **Only exit 1 has no slug.** It is an unhandled exception and prints a Python
 traceback. Treat any failure whose stderr has no `[slug]` bracket as
@@ -295,9 +296,43 @@ hit.
 `<stem>` is the consensus name up to the first `#`, with every character outside
 `[A-Za-z0-9-._]` replaced by `_` — so `rnd-1_family-257#LTR/Gypsy` writes
 `rnd-1_family-257.teaid.html`. A seed with no `#=GF ID` is named `seed`.
-**Collisions overwrite silently**, which matters for batch callers: two families
-whose names differ only in a character that gets replaced land on the same file.
-Give each family its own `--output`, or check for the path first.
+In a single-family run, **collisions overwrite silently**: two families whose
+names differ only in a replaced character land on the same file. Batch mode
+checks for this up front and writes the later ones as `<stem>.2`, `<stem>.3`,
+with a warning and the stem recorded in `results.tsv`.
+
+### Batch mode
+
+`--all` draws every family: each record of a seed (`--stk`), each consensus
+with annotated copies (`--annot`), or each consensus (`--genome`). `--families
+FILE` draws those named, one per line, reading only the first tab-separated
+column, so `tools/select_families.py` output works as it is; `-` reads stdin.
+`-j N` draws N families at once, in separate processes.
+
+Each input is read once: the annotation (a 147k-row `.fa.out` took several
+seconds a family), the consensus library, every seed record, the genome's
+blastn database and the protein library, which is built before any worker
+starts. Each worker receives only its own family's rows.
+
+Besides the sheets, a batch writes:
+
+```
+<output>/results.tsv   one row per family, with a header
+<output>/index.html    a contact sheet over the batch, grouped by TE class
+```
+
+`results.tsv` columns: `family stem exit slug seconds copies annotation_rows
+full_length class consensus_length warnings error`. `warnings` joins the
+family's warning lines with ` | `; `error` holds its error line. One family's
+failure or crash does not stop the batch. The run exits 0 only when every family
+drew, and 8 (`batch-incomplete`) otherwise. Families `--all` skipped for having
+no annotated copies are not failures: the run says how many on stderr and on the
+index. `--no-index` skips the contact sheet.
+
+Stdout keeps the single-family contract: one `wrote <path>` line per file,
+including the two above, plus each family's summary line. Stderr carries one
+progress line per family (`teaid: [3/50] fam: ok (12 s)`) rather than each
+family's own warnings, which are in the manifest.
 
 Each file written prints one `wrote <path>` line on **stdout**. Errors and
 warnings go to stderr, so stdout stays parseable.
