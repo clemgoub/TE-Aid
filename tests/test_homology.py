@@ -499,3 +499,27 @@ class TestCrossTierCompetition:
         late = hit(query="late", start=5000, end=5200, source="pfam")
         early = hit(query="early", start=10, end=200, source="repeatpeps-blastp")
         assert [h.query for h in homology.best_per_region([late, early])] == ["early", "late"]
+
+
+class TestRepeatPepsDatabaseIsBuiltOnce:
+    def test_the_second_family_reuses_the_database(self, tmp_path, monkeypatch):
+        import shutil
+        import subprocess
+
+        if shutil.which("makeblastdb") is None:
+            pytest.skip("makeblastdb not installed")
+        monkeypatch.setenv("TEAID_CACHE", str(tmp_path / "cache"))
+        peps = tmp_path / "RepeatPeps.lib"
+        peps.write_text(">p1#DNA/hAT\nMKVLAAGGHHKLMMNPQRST\n>p2#LTR/Gypsy\nMSTRVLLKKAAGGHHWWYY\n")
+        real = subprocess.run
+        calls = []
+
+        def counting(command, *a, **k):
+            calls.append(command[0])
+            return real(command, *a, **k)
+
+        monkeypatch.setattr(homology.subprocess, "run", counting)
+        first = homology.repeatpeps_database(peps, scratch=tmp_path)
+        second = homology.repeatpeps_database(peps, scratch=tmp_path)
+        assert first == second and first is not None
+        assert calls.count("makeblastdb") == 1

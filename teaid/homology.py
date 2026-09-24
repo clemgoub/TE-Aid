@@ -13,6 +13,7 @@ classification decision. TE-Aid renders the hits and leaves the verdict alone.
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import subprocess
 import tempfile
@@ -210,6 +211,44 @@ def _parse_tblout(text: str) -> list[ProteinHit]:
     return hits
 
 
+def repeatpeps_database(repeatpeps: Path, *, scratch: Path) -> Path | None:
+    """A blastp database of RepeatPeps, built once and reused.
+
+    Built under the cache, keyed like the protein library on the file's name and
+    size, so the ~2 s makeblastdb runs once rather than once per family. Falls
+    back to ``scratch`` (rebuilt each call, as before) when the cache cannot be
+    written. Returns None when makeblastdb fails.
+    """
+    from . import proteins
+
+    key = hashlib.sha256(f"{repeatpeps.name}:{repeatpeps.stat().st_size}".encode())
+    home = proteins.cache_root() / "repeatpeps-db" / key.hexdigest()[:16]
+    prefix, done = home / "peps", home / "peps.done"
+    if done.exists():
+        return prefix
+
+    def make(out: Path) -> bool:
+        made = subprocess.run(
+            ["makeblastdb", "-in", str(repeatpeps), "-out", str(out), "-dbtype", "prot"],
+            capture_output=True, text=True, check=False,
+        )
+        return made.returncode == 0
+
+    try:
+        with proteins._exclusive(home.parent / f"{home.name}.lock", log=lambda _: None):
+            if not done.exists():
+                home.mkdir(parents=True, exist_ok=True)
+                if not make(prefix):
+                    return None
+                # makeblastdb writes several files; the stamp says all of them
+                # are finished, so a build cut short is redone, never reused.
+                done.write_text("ok\n")
+        return prefix
+    except (OSError, proteins.LibraryError):
+        fallback = scratch / "peps"
+        return fallback if make(fallback) else None
+
+
 def search_repeatpeps(
     orfs,
     repeatpeps: Path,
@@ -242,12 +281,8 @@ def search_repeatpeps(
         if query.stat().st_size == 0:
             return []
 
-        database = tmpdir / "peps"
-        made = subprocess.run(
-            ["makeblastdb", "-in", str(repeatpeps), "-out", str(database), "-dbtype", "prot"],
-            capture_output=True, text=True, check=False,
-        )
-        if made.returncode != 0:
+        database = repeatpeps_database(Path(repeatpeps), scratch=tmpdir)
+        if database is None:
             return []
 
         result = subprocess.run(
