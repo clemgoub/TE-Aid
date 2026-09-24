@@ -36,14 +36,20 @@ so the benchmark has something to run against.
 
 Everything is cached under ``~/.teaid/proteins/`` (or ``$TEAID_CACHE``), keyed by
 a signature of the inputs, so editing ``te_domains.tsv`` rebuilds rather than
-silently reusing a stale library.
+silently reusing a stale library. ``PFAM_BLIND_SUPERFAMILIES`` is not part of
+that signature, since changing it would move the whole cache and refetch tier 1
+over the network. A ``pfam_blind.fa.keys`` sidecar records which superfamilies
+the tier-2 subset was cut for, so editing the dict rebuilds tier 2 alone.
 
 **Every reuse guard here reads "the file exists" as "the file is finished."**
 That is only safe because the two slow producers — the ~5-minute Pfam fetch and
 the minutes-long ``bathbuild`` — now write to a temporary path and rename, so an
-interrupted build leaves no output rather than a truncated one. Anything added
-here that writes an output directly is a silent-partial-library bug waiting to
-happen; route it through ``_build_atomic``.
+interrupted build leaves no output rather than a truncated one. The tier-2
+extraction and the final concatenation go through the same rename, and a
+rebuild deletes the old completion stamp before it starts, so a stamp can only
+sit beside a library that finished. Anything added here that writes an output
+directly is a silent-partial-library bug waiting to happen; route it through
+``_build_atomic``.
 
 ``build()`` takes no lock, so concurrent first-runs would race on the same
 cache directory. A batch caller must warm the cache with one serial run before
@@ -57,6 +63,7 @@ import hashlib
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -245,11 +252,16 @@ def build(
     stamp = home / ("deep.done" if deep else "default.done")
     tiers: list[str] = []
 
-    if stamp.exists() and hmm.exists() and not force and _tier1_trustworthy(home, deep):
+    if (stamp.exists() and hmm.exists() and not force
+            and _tier1_trustworthy(home, deep) and _tier2_current(home, deep, peps)):
         tiers = stamp.read_text().split(",")
         return Library(hmm=hmm, repeatpeps=peps, tiers=tuple(t for t in tiers if t))
 
     home.mkdir(parents=True, exist_ok=True)
+    # From here the old library no longer counts as finished. Without this, a
+    # rebuild interrupted after it started would leave the previous stamp beside
+    # a library that is stale or half written, and the next run would reuse it.
+    stamp.unlink(missing_ok=True)
     _require("bathconvert")
     _require("bathbuild")
     parts: list[Path] = []
@@ -292,11 +304,16 @@ def build(
         # Tier 2 — only the superfamilies Pfam cannot model.
         if peps is not None:
             subset = home / "pfam_blind.fa"
-            if not subset.exists() or force:
-                n = extract_pfam_blind(peps, subset)
-                log(f"extracting {n} RepeatPeps proteins Pfam cannot model")
+            fresh = force or not _tier2_current(home, deep, peps)
+            if fresh:
+                keys = _tier2_keys_file(subset)
+                keys.unlink(missing_ok=True)
+                extracted: list[int] = []
+                _build_atomic(subset, lambda out: extracted.append(extract_pfam_blind(peps, out)))
+                keys.write_text(_pfam_blind_keys())
+                log(f"extracting {extracted[0]} RepeatPeps proteins Pfam cannot model")
             blind = home / "pfam_blind.bhmm"
-            if not blind.exists() or force:
+            if not blind.exists() or fresh:
                 log("building tier-2 pHMMs (~200 MB, a few minutes)")
                 _build_atomic(
                     blind, lambda out: _run([_require("bathbuild"), str(out), str(subset)])
@@ -313,9 +330,12 @@ def build(
     if len(parts) == 1:
         parts[0].replace(hmm)
     else:
-        with hmm.open("wb") as out:
-            for part in parts:
-                out.write(part.read_bytes())
+        def concatenate(out: Path) -> None:
+            with out.open("wb") as sink:
+                for part in parts:
+                    sink.write(part.read_bytes())
+
+        _build_atomic(hmm, concatenate)
         # The parts are rebuildable from the small cached inputs beside them
         # (pfam.hmm, pfam_blind.fa), so keeping both costs disk for nothing.
         for part in parts:
@@ -337,6 +357,47 @@ def _tier1_trustworthy(home: Path, deep: bool) -> bool:
     if deep:
         return True
     return (home / "pfam.hmm.count").exists()
+
+
+def _pfam_blind_keys() -> str:
+    return "".join(f"{key}\n" for key in sorted(PFAM_BLIND_SUPERFAMILIES))
+
+
+def _tier2_keys_file(subset: Path) -> Path:
+    return subset.with_name(subset.name + ".keys")
+
+
+def _tier2_current(home: Path, deep: bool, peps: Path | None) -> bool:
+    """Whether the cached tier-2 subset is complete and cut for today's table.
+
+    Tier 2 is the only evidence for piggyBac, Maverick, Crypton and Penelope,
+    so a stale or truncated subset fails in the direction that misleads: the
+    domain is simply absent, which reads as "not a coding element".
+
+    A cache from before the ``.keys`` sidecar existed is checked against a
+    fresh extraction rather than rebuilt, since extracting takes well under a
+    second and ``bathbuild`` takes minutes. A match earns the sidecar.
+    """
+    if deep or peps is None:
+        return True
+    subset = home / "pfam_blind.fa"
+    keys = _tier2_keys_file(subset)
+    if not subset.exists():
+        return False
+    if keys.exists():
+        return keys.read_text() == _pfam_blind_keys()
+    # The check goes to a temporary directory and the sidecar is best-effort,
+    # so a read-only shared cache can still be read.
+    with tempfile.TemporaryDirectory(prefix="teaid-tier2-") as tmp:
+        check = Path(tmp) / subset.name
+        extract_pfam_blind(peps, check)
+        same = check.read_bytes() == subset.read_bytes()
+    if same:
+        try:
+            keys.write_text(_pfam_blind_keys())
+        except OSError:
+            pass
+    return same
 
 
 def _build_atomic(dest: Path, produce) -> None:

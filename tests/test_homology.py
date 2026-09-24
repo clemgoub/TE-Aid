@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from teaid import classcheck, homology, proteins
@@ -305,6 +307,91 @@ class TestPartialBuildsAreNeverReused:
 
     def test_a_deep_library_has_no_tier_one_to_vouch_for(self, tmp_path):
         assert proteins._tier1_trustworthy(tmp_path, deep=True)
+
+
+class TestTierTwoIsNeverStale:
+    """Tier 2 is the only evidence for piggyBac, Maverick, Crypton and Penelope,
+    so a stale or truncated subset makes those domains quietly absent. These
+    drive build() end to end, with bathconvert and bathbuild faked and tier 1
+    already fetched, so neither BATH nor the network is touched."""
+
+    PEPS = ">p1#DNA/PiggyBac\nMKVL\n>p2#LTR/Gypsy\nMKKA\n>p3#DNA/Maverick\nMAAA\n"
+
+    @pytest.fixture
+    def toolchain(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TEAID_CACHE", str(tmp_path / "cache"))
+        peps = tmp_path / "RepeatPeps.lib"
+        peps.write_text(self.PEPS)
+        calls = []
+
+        def fake_run(command):
+            calls.append(command[0])
+            Path(command[1]).write_bytes(b"built from " + Path(command[2]).read_bytes())
+
+        monkeypatch.setattr(proteins, "_require", lambda tool: tool)
+        monkeypatch.setattr(proteins, "_run", fake_run)
+        home = proteins.cache_root() / proteins._signature(False, peps)
+        home.mkdir(parents=True)
+        (home / "pfam.hmm").write_text("HMMER3/f\n//\n")
+        n = len(proteins.curated_accessions())
+        (home / "pfam.hmm.count").write_text(f"{n}/{n}\n")
+        return peps, home, calls
+
+    @staticmethod
+    def quiet(*_):
+        pass
+
+    def test_an_interrupted_extraction_leaves_no_subset(self, toolchain, monkeypatch):
+        peps, home, _ = toolchain
+
+        def cut_short(source, dest):
+            dest.write_text(">p1#DNA/PiggyBac\nMK")
+            raise KeyboardInterrupt("Ctrl-C mid-extraction")
+
+        monkeypatch.setattr(proteins, "extract_pfam_blind", cut_short)
+        with pytest.raises(KeyboardInterrupt):
+            proteins.build(repeatpeps=peps, log=self.quiet)
+        assert not (home / "pfam_blind.fa").exists()
+
+    def test_editing_the_superfamily_table_rebuilds_tier_two(self, toolchain, monkeypatch):
+        peps, home, calls = toolchain
+        proteins.build(repeatpeps=peps, log=self.quiet)
+        assert "LTR/Gypsy" not in (home / "pfam_blind.fa").read_text()
+        monkeypatch.setitem(proteins.PFAM_BLIND_SUPERFAMILIES, "LTR/Gypsy", "test")
+        calls.clear()
+        proteins.build(repeatpeps=peps, log=self.quiet)
+        assert "LTR/Gypsy" in (home / "pfam_blind.fa").read_text()
+        assert "bathbuild" in calls
+
+    def test_a_rebuild_cut_short_leaves_no_stamp(self, toolchain, monkeypatch):
+        """Otherwise the old stamp vouches for a library the rebuild had begun
+        to replace, and the next run reuses it."""
+        peps, home, _ = toolchain
+        proteins.build(repeatpeps=peps, log=self.quiet)
+        assert (home / "default.done").exists()
+
+        def interrupted(*a, **k):
+            raise KeyboardInterrupt("Ctrl-C mid-rebuild")
+
+        monkeypatch.setattr(proteins, "fetch_pfam_hmms", interrupted)
+        with pytest.raises(KeyboardInterrupt):
+            proteins.build(repeatpeps=peps, force=True, log=self.quiet)
+        assert not (home / "default.done").exists()
+
+    def test_a_subset_from_before_the_sidecar_is_checked_not_rebuilt(self, toolchain):
+        """Pins new behaviour rather than an old bug: existing caches heal for
+        the cost of one extraction, without a minutes-long bathbuild."""
+        peps, home, calls = toolchain
+        proteins.build(repeatpeps=peps, log=self.quiet)
+        (home / "pfam_blind.fa.keys").unlink()
+        calls.clear()
+        proteins.build(repeatpeps=peps, log=self.quiet)
+        assert calls == []
+        assert (home / "pfam_blind.fa.keys").exists()
+
+    def test_a_deep_or_peps_less_cache_has_no_tier_two_to_vouch_for(self, tmp_path):
+        assert proteins._tier2_current(tmp_path, deep=True, peps=None)
+        assert proteins._tier2_current(tmp_path, deep=False, peps=None)
 
 
 class TestRepeatPepsClassMapping:
