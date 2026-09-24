@@ -77,6 +77,41 @@ class TestRepeatMaskerOut:
         flags = [c.is_overlapping_lower_score for c in rmout.read(rmout_file)]
         assert flags == [False, False, False, True]
 
+
+ROW = "  368   20.4  0.0  1.1  chr1   10674  10767 (23705836) C fam  Unknown  (1355)  400  308"
+
+
+class TestRepeatMaskerFragments:
+    """The ID column is what joins the pieces of one interrupted insertion."""
+
+    @staticmethod
+    def parse(tmp_path, *rows):
+        path = tmp_path / "x.fa.out"
+        path.write_text("\n".join(rows) + "\n")
+        return rmout.read(path)
+
+    def test_reads_the_id_column(self, tmp_path):
+        copy = self.parse(tmp_path, ROW + "  7").copies[0]
+        assert copy.hit_id == "7"
+
+    def test_rows_sharing_an_id_group_into_one_insertion(self, tmp_path):
+        annotation = self.parse(tmp_path, ROW + "  7", ROW + "  7", ROW + "  8")
+        assert sorted(len(g) for g in annotation.fragment_groups()) == [1, 2]
+
+    def test_the_star_flag_is_not_read_as_an_id(self, tmp_path):
+        copy = self.parse(tmp_path, ROW + "  7 *").copies[0]
+        assert copy.hit_id == "7" and copy.is_overlapping_lower_score
+
+    def test_a_no_id_file_still_parses(self, tmp_path):
+        """RepeatMasker -no_id drops the column; every such row used to be skipped."""
+        annotation = self.parse(tmp_path, ROW, ROW)
+        assert len(annotation) == 2 and annotation.skipped == []
+        assert all(c.hit_id is None for c in annotation)
+
+    def test_a_no_id_row_with_a_star_has_no_id(self, tmp_path):
+        copy = self.parse(tmp_path, ROW + "  *").copies[0]
+        assert copy.hit_id is None and copy.is_overlapping_lower_score
+
     def test_simple_repeat_divergence_is_array_homogeneity(self, rmout_file):
         """perc_div means different things per class; TRF rows are not age proxies."""
         copies = rmout.read(rmout_file).copies

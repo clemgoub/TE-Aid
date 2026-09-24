@@ -7,15 +7,28 @@ skipped (two of column titles, one blank).
 The layout, per row::
 
     SW  div  del  ins  query  qbegin  qend  (qleft)  strand  repeat  class/family
-        rbegin  rend  (rleft)  ID  [*]
+        rbegin  rend  (rleft)  [ID]  [*]
 
-Two traps this reader exists to absorb:
+Three traps this reader exists to absorb:
 
 1. ``strand`` is ``+`` or ``C`` (complement), never ``-``.
 2. On ``C`` rows the three consensus columns are written **in reverse order**,
    i.e. ``(left) end begin`` instead of ``begin end (left)``. Reading them
    positionally without accounting for this silently transposes the consensus
    coordinates of every reverse-strand copy — which is most of them.
+3. ``ID`` is RepeatMasker's *element* identifier: when another insertion
+   interrupts a copy, RepeatMasker writes the pieces as separate rows sharing
+   one ID ("fragmented by insertions or deletions have been counted as one
+   element", ``ProcessRepeats``). It becomes ``Copy.hit_id``, which is what
+   ``Annotation.fragment_groups()`` joins on. The column is absent under
+   ``-no_id``, and then the ``*`` overlap flag can sit where the ID would be,
+   so the reader takes field 15 as the ID only when it is not ``*``.
+
+   ``fragment_groups()`` keys on chromosome and ID together, so an ID reused on
+   another sequence would not merge the two; in the GenomeArk goby no ID spans
+   two chromosomes anyway. A few IDs do span two *families* (297 of 8,425
+   multi-row IDs there). That is harmless, because a family is subset before
+   its rows are grouped.
 
 Verified against GenomeArk RepeatModeler-v2.0.8 systematic annotations, e.g.::
 
@@ -78,9 +91,17 @@ def read(path: str | Path) -> Annotation:
     return annotation
 
 
+def _hit_id(fields: list[str]) -> str | None:
+    """The ID column, or None for a ``-no_id`` file (trap 3)."""
+    if len(fields) >= 15 and fields[14] != "*":
+        return fields[14]
+    return None
+
+
 def _parse_row(fields: list[str], lineno: int) -> Copy:
-    if len(fields) < 15:
-        raise ValueError(f"expected >=15 fields, got {len(fields)}")
+    # 14 fields is a -no_id row; the ID and the '*' flag are both optional.
+    if len(fields) < 14:
+        raise ValueError(f"expected >=14 fields, got {len(fields)}")
 
     divergence = float(fields[1])
     chrom = fields[4]
@@ -122,5 +143,6 @@ def _parse_row(fields: list[str], lineno: int) -> Copy:
         consensus_end=c_end,
         consensus_left=c_left,
         is_overlapping_lower_score=fields[-1] == "*",
+        hit_id=_hit_id(fields),
         source_line=lineno,
     )
