@@ -20,3 +20,7 @@ dev-data/
 
 # Built protein libraries (large, rebuildable); see teaid/proteins.py
 dev-data/protein-cache/
+
+# generated review artifacts for te_domains.tsv (see tools/build_review_page.py)
+te_domains_review.html
+te_domains_review.xlsx
