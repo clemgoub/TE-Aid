@@ -32,6 +32,13 @@ represented, and coverage is the property worth keeping. On the dev goby the two
 coverage passes alone yield 40, so ``--count`` only bites above that. The printed
 row count is the truth; do not assume it equals ``--count``.
 
+Output is a headerless TSV: name, label, class, length, copies, why,
+insertions. ``copies`` is the number of annotation rows, which is what the
+selection runs on, so a selection pinned before fragment grouping still
+reproduces. ``insertions`` is what the sheets now count as copies: rows that
+share an annotation ID joined into one. It comes last so that readers expecting
+the first six columns keep working.
+
 Usage::
 
     tools/select_families.py --annot X.fa.out --consensus X-families.fa [--count 50]
@@ -67,6 +74,10 @@ def select(annot: str, consensus: str, count: int) -> list[dict]:
     copies: dict[str, int] = defaultdict(int)
     for c in ann.copies:
         copies[c.family.split("#", 1)[0]] += 1
+    # Reported beside the row count, never selected on: see the module docstring.
+    insertions: dict[str, int] = defaultdict(int)
+    for i in ann.insertions():
+        insertions[i.family.split("#", 1)[0]] += 1
 
     fam = {}
     for entry in lib:
@@ -77,6 +88,7 @@ def select(annot: str, consensus: str, count: int) -> list[dict]:
             klass=tetypes.class_of_repeatmasker_label(label),
             length=len(entry.sequence),
             copies=copies.get(entry.bare_name, 0),
+            insertions=insertions.get(entry.bare_name, 0),
         )
 
     eligible = {k: v for k, v in fam.items() if v["copies"] > 0}
@@ -138,7 +150,8 @@ def main() -> None:
 
     for row in select(args.annot, args.consensus, args.count):
         print("\t".join(str(row[k]) for k in
-                        ("name", "label", "klass", "length", "copies", "why")))
+                        ("name", "label", "klass", "length", "copies", "why",
+                         "insertions")))
 
 
 if __name__ == "__main__":

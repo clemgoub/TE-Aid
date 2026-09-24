@@ -55,6 +55,11 @@ is readable at a glance. The bottom-right quadrant splits: panel 4 shows what th
 dot-plot implies (terminal repeats), panel 5 shows what sequence annotation
 implies (ORFs with their protein domains inlaid).
 
+Copies are counted as insertions, not annotation rows: rows that share an ID
+(RepeatMasker `ID`, BED16 column 16) are one copy, and panel 1 marks where each
+was split, with `]··[` for consensus the copy lacks and `|` for sequence the
+genome carries that the consensus does not. `--no-group-fragments` counts rows.
+
 ORFs keep v1's strand convention — black outline forward, red reverse — and
 protein domains keep **v1's TE-class colours**: green LTR, blue LINE, salmon DNA
 transposon.
@@ -300,7 +305,7 @@ teaid --annot dev-data/GCA_963082875.1.fa.out \
 should end with exactly:
 
 ```
-ltr-1_family-65: 16 copies, 0 full length, consensus 2,092 bp, terminal-repeat candidates: 1 LTR-like, 1 TIR-like
+ltr-1_family-65: 13 copies (16 annotation rows), 1 full length, consensus 2,092 bp, terminal-repeat candidates: 1 LTR-like, 1 TIR-like
 ```
 
 If BATH is not on `PATH` you also get `warning: protein row skipped: …` and still

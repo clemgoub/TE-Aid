@@ -192,11 +192,27 @@ ever suspect. `--deep` **replaces** tiers 1–2 rather than adding to them, and
 turns off tier 3 as well, so a deep run carries no Pfam accessions and panel 5
 loses its order-derived colours.
 
-**Fragments.** BED16 column 16 (`hit_id`, the `.out` `ID` column) groups
-fragments of one insertion split by an indel or a nested element.
-`Annotation.fragment_groups()` exposes the grouping. Counting fragments as
-independent copies inflates copy number — the specific failure that motivated
-v2's move away from search-driven discovery.
+**Fragments.** Rows that share an ID are one copy: BED16 column 16, the `.out`
+`ID` column, or the GFF3 `ID` attribute, all read into `Copy.hit_id`. TE-Aid
+groups them by default, keyed on chromosome and ID, and counts copies, not
+rows, in panels 1 and 2, the full-length count, the subtitle and the stdout
+summary. `--no-group-fragments` counts rows instead. A `.out` written with
+RepeatMasker `-no_id` has no ID column and is read with every row its own copy.
+
+What a grouped copy measures:
+
+- **coverage and full length** use the union of the consensus its rows align
+  to, never the span from first to last row;
+- **divergence** is the rows' mean weighted by consensus length, RepeatMasker's
+  own rule when it merges annotations;
+- **each join** between rows is classified from the genomic and consensus gaps:
+  an *insertion* in the copy when the genome carries more (often a nested
+  element), a *deletion* when the consensus carries more, and *flush* within
+  50 bp. Panel 1 draws the first two.
+
+A producer that writes one constant into the ID column would collapse a family
+into one copy. The sheet's notes line names the largest group, which is how
+that shows up.
 
 ---
 

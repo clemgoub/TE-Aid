@@ -113,8 +113,18 @@ divergence as zero** — leave the point out and say so in the axis label.
         what the dot-plot says  |  what annotation says
 ```
 
-1. Genomic hits vs divergence (from the annotation / seed / blastn).
-2. Consensus coverage pileup — copies **spanning** each position.
+1. Genomic hits vs divergence (from the annotation / seed / blastn). One line
+   per **copy**, not per annotation row (decided 2026-09-24): rows sharing an
+   ID are one insertion, drawn as the consensus blocks its rows align to at one
+   length-weighted divergence. Each join between rows carries a glyph: `]··[`
+   around consensus the copy lacks (a deletion), `|` where the genome carries
+   sequence the consensus lacks (an insertion, usually a nested element).
+   Zoomed in, the glyphs read their sizes (`]··658 bp··[`, `[1,045 bp]`).
+2. Consensus coverage pileup — copies **spanning** each position. A copy counts
+   once per base its rows align to and **not across the gap between rows**,
+   since panel 1 draws that gap; full length likewise tests the union of the
+   rows, not their span. Deletions *inside* one row remain invisible here, so
+   the panel-2 vs panel-6 difference below still means what it says.
 3. Self dot-plot (see §5.2), at a **true 1:1 data aspect** — both axes are
    consensus base pairs, and the square is what makes an off-diagonal repeat
    read as parallel to the main diagonal.
@@ -537,11 +547,11 @@ This section is status and direction only.
   It does make the most important domains look uninformative. The alternative
   is to let such a domain inherit the colour when every element-level hit on the
   sheet agrees. Undecided.
-- **Panel 1 does not yet use `Annotation.fragment_groups()`.** BED16 column 16
-  (and the `.out` `ID` column) groups fragments of one interrupted insertion;
-  counting them separately inflates copy number, which is the specific failure
-  that motivates v2. The grouping is implemented and tested; panel 1 still
-  counts rows.
+- **Closed 2026-09-24: panels 1–2 count copies, not rows.** The `.out` reader
+  never read its ID column, so grouping was inert on the main route as well as
+  unused. Both are fixed (`records.Insertion`); on the 50 example families the
+  copy count moves by up to half (`ltr-1_family-22`: 57 rows, 30 copies). See
+  §4 panels 1–2 and `docs/INTEGRATION.md` §4.
 - **Panel 7** (consensus vs contributing library entries) needs the source
   entries, which only a seed *producer* has. Design the hook generically — a
   FASTA of candidate source entries — rather than around any one pipeline.

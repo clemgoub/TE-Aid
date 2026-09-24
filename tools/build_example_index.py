@@ -13,7 +13,8 @@ grouping is carried by position *and* by a colour curators already read as
 Expects two TSVs:
 
 - ``--selection`` -- ``tools/select_families.py`` output (name, label, class,
-  length, copies, why)
+  length, copies, why, and optionally insertions). Cards show insertions when
+  the column is there, since that is what the sheets count as copies.
 - ``--results``   -- one row per render: name, exit code, seconds, stdout+stderr
   with newlines collapsed to ``|``
 
@@ -46,9 +47,10 @@ def build(selection: str, results: str, out_dir: Path) -> None:
     OUT = out_dir
     meta = {}
     for line in Path(selection).read_text().splitlines():
-        name, label, klass, length, copies, why = line.split("\t")
+        name, label, klass, length, copies, why, *rest = line.split("\t")
+        shown = int(rest[0]) if rest else int(copies)
         meta[name] = dict(label=label, klass=klass, length=int(length),
-                          copies=int(copies), why=why)
+                          copies=shown, why=why)
 
     status = {}
     for line in Path(results).read_text().splitlines():
