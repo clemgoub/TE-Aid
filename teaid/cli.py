@@ -28,7 +28,7 @@ from dataclasses import field as dataclass_field
 from pathlib import Path
 
 from . import (__version__, analysis, classcheck, genome, homology, orfs, proteins,
-               readers, report, theme)
+               readers, report, tables, theme)
 from .readers import stockholm
 from .records import Annotation, DivergenceKind
 from .sequences import Consensus, read_fasta
@@ -163,6 +163,17 @@ def build_parser() -> argparse.ArgumentParser:
     output.add_argument("-o", "--output", metavar="DIR", default=".", help="output directory")
     output.add_argument(
         "--theme", choices=sorted(theme.THEMES), default="light", help="colour theme"
+    )
+    output.add_argument(
+        "--tables",
+        action="store_true",
+        help=("also write the self dot-plot, ORF and protein-hit coordinates as TSV, "
+              "1-based (v1's -t)"),
+    )
+    output.add_argument(
+        "--all-tables",
+        action="store_true",
+        help="as --tables, plus one row per genomic copy row (v1's -T)",
     )
     output.add_argument(
         "--static",
@@ -740,6 +751,10 @@ def main(argv: list[str] | None = None) -> int:
     html_path = out_dir / f"{stem}.teaid.html"
     report.write_html(figure, html_path, data, theme.get(args.theme))
     print(f"wrote {html_path}")
+
+    if args.tables or args.all_tables:
+        for path in tables.write(data, out_dir, stem, copies=args.all_tables):
+            print(f"wrote {path}")
 
     if args.static:
         static_path = out_dir / f"{stem}.teaid.{args.static}"

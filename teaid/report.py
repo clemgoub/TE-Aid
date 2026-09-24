@@ -1709,20 +1709,13 @@ _HTML_TEMPLATE = r"""<!doctype html>
 """
 
 
-def _hits_table(data: SheetData, theme: Theme, tsv_name: str) -> tuple[str, str]:
-    """The expandable table of every protein hit, and its JSON for export.
+def protein_hit_rows(data: SheetData) -> list[dict]:
+    """Every protein hit as one row, 1-based, for the sheet's table and for files.
 
-    Panel 5 draws a readable subset — competitors collapsed, lanes capped — so
-    without this the rest exists only in a note saying how many were dropped.
-    A curator checking a marginal call needs the actual numbers.
+    ``drawn`` says whether panel 5 shows the hit: the panel collapses competing
+    hits and caps its lanes, and the table is where the rest can be found.
     """
-    import html as _html
-    import json as _json
-
     hits = list(data.homology_all or data.homology)
-    if not hits:
-        return "", "null"
-
     drawn = {id(h) for h in homology_lanes(list(data.homology))}
     rows = []
     for hit in sorted(hits, key=lambda h: (h.start, h.evalue)):
@@ -1744,6 +1737,22 @@ def _hits_table(data: SheetData, theme: Theme, tsv_name: str) -> tuple[str, str]
             "source": getattr(hit, "source", "pfam"),
             "drawn": "yes" if id(hit) in drawn else "no",
         })
+    return rows
+
+
+def _hits_table(data: SheetData, theme: Theme, tsv_name: str) -> tuple[str, str]:
+    """The expandable table of every protein hit, and its JSON for export.
+
+    Panel 5 draws a readable subset — competitors collapsed, lanes capped — so
+    without this the rest exists only in a note saying how many were dropped.
+    A curator checking a marginal call needs the actual numbers.
+    """
+    import html as _html
+    import json as _json
+
+    rows = protein_hit_rows(data)
+    if not rows:
+        return "", "null"
 
     headers = ["name", "class", "accession", "start", "end", "strand", "evalue",
                "score", "identity_pct", "model_coverage_pct", "frameshifts",

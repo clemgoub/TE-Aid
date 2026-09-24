@@ -381,3 +381,30 @@ class TestFragmentGrouping:
         run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path,
              "--no-dotplot", "--no-orfs", "--no-homology"])
         assert any("2 annotation rows grouped into 1 copy" in n for n in seen["notes"])
+
+
+class TestTables:
+    """v1's -t and -T, as --tables and --all-tables."""
+
+    def test_tables_are_written_with_headers_and_1_based_coordinates(self, tmp_path, capsys):
+        fasta = tmp_path / "families.fa"
+        fasta.write_text(FASTA)
+        annot = tmp_path / "split.fa.out"
+        annot.write_text(SPLIT)
+        assert run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path,
+                    "--no-dotplot", "--no-orfs", "--no-homology", "--all-tables"]) == cli.EXIT_OK
+        names = {p.name for p in tmp_path.glob("fam1.*.tsv")}
+        assert names == {"fam1.selfhits.tsv", "fam1.orfs.tsv", "fam1.protein_hits.tsv",
+                         "fam1.copies.tsv"}
+        rows = (tmp_path / "fam1.copies.tsv").read_text().splitlines()
+        assert rows[0].split("\t")[:4] == ["copy", "chrom", "start", "end"]
+        first, second = (r.split("\t") for r in rows[1:])
+        # The .out rows are 1000-1159 and 2160-2319, 1-based, and one copy.
+        assert first[:4] == ["1", "chr1", "1000", "1159"]
+        assert second[:4] == ["1", "chr1", "2160", "2319"]
+        assert first[-2:] == ["2", "yes"]
+
+    def test_tables_only_when_asked(self, inputs, tmp_path):
+        fasta, annot = inputs
+        run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path, "--no-dotplot"])
+        assert not list(tmp_path.glob("*.tsv"))

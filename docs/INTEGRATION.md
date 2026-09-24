@@ -278,7 +278,19 @@ The CLI writes into `-o/--output` (default: `.`, created if absent):
 ```
 <output>/<stem>.teaid.html            always
 <output>/<stem>.teaid.{png,pdf,svg}   with --static png|pdf|svg (needs kaleido)
+<output>/<stem>.selfhits.tsv          with --tables or --all-tables
+<output>/<stem>.orfs.tsv              with --tables or --all-tables
+<output>/<stem>.protein_hits.tsv      with --tables or --all-tables
+<output>/<stem>.copies.tsv            with --all-tables
 ```
+
+The tables are v1's `-t` and `-T`. Each has a header row and uses **1-based,
+fully closed** coordinates. `copies.tsv` has one row per annotation row, with a
+`copy` number shared by the rows grouped into one insertion, so it can be read
+at either level. `protein_hits.tsv` is the sheet's hit table, `drawn` column
+included, and leads with a `consensus` column so tables from many families
+concatenate. Self hits keep blastn's orientation: `s_start > s_end` on a reverse
+hit.
 
 `<stem>` is the consensus name up to the first `#`, with every character outside
 `[A-Za-z0-9-._]` replaced by `_` — so `rnd-1_family-257#LTR/Gypsy` writes
