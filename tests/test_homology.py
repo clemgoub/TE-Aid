@@ -19,6 +19,16 @@ TBLOUT = """\
 # Program:         bathsearch
 """
 
+# Real bathsearch --tblout output *without* --fs: PF00078 against ltr-1_family-22.
+# BATH leaves out the 'shifts' and 'stops' columns in this mode, and the
+# description here has spaces in it, as RepeatModeler headers do.
+TBLOUT_NO_FS = """\
+# hit ID  target name            accession  query name           accession   hmm len  hmm from    hmm to   seq len  ali from    ali to    E-value  score  bias   PID  description of target
+#------- -------------------    ---------- -------------------- ---------- --------- --------- --------- --------- --------- ---------  --------- ------ ----- ----- ---------------------
+       1 ltr-1_family-22#LTR/Pao -          RVT_1                PF00078.33      200        57       179       6543      3315      3683   1.6e-08   23.9   0.0 17.69 [ Type=INT, Final Multiple Alignment Size = 4 ]
+       2 ltr-1_family-22#LTR/Pao -          RVT_1                PF00078.33      200        19        57       6543      4821      4961      0.54   -0.7   0.1 17.02 [ Type=INT, Final Multiple Alignment Size = 4 ]
+"""
+
 
 def hit(**over) -> ProteinHit:
     base = dict(
@@ -65,6 +75,20 @@ class TestTbloutParsing:
 
     def test_comments_and_short_rows_are_skipped(self):
         assert homology._parse_tblout("# only a comment\n\nbroken row\n") == []
+
+    def test_a_table_written_without_fs_is_read(self):
+        """Read with the --fs layout, the description lands in 'shifts' and
+        'stops' and every row fails, so a no-fs search looked like no hits."""
+        parsed = homology._parse_tblout(TBLOUT_NO_FS)
+        assert len(parsed) == 2
+        assert (parsed[0].start, parsed[0].end) == (3314, 3683)
+        assert parsed[0].evalue == pytest.approx(1.6e-08)
+        assert parsed[0].frameshifts == 0 and parsed[0].stop_codons == 0
+
+    def test_a_table_whose_rows_all_fail_is_an_error_not_an_empty_result(self):
+        broken = TBLOUT.replace("7.7e-40", "x").replace("3e-08", "y")
+        with pytest.raises(RuntimeError, match="column layout"):
+            homology._parse_tblout(broken)
 
 
 class TestBestPerRegion:
