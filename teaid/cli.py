@@ -291,7 +291,8 @@ def _protein_homology(args, consensus, found_orfs, notes, sources) -> tuple[list
     elif library.repeatpeps is None:
         notes.append("tier 3 (blastp vs RepeatPeps) off: RepeatPeps.lib not found")
     else:
-        hits += homology.search_repeatpeps(found_orfs, library.repeatpeps)
+        hits += homology.search_repeatpeps(found_orfs, library.repeatpeps,
+                                           target=consensus.bare_name)
         sources.append(f"<b>{library.repeatpeps.name}</b> (blastp)")
 
     kept = homology.best_per_region(hits)

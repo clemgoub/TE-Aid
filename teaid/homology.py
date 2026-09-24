@@ -65,6 +65,10 @@ class ProteinHit:
     # Which tier the model came from, so the sheet can say what kind of evidence
     # a hit is: a conserved domain, or a named element from RepeatPeps.
     source: str = "pfam"
+    # The consensus the hit lies on. One bathsearch over many consensus
+    # sequences can only be split back into families by this, since the model
+    # and the coordinates alone do not say which sequence they belong to.
+    target: str = ""
 
     @property
     def is_disrupted(self) -> bool:
@@ -192,6 +196,7 @@ def _parse_tblout(text: str) -> list[ProteinHit]:
                     hmm_len=int(row["hmm_len"]),
                     frameshifts=int(row.get("shifts", 0)),
                     stop_codons=int(row.get("stops", 0)),
+                    target=row["target"],
                 )
             )
         except (ValueError, KeyError):
@@ -210,6 +215,7 @@ def search_repeatpeps(
     repeatpeps: Path,
     *,
     evalue: float = 1e-5,
+    target: str = "",
 ) -> list[ProteinHit]:
     """Tier 3: ``blastp`` of ORF peptides against RepeatPeps, as v1 did.
 
@@ -288,6 +294,7 @@ def search_repeatpeps(
                 frameshifts=0,
                 stop_codons=0,
                 source="repeatpeps-blastp",
+                target=target,
             )
         )
     hits.sort(key=lambda h: h.evalue)

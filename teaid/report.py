@@ -1728,6 +1728,7 @@ def _hits_table(data: SheetData, theme: Theme, tsv_name: str) -> tuple[str, str]
     for hit in sorted(hits, key=lambda h: (h.start, h.evalue)):
         start, end = hit.coordinates_1based()
         rows.append({
+            "consensus": getattr(hit, "target", "") or data.family,
             "name": getattr(hit, "display_name", hit.query),
             "class": getattr(hit, "source_class", None) or "",
             "accession": hit.query_accession,

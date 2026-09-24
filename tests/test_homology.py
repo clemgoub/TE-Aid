@@ -67,6 +67,12 @@ class TestTbloutParsing:
         assert disrupted.frameshifts == 2 and disrupted.stop_codons == 1
         assert disrupted.is_disrupted is True
 
+    def test_each_hit_names_the_consensus_it_lies_on(self):
+        """The prerequisite for one bathsearch over many families: without it the
+        hits cannot be split back apart."""
+        assert {h.target for h in homology._parse_tblout(TBLOUT)} == {"ltr-1_family-26"}
+        assert homology._parse_tblout(TBLOUT_NO_FS)[0].target == "ltr-1_family-22#LTR/Pao"
+
     def test_hits_are_sorted_by_evalue(self):
         parsed = homology._parse_tblout(TBLOUT)
         assert parsed[0].evalue < parsed[1].evalue
