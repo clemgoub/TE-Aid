@@ -722,3 +722,23 @@ class TestThePageScriptRuns:
         source.write_text(script)
         result = subprocess.run([node, "--check", str(source)], capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
+
+
+class TestStaticExportIsBounded:
+    def test_a_normal_export_still_works(self, tmp_path):
+        pytest.importorskip("kaleido")
+        path = tmp_path / "sheet.svg"
+        report.export_static(report.build_figure(make_data(), theme.LIGHT), path)
+        assert path.stat().st_size > 5_000
+
+    def test_a_stalled_export_is_killed_at_the_deadline(self, tmp_path, monkeypatch):
+        """kaleido's headless Chrome stalled once in a 50-family batch and held
+        the whole run. A stand-in child that never finishes must be killed."""
+        import time
+
+        monkeypatch.setattr(report, "_EXPORT", "import time\ntime.sleep(60)\n")
+        started = time.perf_counter()
+        with pytest.raises(TimeoutError):
+            report.export_static(report.build_figure(make_data(), theme.LIGHT),
+                                 tmp_path / "sheet.png", timeout=1.0)
+        assert time.perf_counter() - started < 10

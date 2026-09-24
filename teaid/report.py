@@ -1948,6 +1948,52 @@ def _add_help_marker(fig: go.Figure, title, help_text: str, theme: Theme) -> Non
     )
 
 
+# Seconds a static export may take before it is abandoned. The largest dev
+# family (10,851 copies) renders in about 25 s, so this is generous.
+STATIC_TIMEOUT = 120.0
+
+_EXPORT = (
+    "import sys\n"
+    "import plotly.io as pio\n"
+    "pio.read_json(sys.argv[1]).write_image(sys.argv[2], scale=2)\n"
+)
+
+
+def export_static(fig: go.Figure, path, *, timeout: float = STATIC_TIMEOUT) -> None:
+    """Write a PNG, PDF or SVG of the sheet, in a child process with a deadline.
+
+    kaleido drives a headless Chrome, and that Chrome can stall: in a 50-family
+    batch at -j 5, one export sat idle for over seven minutes and held its
+    worker, and so the whole batch, with it. The child runs in its own process
+    group, so on timeout the group (Chrome included) is killed and the caller
+    gets a TimeoutError it can report as a warning.
+    """
+    import os
+    import signal
+    import subprocess
+    import sys
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="teaid-static-") as tmp:
+        spec = os.path.join(tmp, "figure.json")
+        with open(spec, "w", encoding="utf-8") as handle:
+            handle.write(strip_help_markers(fig).to_json())
+        child = subprocess.Popen(
+            [sys.executable, "-c", _EXPORT, spec, str(path)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            start_new_session=True,
+        )
+        try:
+            _, err = child.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            os.killpg(child.pid, signal.SIGKILL)
+            child.communicate()
+            raise TimeoutError(f"static export did not finish in {timeout:.0f} s") from None
+    if child.returncode != 0:
+        lines = [ln for ln in err.strip().splitlines() if ln.strip()]
+        raise RuntimeError(lines[-1] if lines else f"exit {child.returncode}")
+
+
 def strip_help_markers(fig: go.Figure) -> go.Figure:
     """Remove the '?' markers, for static export.
 

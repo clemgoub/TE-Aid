@@ -830,14 +830,14 @@ def _draw(args, chosen: str, prep: _Prepared) -> int:
     if args.static:
         static_path = out_dir / f"{stem}.teaid.{args.static}"
         try:
-            report.strip_help_markers(figure).write_image(static_path, scale=2)
+            report.export_static(figure, static_path)
             print(f"wrote {static_path}")
-        except Exception as exc:  # kaleido raises a variety of types
-            print(
-                f"teaid: static export failed ({exc}); install kaleido with "
-                f"'pip install teaid[static]'",
-                file=sys.stderr,
-            )
+        except TimeoutError as exc:
+            print(f"teaid: warning: {exc}; the HTML sheet was written", file=sys.stderr)
+        except RuntimeError as exc:
+            hint = ("; install kaleido with 'pip install teaid[static]'"
+                    if "kaleido" in str(exc).lower() else "")
+            print(f"teaid: warning: static export failed ({exc}){hint}", file=sys.stderr)
 
     rows = f" ({len(shown):,} annotation rows)" if len(shown) != len(insertions) else ""
     summary = (
