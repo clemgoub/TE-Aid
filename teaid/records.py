@@ -32,11 +32,16 @@ class DivergenceKind(str, Enum):
       age of the insertion; this is the one panel 1 is designed around.
     - :attr:`ARRAY_HOMOGENEITY` — how uniform a tandem array is. Says nothing
       about age; a young satellite can be wildly heterogeneous.
+    - :attr:`BLASTN_IDENTITY` — ``100 - pident`` of one blastn HSP, from the
+      genome route. An uncorrected identity over a local alignment, not a
+      Kimura-corrected divergence, so it reads older or younger than the same
+      copy would in a RepeatMasker annotation. v1 labelled it "divergence".
     - :attr:`NONE` — the producer emits no divergence at all.
     """
 
     CONSENSUS = "consensus"
     ARRAY_HOMOGENEITY = "array_homogeneity"
+    BLASTN_IDENTITY = "blastn_identity"
     NONE = "none"
 
     @property
@@ -44,6 +49,7 @@ class DivergenceKind(str, Enum):
         return {
             DivergenceKind.CONSENSUS: "divergence from consensus (%)",
             DivergenceKind.ARRAY_HOMOGENEITY: "array heterogeneity (%)",
+            DivergenceKind.BLASTN_IDENTITY: "100 − blastn identity (%)",
             DivergenceKind.NONE: "divergence not reported",
         }[self]
 

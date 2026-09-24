@@ -36,9 +36,9 @@ Four routes, designed to compose:
 | Route | Flags | Use when |
 |---|---|---|
 | **a** | `--annot FILE --consensus FASTA --family NAME` | you have an annotation you trust |
-| **b** | `--blastn` *(flag not yet present)* | you have only a genome and a consensus |
+| **b** | `--genome FASTA --consensus FASTA` (v1: `-g`, `-q`; also `--blastn`) | you have only a genome and a consensus |
 | **c** | `--stk FILE [--family ID]` | you have a Stockholm seed |
-| **d** | `--annot FILE --stk FILE --family NAME` | you have both — the richest sheet |
+| **d** | `--stk FILE` with `--annot FILE` or `--genome FASTA` | you have a seed and its genome — the richest sheet |
 
 `--annot` accepts RepeatMasker `.out`, RepeatMasker GFF, or BED16, gzipped or
 not. **The format is detected from content, not extension**, because `.bed`
@@ -60,13 +60,28 @@ comparison distinguishes them. If the family is absent from the annotation,
 TE-Aid warns on stderr and falls back to the seed's own sequences — it does not
 fail.
 
-`--pipeline` reverses the standalone input priority (`--annot`, `--blastn`,
+`--pipeline` reverses the standalone input priority (`--annot`, `--genome`,
 `--stk`) to seed-first, for callers whose primary artefact is a seed. It does
-not change route d, where the seed is primary either way.
+not change route d, where the seed is primary either way. `--annot` and
+`--genome` together, without a seed, use the annotation and say on the sheet
+that the genome was ignored.
 
-Route **b** is listed for shape only: `--blastn` is **not in the argument parser
-at all**, so passing it is an `unrecognized arguments` error (exit 2, no slug),
-not a graceful "not implemented" message. Do not feature-detect by passing it.
+### Route b: v1's genome search
+
+The consensus is searched against the genome with `blastn` (megablast, E ≤ 10e-8
+by default, `-e` to change), exactly as v1 did, and every HSP becomes one copy.
+That makes this the leakiest route: megablast misses diverged copies, and an
+insertion interrupted by another element arrives as two copies, because a
+search has no ID column to join them. The sheet's notes say so. Its divergence
+axis reads `100 − blastn identity (%)`, not divergence: an uncorrected local
+identity is not RepeatMasker's Kimura-corrected value.
+
+The blastn database is built beside the genome on first use
+(`makeblastdb -in G -out G`, as v1), so a v1 database is reused; if that
+directory is not writable it goes under the cache. `-r` applies v1's
+`reduce.cpp` rule, dropping hits nested inside another hit's locus. Without
+`blastn` or `makeblastdb` the route has no copies, so it fails with `no-input`
+(exit 3) rather than dropping a panel.
 
 ---
 
@@ -86,7 +101,7 @@ teaid: error [bad-seed]: families.stk: no record with #=GF ID 'absent'
 | 0 | — | a sheet was written — but see *exit 0 is not "complete"* below |
 | 1 | *none* | uncaught internal error; a Python traceback, not a message |
 | 2 | `usage` | argument error: an unknown flag, a missing input, a value out of range, or `--family` omitted for a multi-entry library |
-| 3 | `no-input` | an input file is missing or unreadable |
+| 3 | `no-input` | an input file is missing or unreadable, or the `--genome` route cannot run BLAST+ |
 | 4 | `no-family` | the family is not in the consensus library |
 | 5 | `no-evidence` | the family exists but carries nothing plottable |
 | 6 | `bad-seed` | the Stockholm file could not be parsed |
@@ -318,7 +333,6 @@ better terminal-repeat heuristic, a panel that any curator would want.
 |---|---|
 | Panel 5's **nucleotide** row (Dfam slice + `nhmmer`) | work-order step 8 |
 | Panel 7, consensus vs contributing library entries | an agreed input hook — see below |
-| `--blastn` legacy route | work-order step 10 |
 | TSD detection, `#=GF TD` output | the flank-analysis path; work-order step 9 |
 
 Panel 5's **protein** row ships: ORFs from `getorf` with frameshift-aware domain

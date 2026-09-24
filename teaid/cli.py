@@ -1,12 +1,13 @@
 """Command line entry point.
 
 Four input routes, designed to compose: ``--annot`` (an annotation you already
-trust), ``--blastn`` (the v1 rediscovery path, not implemented yet), ``--stk``
-(a Stockholm seed), and ``--annot`` **with** ``--stk`` — which is not a contest
-between the two but the richest sheet, showing the family as it exists in the
-genome against the copies a seed actually used.
+trust), ``--genome`` (v1's route: blastn of the consensus against a genome, also
+spelled ``--blastn`` or ``-g``), ``--stk`` (a Stockholm seed), and ``--stk``
+**with** ``--annot`` or ``--genome``, which is not a contest between the two but
+the richest sheet, showing the family as it exists in the genome against the
+copies a seed actually used.
 
-Standalone priority among single routes is annot, blastn, stk; ``--pipeline``
+Standalone priority among single routes is annot, genome, stk; ``--pipeline``
 reverses that to seed-first for callers whose primary artefact is a seed.
 
 **Fail-soft contract.** A caller processing many families must be able to keep
@@ -26,7 +27,7 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
 
-from . import (__version__, analysis, classcheck, homology, orfs, proteins,
+from . import (__version__, analysis, classcheck, genome, homology, orfs, proteins,
                readers, report, theme)
 from .readers import stockholm
 from .records import Annotation, DivergenceKind
@@ -107,12 +108,28 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     source.add_argument(
-        "-c",
-        "--consensus",
+        "--genome",
+        "--blastn",
+        "-g",
+        dest="genome",
         metavar="FASTA",
         help=(
-            "consensus FASTA; a library of many families or a single sequence. "
-            "Required with --annot; with --stk the seed supplies the consensus"
+            "reference genome, for the v1 route: copies are found by blastn of the "
+            "consensus against it. Leakier than an annotation, and the sheet says so. "
+            "The blastn database is built beside the genome on first use, as in v1"
+        ),
+    )
+    source.add_argument(
+        "-c",
+        "--consensus",
+        "-q",
+        "--query",
+        dest="consensus",
+        metavar="FASTA",
+        help=(
+            "consensus FASTA; a library of many families or a single sequence "
+            "(v1: -q/--query). Required with --annot and --genome; with --stk the "
+            "seed supplies the consensus"
         ),
     )
     source.add_argument(
@@ -193,6 +210,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="minimum ORF length in nucleotides (default 400, as in v1)",
     )
     tuning.add_argument(
+        "-e",
+        "--e-value",
+        dest="genome_evalue",
+        type=float,
+        default=genome.DEFAULT_EVALUE,
+        metavar="E",
+        help="genome route: blastn E-value for keeping a hit (default 10e-8, as v1)",
+    )
+    tuning.add_argument(
+        "-r",
+        "--remove-redundant",
+        action="store_true",
+        help=("genome route: drop hits whose locus lies inside another hit's, "
+              "v1's reduce.cpp rule"),
+    )
+    tuning.add_argument(
+        "-R",
         "--no-reverse-orfs",
         action="store_true",
         help="only report ORFs on the forward strand (getorf -noreverse)",
@@ -390,15 +424,13 @@ def _load_genomic_context(args, family: str) -> Annotation | int | None:
     return subset
 
 
-def _load_annotation(args) -> _Loaded | int:
-    """The ``--annot`` path: an annotation plus a separate consensus FASTA."""
+def _resolve_consensus(args, route: str) -> tuple[Path, Consensus] | int:
+    """The one consensus a route draws, from ``--consensus`` and ``--family``."""
     if not args.consensus:
-        return fail(EXIT_USAGE, "--consensus is required with --annot")
-
-    annot_path, consensus_path = Path(args.annot), Path(args.consensus)
-    for path, label in ((annot_path, "annotation"), (consensus_path, "consensus FASTA")):
-        if not path.exists():
-            return fail(EXIT_NO_INPUT, f"{label} not found: {path}")
+        return fail(EXIT_USAGE, f"--consensus is required with {route}")
+    consensus_path = Path(args.consensus)
+    if not consensus_path.exists():
+        return fail(EXIT_NO_INPUT, f"consensus FASTA not found: {consensus_path}")
 
     library = read_fasta(consensus_path)
     if not len(library):
@@ -421,6 +453,21 @@ def _load_annotation(args) -> _Loaded | int:
             f"family {family!r} not in {consensus_path}",
             f"did you mean: {', '.join(near)}" if near else None,
         )
+    return consensus_path, consensus
+
+
+def _load_annotation(args) -> _Loaded | int:
+    """The ``--annot`` path: an annotation plus a separate consensus FASTA."""
+    annot_path = Path(args.annot)
+    if not args.consensus:
+        return fail(EXIT_USAGE, "--consensus is required with --annot")
+    if not annot_path.exists():
+        return fail(EXIT_NO_INPUT, f"annotation not found: {annot_path}")
+    resolved = _resolve_consensus(args, "--annot")
+    if isinstance(resolved, int):
+        return resolved
+    consensus_path, consensus = resolved
+    family = consensus.bare_name
 
     kwargs = {}
     if args.divergence_kind:
@@ -446,6 +493,55 @@ def _load_annotation(args) -> _Loaded | int:
         f"consensus <b>{consensus_path.name}</b>",
     ]
     return _Loaded(consensus.bare_name, consensus, subset, notes, sources)
+
+
+def _genome_copies(args, consensus: Consensus) -> Annotation | int:
+    """Copies of ``consensus`` found by blastn against ``--genome`` (the v1 route)."""
+    genome_path = Path(args.genome)
+    if not genome_path.exists():
+        return fail(EXIT_NO_INPUT, f"genome not found: {genome_path}")
+    try:
+        database = genome.ensure_database(
+            genome_path, log=lambda m: print(f"teaid: {m}", file=sys.stderr))
+        copies = genome.search(consensus.sequence, consensus.bare_name, database,
+                               evalue=args.genome_evalue, family=consensus.bare_name,
+                               class_label=consensus.class_label)
+    except (genome.BlastnNotFound, RuntimeError) as exc:
+        # Without blastn this route has no copies at all, so it is an input
+        # failure rather than a dropped panel.
+        return fail(EXIT_NO_INPUT, str(exc))
+    if args.remove_redundant:
+        copies = genome.remove_redundant(copies)
+    return copies
+
+
+def _load_genome(args) -> _Loaded | int:
+    """The ``--genome`` path: v1's route, a consensus searched against a genome."""
+    resolved = _resolve_consensus(args, "--genome")
+    if isinstance(resolved, int):
+        return resolved
+    consensus_path, consensus = resolved
+    copies = _genome_copies(args, consensus)
+    if isinstance(copies, int):
+        return copies
+    if not len(copies):
+        return fail(
+            EXIT_NO_EVIDENCE,
+            f"blastn found no copies of {consensus.bare_name!r} in {args.genome} "
+            f"at E <= {args.genome_evalue:g}",
+        )
+    notes = [
+        "copies found by blastn (megablast) against the genome, one per HSP: this "
+        "route misses diverged copies and splits interrupted ones, so an annotation "
+        "gives a truer count"
+    ]
+    if args.remove_redundant:
+        notes.append("-r: hits nested inside another hit's locus removed, as in v1")
+    sources = [
+        f"genome <b>{Path(args.genome).name}</b> (blastn, E ≤ {args.genome_evalue:g})",
+        f"consensus <b>{consensus_path.name}</b>",
+    ]
+    return _Loaded(consensus.bare_name, consensus, copies, notes, sources)
 
 
 def _load_seed(args) -> _Loaded | int:
@@ -510,43 +606,52 @@ def main(argv: list[str] | None = None) -> int:
     if not 0 < args.full_length_threshold <= 1:
         parser.error("--full-length-threshold must be in (0, 1]")
 
-    # Input priority: --annot, then --blastn, then --stk; --pipeline reverses to
-    # seed-first. Whichever source is chosen, everything downstream works from
-    # the same record struct.
-    order = ("stk", "annot") if args.pipeline else ("annot", "stk")
+    # Input priority: --annot, then --genome (v1's blastn route), then --stk;
+    # --pipeline reverses to seed-first. Whichever source is chosen, everything
+    # downstream works from the same record struct.
+    order = ("stk", "genome", "annot") if args.pipeline else ("annot", "genome", "stk")
     chosen = next((name for name in order if getattr(args, name)), None)
     if chosen is None:
-        parser.error("give an input: --annot or --stk (--blastn is not implemented yet)")
+        parser.error("give an input: --annot, --genome (-g) or --stk")
 
     # The priority above settles which source *drives* the sheet when only one
-    # can. A seed given together with an annotation is not that contest: the
+    # can. A seed given together with genomic copies is not that contest: the
     # seed is the thing being QC'd, so it supplies the consensus and the seed-QC
-    # panels while the annotation supplies genomic context for panels 1-2.
-    if args.stk and args.annot:
+    # panels while the annotation or genome supplies context for panels 1-2.
+    if args.stk and (args.annot or args.genome):
         chosen = "stk"
 
-    loaded = (_load_seed if chosen == "stk" else _load_annotation)(args)
+    loaders = {"stk": _load_seed, "annot": _load_annotation, "genome": _load_genome}
+    loaded = loaders[chosen](args)
     if isinstance(loaded, int):
         return loaded
+    if chosen == "annot" and args.genome:
+        loaded.notes.append("--genome ignored: an annotation takes priority over a search")
 
-    # --stk and --annot are not alternatives when both are given. The seed says
-    # which copies were *chosen* to build the family; the annotation says which
-    # copies *exist* in the genome. Showing both is the point of seed QC: a seed
-    # built from 12 of 340 copies may be perfectly good or may have sampled one
-    # corner of the family, and only the comparison distinguishes them.
-    if chosen == "stk" and args.annot:
-        genomic = _load_genomic_context(args, loaded.family)
+    # --stk with genomic copies: the seed says which copies were *chosen* to
+    # build the family; the annotation (or a genome search) says which copies
+    # *exist*. Showing both is the point of seed QC: a seed built from 12 of 340
+    # copies may be perfectly good or may have sampled one corner of the family,
+    # and only the comparison distinguishes them.
+    if chosen == "stk" and (args.annot or args.genome):
+        if args.annot:
+            genomic = _load_genomic_context(args, loaded.family)
+            label = f"annotation <b>{Path(args.annot).name}</b>"
+            kind = "annotated genomic copies"
+        else:
+            genomic = _genome_copies(args, loaded.consensus)
+            label = f"genome <b>{Path(args.genome).name}</b>"
+            kind = "genomic copies found by blastn"
+            if not isinstance(genomic, int) and not len(genomic):
+                genomic = None
         if isinstance(genomic, int):
             return genomic
         if genomic is not None:
             loaded.genomic = genomic
-            loaded.sources.append(
-                f"annotation <b>{Path(args.annot).name}</b> "
-                f"({genomic.source_format})"
-            )
+            loaded.sources.append(f"{label} ({genomic.source_format})")
             copies = len(genomic.insertions(group=not args.no_group_fragments))
             loaded.notes.append(
-                f"panels 1-2 show {copies:,} annotated genomic copies; "
+                f"panels 1-2 show {copies:,} {kind}; "
                 f"the seed uses {len(loaded.annotation):,}"
             )
 

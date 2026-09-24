@@ -41,7 +41,7 @@ The working brief for this rewrite, including every settled design decision, is
 | Benchmark (cost and relative sensitivity) | ⬜ **next** |
 | Nucleotide row (Dfam slice + nhmmer) | ⬜ |
 | TSD detection, `#=GF TD` output | ⬜ |
-| `--blastn` legacy path | ⬜ |
+| `--genome` route (v1's blastn search) and v1's input flags | ✅ done |
 | Panel 7 (consensus vs library entries) | ⬜ needs an agreed input hook |
 | Whole-library runs, batch mode · CLI pass · GUI | ⬜ raised, not yet scoped |
 
@@ -186,9 +186,9 @@ Four, and they compose:
 | Route | Flags |
 |---|---|
 | annotation you trust | `--annot FILE --consensus FASTA --family NAME` |
-| genome search (v1 path, not yet implemented) | `--blastn` |
+| genome search (v1's route) | `-q consensus.fa -g genome.fa` (or `--genome`, `--blastn`) |
 | Stockholm seed | `--stk FILE [--family ID]` |
-| **both together** | `--annot FILE --stk FILE --family NAME` |
+| **both together** | `--stk FILE` with `--annot FILE` or `--genome FASTA` |
 
 The last is not a contest between the two. The seed says which copies were
 *chosen*; the annotation says which *exist*. Given both, the seed supplies the
@@ -256,7 +256,7 @@ teaid: error [no-family]: family 'x' not in families.fa
 | 0 | — | a sheet was written (possibly with panels dropped — see below) |
 | 1 | *none* | uncaught internal error; a traceback |
 | 2 | `usage` | argument error |
-| 3 | `no-input` | an input file is missing or unreadable |
+| 3 | `no-input` | an input file is missing or unreadable, or the `--genome` route cannot run BLAST+ |
 | 4 | `no-family` | the family is not in the consensus library |
 | 5 | `no-evidence` | the family has nothing plottable |
 | 6 | `bad-seed` | the Stockholm file could not be parsed |
