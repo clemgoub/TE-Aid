@@ -163,10 +163,11 @@ PANEL_HELP = {
         "matches, at its divergence. A copy RepeatMasker split into several rows "
         "(same ID) counts once, and its divergence is their mean weighted by "
         "consensus length, as RepeatMasker itself merges them.<br><br>"
-        "Where a copy was split: <b>]··[</b> brackets consensus the copy "
-        "<b>lacks</b> (a deletion); <b>|</b> marks sequence the genome carries and "
-        "the consensus does not (an insertion, often a nested element). Zoom in "
-        "to read their sizes.<br><br>"
+        "Where a copy was split: a <b>plum</b> stretch is consensus the copy "
+        "<b>lacks</b> between its rows, bracketed <b>]···[</b> when it is a deletion "
+        "of more than 50 bp; <b>|</b> marks sequence the genome carries and the "
+        "consensus does not (an insertion, often a nested element). Zoom in to read "
+        "their sizes.<br><br>"
         "Copies whose source reports <b>no</b> divergence are left out entirely "
         "rather than drawn at zero — zero here would read as a pristine, very "
         "recent insertion, the opposite of 'unknown'. Any omitted are counted in "
@@ -487,10 +488,13 @@ def _junction_glyphs(fig: go.Figure, insertions: list[Insertion], theme: Theme,
                      row: int, col: int) -> None:
     """Mark where each fragmented insertion was split, and what the split was.
 
-    - A **deletion** (the copy lacks consensus that its two fragments bracket)
-      is a real gap on this axis: ``]`` where the missing stretch starts, ``[``
-      where it ends, and a dotted rule between. Zoomed in, the size sits on the
-      rule: ``----]··658 bp··[----``.
+    - Every stretch of consensus the copy lacks between its rows is drawn in
+      the ``missing`` colour, whatever the join is classified as. So a gap under
+      the 50 bp tolerance shows, and so does consensus skipped at a join that is
+      classified as an insertion because its genomic gap is larger still.
+    - A **deletion** (a join whose consensus gap exceeds its genomic gap by more
+      than 50 bp) adds ``]`` where the missing stretch starts and ``[`` where it
+      ends. Zoomed in, its size sits on the segment: ``----]658 bp[----``.
     - An **insertion** (the genome carries sequence the consensus lacks,
       usually a nested element) uses no consensus, so the fragments abut. It is
       a ``|`` at the join, which reads ``[1045 bp]`` zoomed in.
@@ -501,12 +505,20 @@ def _junction_glyphs(fig: go.Figure, insertions: list[Insertion], theme: Theme,
     """
     ins_x, ins_y, ins_far, ins_near, ins_hover = [], [], [], [], []
     end_x, end_y, end_text, end_hover = [], [], [], []
-    rule_x, rule_y = [], []
+    gap_x, gap_y, gap_hover, n_gaps = [], [], [], 0
     size_x, size_y, size_near, size_hover = [], [], [], []
     for insertion in insertions:
         g0, g1 = insertion.genomic_1based()
         where = f"{insertion.chrom}:{g0:,}-{g1:,} ({insertion.strand})"
         y = insertion.divergence
+        blocks = insertion.consensus_blocks
+        for (_, left), (right, _) in zip(blocks, blocks[1:]):
+            n_gaps += 1
+            text = (f"{where}<br>consensus {left + 1:,}-{right:,} not in this copy "
+                    f"({right - left:,} bp)")
+            gap_x += [left, right, None]
+            gap_y += [y, y, None]
+            gap_hover += [text, text, None]
         for junction in insertion.junctions:
             if junction.kind is JunctionKind.INSERTION:
                 ins_x.append(junction.consensus_at)
@@ -523,30 +535,31 @@ def _junction_glyphs(fig: go.Figure, insertions: list[Insertion], theme: Theme,
                 end_y += [y, y]
                 end_text += ["]", "["]
                 end_hover += [text, text]
-                rule_x += [at, to, None]
-                rule_y += [y, y, None]
                 size_x.append((at + to) / 2)
                 size_y.append(y)
                 size_near.append(f"{junction.size:,} bp")
                 size_hover.append(text)
 
     font = dict(color=theme.text_primary, size=11, family=FONT_FAMILY)
-    if rule_x:
+    if gap_x:
         fig.add_trace(go.Scatter(
-            x=rule_x, y=rule_y, mode="lines", legendgroup="deletion",
-            name=f"deletion in the copy (n={len(size_x)})",
-            line=dict(color=theme.text_secondary, width=1, dash="dot"),
-            hoverinfo="skip",
+            x=gap_x, y=gap_y, mode="lines", legendgroup="missing",
+            name=f"consensus missing from the copy (n={n_gaps})",
+            # Drawn no heavier than a copy: on a dense family, thicker gaps
+            # outweighed the copies themselves.
+            line=dict(color=theme.missing, width=1.6), opacity=0.85,
+            hovertext=gap_hover, hovertemplate="%{hovertext}<extra></extra>",
         ), row=row, col=col)
+    if size_x:
         fig.add_trace(go.Scatter(
             x=end_x, y=end_y, mode="text", text=end_text, textfont=font,
-            legendgroup="deletion", showlegend=False,
+            legendgroup="missing", showlegend=False,
             hovertext=end_hover, hovertemplate="%{hovertext}<extra></extra>",
         ), row=row, col=col)
         fig.add_trace(go.Scatter(
             x=size_x, y=size_y, mode="text", text=[""] * len(size_x),
             textfont=font, textposition="top center",
-            legendgroup="deletion", showlegend=False,
+            legendgroup="missing", showlegend=False,
             hovertext=size_hover, hovertemplate="%{hovertext}<extra></extra>",
             meta={"teaidJunction": True, "far": [""] * len(size_x), "near": size_near},
         ), row=row, col=col)

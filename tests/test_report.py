@@ -681,7 +681,26 @@ class TestInsertionsOnTheSheet:
         fig = report.build_figure(fragmented_data(), theme.LIGHT)
         names = [t.name for t in fig.data if t.name]
         assert "insertion in the copy (n=1)" in names
-        assert "deletion in the copy (n=1)" in names
+        assert "consensus missing from the copy (n=1)" in names
+        brackets = [t for t in fig.data if t.mode == "text" and list(t.text or []) == ["]", "["]]
+        assert brackets, "the deletion keeps its ]··[ brackets"
+
+    def test_a_gap_that_is_not_a_deletion_is_still_drawn(self):
+        """A join that skips 40 bp of consensus but carries 1,000 bp of extra
+        genome is an insertion by net difference; the 40 bp it lacks still shows."""
+        rows = [
+            Copy(chrom="chr1", start=0, end=300, strand="+", family="fam", divergence=5.0,
+                 divergence_kind=DivergenceKind.CONSENSUS, consensus_start=0,
+                 consensus_end=300, hit_id="9"),
+            Copy(chrom="chr1", start=1300, end=1560, strand="+", family="fam", divergence=5.0,
+                 divergence_kind=DivergenceKind.CONSENSUS, consensus_start=340,
+                 consensus_end=600, hit_id="9"),
+        ]
+        fig = report.build_figure(make_data(insertions=[Insertion(rows)], full_length=[]),
+                                  theme.LIGHT)
+        gap = [t for t in fig.data if t.name and t.name.startswith("consensus missing")][0]
+        assert list(gap.x[:2]) == [300, 340]
+        assert "insertion in the copy (n=1)" in [t.name for t in fig.data if t.name]
 
     def test_junction_sizes_wait_for_a_zoom(self):
         fig = report.build_figure(fragmented_data(), theme.LIGHT)
