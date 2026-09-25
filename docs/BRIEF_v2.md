@@ -596,6 +596,15 @@ This section is status and direction only.
 - **CLI update.** The flag surface has grown organically across steps 2–6 and
   deserves a pass: grouping, defaults, and a `--version`-style summary of which
   external tools were found.
+- **Visualisation with SODA, a parallel track (raised 2026-09-25).** The
+  maintainer kept panel 1's junction glyphs for now and asked us to consider
+  [SODA](https://github.com/sodaviz/soda), a TypeScript library for drawing
+  biological annotation (NAR Genomics and Bioinformatics, 2022; BSD-3), for
+  better views. It runs in the browser from an npm package, so it would add a
+  second rendering stack beside Plotly. We think the least disruptive way in
+  is a separate viewer that reads the files `--all-tables` already writes
+  (`copies.tsv` carries every row with its copy number), leaving the sheet as
+  it is. Not started.
 - **GUI.** Unscoped. The sheet is already a standalone HTML page, so the
   smallest useful version may be an index over many sheets rather than a new
   application. One correction to that idea: the sheet is **not** self-contained
