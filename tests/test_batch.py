@@ -80,7 +80,7 @@ class TestBatch:
 
     def test_family_and_all_do_not_combine(self, inputs, tmp_path, capsys):
         fasta, annot = inputs
-        code = cli.main(["--annot", str(annot), "-c", str(fasta), "--all", "-f", "fam1",
+        code = cli.main(["--annot", str(annot), "-c", str(fasta), "--all", "-n", "fam1",
                          "-o", str(tmp_path)])
         assert code == cli.EXIT_USAGE
         assert "[usage]" in capsys.readouterr().err

@@ -112,6 +112,17 @@ class TestTheV1CommandLine:
         # is the leakiness the sheet warns about.
         assert "famX: 4 copies" in out.out
 
+    def test_every_v1_flag_is_accepted_through_the_alias(self, tmp_path, capsys):
+        """The whole v1 flag surface, in one v1-style command line."""
+        consensus, genome_fa = _synthetic(tmp_path)
+        out = tmp_path / "out"
+        code = cli.main_legacy_alias([
+            "-q", str(consensus), "-g", str(genome_fa), "-o", str(out), "-t", "-T", "-r",
+            "-e", "10e-8", "-f", "0.9", "-m", "300", "-R", "-a", "0.3", "-F", "1", "-y", "10",
+            "-D", "--no-homology"])
+        assert code == cli.EXIT_OK, capsys.readouterr().err
+        assert (out / "famX.copies.tsv").exists() and (out / "famX.teaid.html").exists()
+
     def test_the_database_is_built_beside_the_genome_as_v1_did(self, tmp_path):
         consensus, genome_fa = _synthetic(tmp_path)
         cli.main(["-q", str(consensus), "-g", str(genome_fa), "-o", str(tmp_path),

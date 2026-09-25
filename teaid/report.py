@@ -278,6 +278,11 @@ class SheetData:
     # Result of comparing the seed's TP against the protein hits. None when the
     # comparison has not been run -- which is different from "no disagreement".
     class_check: object | None = None
+    # Panel 1 styling, v1's -a, -F and -y. The default opacities are high enough
+    # for the legend swatches to stay legible on the dark surface.
+    partial_opacity: float = 0.65
+    full_opacity: float = 0.9
+    divergence_max: float | None = None
 
     @property
     def has_seed_qc(self) -> bool:
@@ -443,10 +448,8 @@ def _panel_hits(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: in
                 mode="lines",
                 name=f"{label} (n={len(subset)})",
                 line=dict(color=colour, width=width),
-                # Semi-transparent so overplotted copies read as density, as in
-                # v1; kept high enough that the legend swatch stays legible on
-                # the dark surface.
-                opacity=0.65 if label == "partial" else 0.9,
+                # Semi-transparent so overplotted copies read as density, as in v1.
+                opacity=data.partial_opacity if label == "partial" else data.full_opacity,
                 customdata=customdata,
                 hovertemplate=(
                     "%{customdata[0]}:%{customdata[1]:,}-%{customdata[2]:,} "
@@ -467,6 +470,8 @@ def _panel_hits(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: in
         title += (f"<br><span style='font-size:10px'>{omitted:,}/{data.n_insertions:,} "
                   f"omitted: none reported</span>")
     fig.update_yaxes(title_text=title, row=row, col=col)
+    if data.divergence_max is not None:
+        fig.update_yaxes(range=[0, data.divergence_max], row=row, col=col)
     fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
 
     if not plotted:

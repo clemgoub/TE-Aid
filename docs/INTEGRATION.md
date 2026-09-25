@@ -66,6 +66,15 @@ not change route d, where the seed is primary either way. `--annot` and
 `--genome` together, without a seed, use the annotation and say on the sheet
 that the genome was ignored.
 
+### Coming from v1
+
+Every v1 flag is accepted with its v1 meaning, so a v1 command line runs as it
+is, through `teaid` or the `TE-Aid` alias: `-q` consensus, `-g` genome, `-o`,
+`-e` genome E-value, `-f` full-length threshold, `-m`, `-R`, `-r`, `-t` and `-T`
+tables, `-a` and `-F` opacities, `-y` divergence-axis maximum. `-D`
+(dotmatcher) is accepted and ignored, with a note, because panel 3 replaces it.
+The family name, which v1 did not need, is `-n`/`--family`.
+
 ### Route b: v1's genome search
 
 The consensus is searched against the genome with `blastn` (megablast, E ≤ 10e-8

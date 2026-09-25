@@ -197,6 +197,11 @@ consensus and the seed-QC panels while panels 1–2 show every annotated genomic
 copy, and the sheet states the comparison — `panels 1-2 show 515 annotated
 genomic copies; the seed uses 44`. That ratio is the QC signal.
 
+**v1 command lines run as they are.** Every v1 flag keeps its v1 meaning,
+including `-f` (full-length threshold) and `-t`/`-T` (tables); `-D` is accepted
+and ignored, since panel 3 replaces the dotmatcher plot. The one new short flag
+is `-n` for the family name.
+
 ### From a Stockholm seed
 
 A Dfam seed alignment carries the copies, their genomic loci, the alignment and

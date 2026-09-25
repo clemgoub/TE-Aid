@@ -135,7 +135,8 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     source.add_argument(
-        "-f",
+        # -f is the full-length threshold, as in v1; the family name moved to -n.
+        "-n",
         "--family",
         metavar="NAME",
         help="family to report on; defaults to the only entry in a single-sequence FASTA",
@@ -187,15 +188,34 @@ def build_parser() -> argparse.ArgumentParser:
         "--theme", choices=sorted(theme.THEMES), default="light", help="colour theme"
     )
     output.add_argument(
+        "-a", "--alpha", type=float, default=None, metavar="A",
+        help="opacity of partial copies in panel 1, 0-1 (default 0.65; v1's -a)",
+    )
+    output.add_argument(
+        "-F", "--full-length-alpha", type=float, default=None, metavar="A",
+        help="opacity of full-length copies in panel 1, 0-1 (default 0.9; v1's -F)",
+    )
+    output.add_argument(
+        "-y", "--auto-y", type=float, default=None, metavar="MAX", dest="divergence_max",
+        help="fix panel 1's divergence axis to 0-MAX instead of fitting it (v1's -y)",
+    )
+    output.add_argument(
+        "-D", "--emboss-dotmatcher", action="store_true",
+        help=("accepted so v1 scripts run, and ignored: panel 3, the self blastn "
+              "dot-plot, replaces the dotmatcher plot"),
+    )
+    output.add_argument(
+        "-t",
         "--tables",
         action="store_true",
         help=("also write the self dot-plot, ORF and protein-hit coordinates as TSV, "
-              "1-based (v1's -t)"),
+              "1-based, as v1's -t did"),
     )
     output.add_argument(
+        "-T",
         "--all-tables",
         action="store_true",
-        help="as --tables, plus one row per genomic copy row (v1's -T)",
+        help="as --tables, plus one row per genomic copy row, as v1's -T did",
     )
     output.add_argument(
         "--static",
@@ -206,7 +226,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     tuning = parser.add_argument_group("tuning")
     tuning.add_argument(
-        "-t",
+        "-f",
         "--full-length-threshold",
         type=float,
         default=0.9,
@@ -692,6 +712,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--full-length-threshold must be in (0, 1]")
     if not 0 <= args.min_model_coverage <= 1:
         parser.error("--min-model-coverage must be in [0, 1]")
+    for flag, value in (("--alpha", args.alpha), ("--full-length-alpha", args.full_length_alpha)):
+        if value is not None and not 0 <= value <= 1:
+            parser.error(f"{flag} must be in [0, 1]")
+    if args.divergence_max is not None and args.divergence_max <= 0:
+        parser.error("--auto-y must be positive")
 
     # Input priority: --annot, then --genome (v1's blastn route), then --stk;
     # --pipeline reverses to seed-first. Whichever source is chosen, everything
@@ -764,6 +789,11 @@ def _draw(args, chosen: str, prep: _Prepared) -> int:
     grouping = _grouping_note(shown, insertions, args.no_group_fragments)
     if grouping:
         notes.append(grouping)
+    if args.emboss_dotmatcher:
+        notes.append("-D ignored: the EMBOSS dotmatcher plot is retired; panel 3 is the "
+                     "self dot-plot")
+        print("teaid: warning: -D ignored; panel 3, the self dot-plot, replaces dotmatcher",
+              file=sys.stderr)
     coverage = analysis.coverage(insertions, consensus_length)
     full = analysis.full_length(insertions, consensus_length, args.full_length_threshold)
 
@@ -823,6 +853,9 @@ def _draw(args, chosen: str, prep: _Prepared) -> int:
         homology=protein_hits,
         homology_all=all_hits if not args.no_homology else [],
         class_check=class_check,
+        partial_opacity=0.65 if args.alpha is None else args.alpha,
+        full_opacity=0.9 if args.full_length_alpha is None else args.full_length_alpha,
+        divergence_max=args.divergence_max,
         **_seed_qc_fields(seed, args.seed_qc),
     )
 
@@ -1111,9 +1144,9 @@ def main_legacy_alias(argv: list[str] | None = None) -> int:
     """Entry point for the historical ``TE-Aid`` command name."""
     # Say exactly what carries over from v1, rather than promising it all.
     print(
-        "note: 'TE-Aid' is now 'teaid', and this alias runs it. From v1, -q, -g, -o, "
-        "-e, -m, -R and -r work as before; -t, -T, -f, -a, -F, -y and -D do not yet "
-        "(-t and -f mean other things in v2). See docs/INTEGRATION.md.",
+        "note: 'TE-Aid' is now 'teaid', and this alias runs it. Every v1 flag is "
+        "accepted with its v1 meaning; -D is ignored, because panel 3 replaces the "
+        "dotmatcher plot. The family name, which v1 did not need, is -n.",
         file=sys.stderr,
     )
     return main(argv)
