@@ -313,6 +313,23 @@ class TestProvenance:
         assert sourced.layout.height > plain.layout.height
 
 
+class TestNotesLine:
+    """The notes say what the sheet left out, so the page must not cut one off."""
+
+    def test_a_long_line_wraps_and_the_margin_grows_to_hold_it(self):
+        words = " ".join(f"word{i}" for i in range(120))
+        short = report.build_figure(make_data(notes=["one short note"]), theme.LIGHT)
+        wrapped = report.build_figure(make_data(notes=[words]), theme.LIGHT)
+        (text,) = [a.text for a in wrapped.layout.annotations if a.text and "word0" in a.text]
+        lines = text.split("<br>")
+        assert len(lines) > 1
+        assert all(len(line) * report._NOTE_CHAR_PX <= report._PLOT_WIDTH for line in lines)
+        assert " ".join(lines) == words
+        extra = (len(lines) - 1) * report._NOTE_LINE_PX
+        assert wrapped.layout.margin.b == short.layout.margin.b + extra
+        assert wrapped.layout.height == short.layout.height + extra
+
+
 class TestPanelHelp:
     @staticmethod
     def _markers(fig):

@@ -30,6 +30,7 @@ produces 10,000 Plotly traces, which no browser renders comfortably.
 
 from __future__ import annotations
 
+import textwrap
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -92,6 +93,10 @@ _NOTE_OFFSET_PX = 104
 # Height of one wrapped legend row; the notes line is pushed down by this much
 # per extra row so a long legend cannot land on top of it.
 _LEGEND_ROW_PX = 22
+# Average glyph width of the 10px notes line, and the height of each line it
+# wraps onto.
+_NOTE_CHAR_PX = 5.6
+_NOTE_LINE_PX = 14
 # Extra top margin for the provenance line under the subtitle.
 _SOURCE_LINE_PX = 17
 # Average glyph width of a 12px subplot title, and the gap before its '?'.
@@ -113,6 +118,16 @@ def _legend_rows(fig: go.Figure) -> int:
     # ~6.2px per character at 11px, plus the swatch and padding per entry.
     width = sum(len(label) * 6.2 + 46 for label in labels)
     return max(1, int(width / _PLOT_WIDTH) + 1)
+
+
+def _note_lines(notes: list[str]) -> list[str]:
+    """The notes line, wrapped to the plot's width.
+
+    Plotly does not wrap an annotation, and the page clips whatever runs past
+    its right edge, so a long notes line lost its end with no sign of it.
+    """
+    return textwrap.wrap(" · ".join(notes), width=int(_PLOT_WIDTH / _NOTE_CHAR_PX),
+                         break_long_words=False, break_on_hyphens=False)
 
 
 def _plot_height(cell_rows: float) -> float:
@@ -1417,7 +1432,10 @@ def _layout(
     cell_rows: int = 2,
 ) -> None:
     # A wrapped legend needs the space it takes, or it lands on the notes line.
-    _extra_bottom = max(0, _legend_rows(fig) - 1) * _LEGEND_ROW_PX
+    legend_extra = max(0, _legend_rows(fig) - 1) * _LEGEND_ROW_PX
+    notes = _note_lines(list(dict.fromkeys(data.notes)))
+    # Each line the notes wrap onto below the first needs its room too.
+    _extra_bottom = legend_extra + max(0, len(notes) - 1) * _NOTE_LINE_PX
 
     subtitle_bits = [f"{data.consensus_length:,} bp", _count(data.n_insertions, "copy", "copies")]
     if data.n_rows != data.n_insertions:
@@ -1539,16 +1557,16 @@ def _layout(
     # Anything the sheet chose not to draw is stated on the sheet. A silent
     # truncation reads as 'this is everything', which is the one thing an
     # evidence sheet must never imply.
-    notes = list(dict.fromkeys(data.notes))
     if notes:
         fig.add_annotation(
-            text=" · ".join(notes),
+            text="<br>".join(notes),
             xref="paper",
             yref="paper",
             x=0,
-            y=-(_NOTE_OFFSET_PX + _extra_bottom) / _plot_height(cell_rows),
+            y=-(_NOTE_OFFSET_PX + legend_extra) / _plot_height(cell_rows),
             xanchor="left",
             yanchor="top",
+            align="left",
             showarrow=False,
             font=dict(size=10, color=theme.muted, family=FONT_FAMILY),
         )
