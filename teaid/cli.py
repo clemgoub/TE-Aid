@@ -275,8 +275,8 @@ def build_parser() -> argparse.ArgumentParser:
         "-r",
         "--remove-redundant",
         action="store_true",
-        help=("genome route: drop hits whose locus lies inside another hit's, "
-              "v1's reduce.cpp rule"),
+        help=("genome route: keep the best-scoring hit per stretch of genome, and "
+              "join pieces that follow each other along the consensus within 5 kb"),
     )
     tuning.add_argument(
         "-R",
@@ -416,10 +416,12 @@ def _grouping_note(rows: Annotation, insertions: list, disabled: bool) -> str | 
 
     Naming the largest group matters: a producer that writes one constant into
     the ID column would otherwise collapse a family to a single 'copy' silently.
+    Genome-route hits are grouped only by -r, whose own note gives the counts.
     """
     if disabled:
-        return f"fragment grouping off: each of {len(rows):,} annotation rows counted as a copy"
-    if len(insertions) == len(rows):
+        noun = report.row_noun(rows.source_format)[1]
+        return f"fragment grouping off: {len(rows):,} {noun}, each counted as a copy"
+    if len(insertions) == len(rows) or rows.source_format == "blastn":
         return None
     largest = max(i.n_fragments for i in insertions)
     return (f"{len(rows):,} annotation rows grouped into "
@@ -600,8 +602,12 @@ def _load_annotation(args, prep: _Prepared) -> _Loaded | int:
     return _Loaded(consensus.bare_name, consensus, subset, notes, sources)
 
 
-def _genome_copies(args, consensus: Consensus, prep: _Prepared) -> Annotation | int:
-    """Copies of ``consensus`` found by blastn against ``--genome`` (the v1 route)."""
+def _genome_copies(args, consensus: Consensus, prep: _Prepared,
+                   notes: list[str]) -> Annotation | int:
+    """Copies of ``consensus`` found by blastn against ``--genome`` (the v1 route).
+
+    With ``-r``, the note saying what it did is appended to ``notes``.
+    """
     genome_path = Path(args.genome)
     if not genome_path.exists():
         return fail(EXIT_NO_INPUT, f"genome not found: {genome_path}")
@@ -616,7 +622,16 @@ def _genome_copies(args, consensus: Consensus, prep: _Prepared) -> Annotation | 
         # failure rather than a dropped panel.
         return fail(EXIT_NO_INPUT, str(exc))
     if args.remove_redundant:
-        copies = genome.remove_redundant(copies)
+        copies, done = genome.remove_redundant(copies)
+        note = (f"-r: {done.hits:,} blastn hits, {done.placed:,} after keeping the "
+                f"best-scoring hit per stretch of genome, "
+                f"{report._count(done.copies, 'copy', 'copies')} after joining pieces "
+                f"that follow each other along the consensus within "
+                f"{genome.JOIN_MAX_GAP // 1000} kb")
+        if done.ties:
+            note += (f"; {report._count(done.ties, 'copy', 'copies')} matched two places "
+                     f"in the consensus equally well, drawn at the lower one")
+        notes.append(note)
     return copies
 
 
@@ -626,7 +641,8 @@ def _load_genome(args, prep: _Prepared) -> _Loaded | int:
     if isinstance(resolved, int):
         return resolved
     consensus_path, consensus = resolved
-    copies = _genome_copies(args, consensus, prep)
+    reduction_notes: list[str] = []
+    copies = _genome_copies(args, consensus, prep, reduction_notes)
     if isinstance(copies, int):
         return copies
     if not len(copies):
@@ -635,13 +651,16 @@ def _load_genome(args, prep: _Prepared) -> _Loaded | int:
             f"blastn found no copies of {consensus.bare_name!r} in {args.genome} "
             f"at E <= {args.genome_evalue:g}",
         )
-    notes = [
-        "copies found by blastn (megablast) against the genome, one per HSP: this "
-        "route misses diverged copies and splits interrupted ones, so an annotation "
-        "gives a truer count"
-    ]
     if args.remove_redundant:
-        notes.append("-r: hits nested inside another hit's locus removed, as in v1")
+        notes = ["copies found by blastn (megablast) against the genome: this route "
+                 "misses diverged copies, so an annotation gives a truer count"]
+    else:
+        notes = [
+            "copies found by blastn (megablast) against the genome, one per HSP: this "
+            "route misses diverged copies and splits interrupted ones, so an annotation "
+            "gives a truer count"
+        ]
+    notes += reduction_notes
     sources = [
         f"genome <b>{Path(args.genome).name}</b> (blastn, E ≤ {args.genome_evalue:g})",
         f"consensus <b>{consensus_path.name}</b>",
@@ -758,7 +777,7 @@ def _draw(args, chosen: str, prep: _Prepared) -> int:
             label = f"annotation <b>{Path(args.annot).name}</b>"
             kind = "annotated genomic copies"
         else:
-            genomic = _genome_copies(args, loaded.consensus, prep)
+            genomic = _genome_copies(args, loaded.consensus, prep, loaded.notes)
             label = f"genome <b>{Path(args.genome).name}</b>"
             kind = "genomic copies found by blastn"
             if not isinstance(genomic, int) and not len(genomic):
@@ -884,7 +903,8 @@ def _draw(args, chosen: str, prep: _Prepared) -> int:
                     if "kaleido" in str(exc).lower() else "")
             print(f"teaid: warning: static export failed ({exc}){hint}", file=sys.stderr)
 
-    rows = f" ({len(shown):,} annotation rows)" if len(shown) != len(insertions) else ""
+    rows = (f" ({len(shown):,} {report.row_noun(shown.source_format)[1]})"
+            if len(shown) != len(insertions) else "")
     summary = (
         f"{consensus.bare_name}: {report._count(len(insertions), 'copy', 'copies')}{rows}, "
         f"{len(full):,} full length, consensus {consensus_length:,} bp"
@@ -1145,8 +1165,10 @@ def main_legacy_alias(argv: list[str] | None = None) -> int:
     # Say exactly what carries over from v1, rather than promising it all.
     print(
         "note: 'TE-Aid' is now 'teaid', and this alias runs it. Every v1 flag is "
-        "accepted with its v1 meaning; -D is ignored, because panel 3 replaces the "
-        "dotmatcher plot. The family name, which v1 did not need, is -n.",
+        "accepted, and all but two keep their v1 meaning: -D is ignored, because "
+        "panel 3 replaces the dotmatcher plot, and -r has a new rule that also joins "
+        "the pieces of interrupted copies. The family name, which v1 did not need, "
+        "is -n.",
         file=sys.stderr,
     )
     return main(argv)

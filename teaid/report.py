@@ -332,6 +332,17 @@ def _count(n: int, one: str, many: str) -> str:
     return f"{n:,} {one if n == 1 else many}"
 
 
+def row_noun(source_format: str | None) -> tuple[str, str]:
+    """What one input row is, singular and plural.
+
+    On the genome route rows outnumber copies only after -r, and by then they
+    are the hits it kept, not every hit blastn returned.
+    """
+    if source_format == "blastn":
+        return "blastn hit kept", "blastn hits kept"
+    return "annotation row", "annotation rows"
+
+
 def _segments(starts, ends, ys_start, ys_end):
     """Interleave segment endpoints with None breaks for a single Plotly trace."""
     xs: list[float | None] = []
@@ -471,7 +482,7 @@ def _panel_hits(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: in
                     "%{customdata[0]}:%{customdata[1]:,}-%{customdata[2]:,} "
                     "(%{customdata[3]})<br>"
                     "consensus %{x:,.0f} bp<br>divergence %{customdata[4]:.1f}%<br>"
-                    "annotation rows: %{customdata[5]}"
+                    + row_noun(data.source_format)[1] + ": %{customdata[5]}"
                     "<extra></extra>"
                 ),
             ),
@@ -1439,7 +1450,7 @@ def _layout(
 
     subtitle_bits = [f"{data.consensus_length:,} bp", _count(data.n_insertions, "copy", "copies")]
     if data.n_rows != data.n_insertions:
-        subtitle_bits.append(_count(data.n_rows, "annotation row", "annotation rows"))
+        subtitle_bits.append(_count(data.n_rows, *row_noun(data.source_format)))
     if data.full_length:
         subtitle_bits.append(
             f"{len(data.full_length):,} full length ≥{data.full_length_threshold:.0%}"

@@ -68,12 +68,13 @@ that the genome was ignored.
 
 ### Coming from v1
 
-Every v1 flag is accepted with its v1 meaning, so a v1 command line runs as it
-is, through `teaid` or the `TE-Aid` alias: `-q` consensus, `-g` genome, `-o`,
-`-e` genome E-value, `-f` full-length threshold, `-m`, `-R`, `-r`, `-t` and `-T`
-tables, `-a` and `-F` opacities, `-y` divergence-axis maximum. `-D`
-(dotmatcher) is accepted and ignored, with a note, because panel 3 replaces it.
-The family name, which v1 did not need, is `-n`/`--family`.
+Every v1 flag is accepted, so a v1 command line runs as it is, through `teaid`
+or the `TE-Aid` alias: `-q` consensus, `-g` genome, `-o`, `-e` genome E-value,
+`-f` full-length threshold, `-m`, `-R`, `-r`, `-t` and `-T` tables, `-a` and `-F`
+opacities, `-y` divergence-axis maximum. All but two keep their v1 meaning. `-D`
+(dotmatcher) is ignored, with a note, because panel 3 replaces it, and `-r` has a
+new rule, described under route b. The family name, which v1 did not need, is
+`-n`/`--family`.
 
 ### Route b: v1's genome search
 
@@ -87,10 +88,18 @@ identity is not RepeatMasker's Kimura-corrected value.
 
 The blastn database is built beside the genome on first use
 (`makeblastdb -in G -out G`, as v1), so a v1 database is reused; if that
-directory is not writable it goes under the cache. `-r` applies v1's
-`reduce.cpp` rule, dropping hits nested inside another hit's locus. Without
-`blastn` or `makeblastdb` the route has no copies, so it fails with `no-input`
-(exit 3) rather than dropping a panel.
+directory is not writable it goes under the cache.
+
+With `-r`, of hits on one strand that share at least half of the shorter one's
+locus, TE-Aid keeps the best-scoring, and it joins pieces that follow each other
+along the consensus with at most 5 kb of genome between them. A joined copy gets the same junction marks as
+an annotated one, and the sheet's notes give the counts before and after. v1's
+`reduce.cpp` dropped only hits nested inside another hit's locus: it kept one or
+both of a solo LTR's two equal hits depending on blastn's output order, and it
+never joined an interrupted copy.
+
+Without `blastn` or `makeblastdb` the route has no copies, so it fails with
+`no-input` (exit 3) rather than dropping a panel.
 
 ---
 

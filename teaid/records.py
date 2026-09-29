@@ -85,6 +85,9 @@ class Copy:
     # search-driven copy discovery misleading.
     hit_id: str | None = None
     source_line: int | None = None
+    # Alignment score, higher is better. Only the genome route sets it (blastn
+    # bitscore), for -r to choose between hits on the same stretch of genome.
+    score: float | None = None
 
     def __post_init__(self) -> None:
         if self.end < self.start:

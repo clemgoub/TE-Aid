@@ -534,7 +534,7 @@ This section is status and direction only.
 | 7 | Benchmark (§5.5) → set the default protein path | next |
 | 8 | Nucleotide row: famdb slice + `nhmmer` + cache + docs | |
 | 9 | TSD detection in the flank path (§5.2) + `#=GF TD` | |
-| 10 | `--blastn` legacy path, with the leakiness warning | done 2026-09-24/25 as `--genome` (`-g`, `--blastn`); every v1 flag accepted with its v1 meaning (`-f` threshold, `-t`/`-T` tables, `-a`, `-F`, `-y`), `-D` ignored, family moved to `-n` |
+| 10 | `--blastn` legacy path, with the leakiness warning | done 2026-09-24/25 as `--genome` (`-g`, `--blastn`); every v1 flag accepted with its v1 meaning (`-f` threshold, `-t`/`-T` tables, `-a`, `-F`, `-y`) except `-D`, ignored, and `-r`, given a new rule on 2026-09-28 (best hit per locus, interrupted copies joined); family moved to `-n` |
 | 11 | Tag `v2.0` | |
 
 ### Open items, smallest first

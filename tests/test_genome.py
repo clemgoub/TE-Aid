@@ -8,7 +8,7 @@ import shutil
 import pytest
 
 from teaid import cli, genome
-from teaid.records import Annotation, Copy, DivergenceKind
+from teaid.records import Annotation, Copy, DivergenceKind, JunctionKind
 
 # Real blastn -outfmt 6 output for the synthetic genome built below: two whole
 # copies on chr1 (one reverse), and one copy on chr2 with a 400 bp internal
@@ -43,35 +43,91 @@ class TestParse:
         assert "blastn identity" in DivergenceKind.BLASTN_IDENTITY.axis_label
 
 
-def hsp(start, end, qstart=0, chrom="chr1"):
-    return Copy(chrom=chrom, start=start, end=end, strand="+", family="f",
-                consensus_start=qstart, consensus_end=qstart + end - start)
+# Real blastn -outfmt 6 output for a synthetic LTR element (2,800 bp with 400 bp
+# LTRs) in a 20 kb chr1 carrying three insertions: a full copy at 3001-5800, a
+# solo LTR at 8801-9200, and a copy interrupted by 2 kb of other sequence
+# (12201-13400 and 15401-17000). Each LTR also matches the other LTR of the
+# consensus, which is where the extra hits come from.
+LTR_OUTFMT6 = (
+    "ltrX\tchr1\t96.643\t2800\t94\t0\t1\t2800\t3001\t5800\t0.0\t4650\n"
+    "ltrX\tchr1\t96.812\t1600\t51\t0\t1201\t2800\t15401\t17000\t0.0\t2673\n"
+    "ltrX\tchr1\t96.583\t1200\t41\t0\t1\t1200\t12201\t13400\t0.0\t1989\n"
+    "ltrX\tchr1\t97.250\t400\t11\t0\t2401\t2800\t12201\t12600\t0.0\t678\n"
+    "ltrX\tchr1\t97.000\t400\t12\t0\t1\t400\t8801\t9200\t0.0\t673\n"
+    "ltrX\tchr1\t97.000\t400\t12\t0\t2401\t2800\t8801\t9200\t0.0\t673\n"
+    "ltrX\tchr1\t96.535\t404\t14\t0\t1\t404\t5401\t5804\t0.0\t669\n"
+    "ltrX\tchr1\t96.750\t400\t13\t0\t1\t400\t16601\t17000\t0.0\t667\n"
+    "ltrX\tchr1\t96.000\t400\t16\t0\t2401\t2800\t3001\t3400\t0.0\t651\n"
+)
+
+
+def hsp(start, end, qstart=0, chrom="chr1", strand="+", score=100.0):
+    return Copy(chrom=chrom, start=start, end=end, strand=strand, family="f",
+                consensus_start=qstart, consensus_end=qstart + end - start, score=score)
 
 
 class TestRemoveRedundant:
-    """v1's reduce.cpp, ported: a hit inside a kept hit's locus goes."""
+    """-r: one placement per stretch of genome, and interrupted copies joined."""
 
-    def kept(self, *copies):
-        return [(c.chrom, c.start, c.end) for c in genome.remove_redundant(Annotation(copies=list(copies)))]
+    def reduce(self, *copies):
+        return genome.remove_redundant(Annotation(copies=list(copies)))
 
-    def test_a_nested_hit_is_dropped(self):
-        assert self.kept(hsp(0, 1000), hsp(100, 500)) == [("chr1", 0, 1000)]
+    def test_three_ltr_insertions_come_out_as_three_copies(self):
+        """Counting every hit gives 9 copies here, and v1's reduce.cpp gave 5."""
+        hits = genome.parse(LTR_OUTFMT6, family="ltrX", class_label="LTR/Gypsy",
+                            consensus_length=2800)
+        reduced, done = genome.remove_redundant(hits)
+        assert (done.hits, done.placed, done.copies, done.ties) == (9, 4, 3, 1)
+        insertions = reduced.insertions()
+        assert [(i.start, i.end, i.n_fragments) for i in insertions] == [
+            (3000, 5800, 1), (8800, 9200, 1), (12200, 17000, 2)]
+        # The solo LTR matched both LTRs equally; it is drawn at the lower start.
+        assert insertions[1].fragments[0].consensus_start == 0
+        (join,) = insertions[2].junctions
+        assert join.kind is JunctionKind.INSERTION and join.size == 2000
 
-    def test_overlapping_hits_that_do_not_nest_are_both_kept(self):
-        assert len(self.kept(hsp(0, 600), hsp(400, 1000))) == 2
+    def test_a_weaker_hit_inside_a_stronger_one_goes(self):
+        reduced, done = self.reduce(hsp(0, 1000, score=900), hsp(100, 500, qstart=600, score=300))
+        assert [(c.start, c.end) for c in reduced.copies] == [(0, 1000)]
+        assert done.ties == 0
 
-    def test_identical_loci_follow_v1s_order_dependent_rule(self):
-        """reduce.cpp drops a later identical locus only when the kept one starts
-        no later in the query, so the outcome depends on blastn's output order.
-        Ported as it is, quirk included."""
-        first_smaller = [hsp(0, 500, qstart=10), hsp(0, 500, qstart=90)]
-        kept = genome.remove_redundant(Annotation(copies=first_smaller))
-        assert [c.consensus_start for c in kept] == [10]
-        first_larger = [hsp(0, 500, qstart=90), hsp(0, 500, qstart=10)]
-        assert len(genome.remove_redundant(Annotation(copies=first_larger))) == 2
+    def test_the_outcome_does_not_depend_on_hit_order(self):
+        a = hsp(0, 400, qstart=0, score=673)
+        b = hsp(0, 400, qstart=2400, score=673)
+        for order in ((a, b), (b, a)):
+            reduced, done = self.reduce(*order)
+            assert [c.consensus_start for c in reduced.copies] == [0]
+            assert done.ties == 1
+
+    def test_hits_on_opposite_strands_do_not_compete(self):
+        _, done = self.reduce(hsp(0, 1000), hsp(0, 1000, strand="-"))
+        assert done.placed == 2
 
     def test_the_same_locus_on_another_sequence_is_kept(self):
-        assert len(self.kept(hsp(0, 1000), hsp(100, 500, chrom="chr2"))) == 2
+        _, done = self.reduce(hsp(0, 1000), hsp(100, 500, chrom="chr2"))
+        assert done.placed == 2
+
+    def test_pieces_in_consensus_order_within_5_kb_are_joined(self):
+        reduced, done = self.reduce(hsp(0, 500, qstart=0), hsp(5500, 6000, qstart=500))
+        assert done.copies == 1
+        assert len({c.hit_id for c in reduced.copies}) == 1
+
+    def test_pieces_further_apart_stay_separate(self):
+        _, done = self.reduce(hsp(0, 500, qstart=0), hsp(5501, 6001, qstart=500))
+        assert done.copies == 2
+
+    def test_tandem_copies_are_not_joined(self):
+        """Two whole copies in a row share most of the consensus, so they are two."""
+        _, done = self.reduce(hsp(0, 995, qstart=0), hsp(1200, 2195, qstart=5))
+        assert done.copies == 2
+
+    def test_on_the_minus_strand_the_later_piece_sits_earlier_in_the_consensus(self):
+        _, joined = self.reduce(hsp(0, 500, qstart=500, strand="-"),
+                                hsp(1000, 1500, qstart=0, strand="-"))
+        assert joined.copies == 1
+        _, apart = self.reduce(hsp(0, 500, qstart=0, strand="-"),
+                               hsp(1000, 1500, qstart=500, strand="-"))
+        assert apart.copies == 2
 
 
 def _synthetic(tmp_path):
@@ -135,12 +191,26 @@ class TestTheV1CommandLine:
                   "--no-dotplot", "--no-orfs", "--no-homology"])
         assert "famX: 4 copies" in capsys.readouterr().out
 
-    def test_remove_redundant_is_accepted(self, tmp_path, capsys):
+    def test_remove_redundant_joins_the_split_copy(self, tmp_path, capsys, monkeypatch):
+        from teaid import report
+
+        seen = {}
+        original = report.build_figure
+
+        def keep(data, theme):
+            seen["data"] = data
+            return original(data, theme)
+
+        monkeypatch.setattr(report, "build_figure", keep)
         consensus, genome_fa = _synthetic(tmp_path)
         code = cli.main(["-q", str(consensus), "-g", str(genome_fa), "-r", "-o", str(tmp_path),
                          "--no-dotplot", "--no-orfs", "--no-homology"])
         assert code == cli.EXIT_OK
-        assert "famX: 4 copies" in capsys.readouterr().out  # none of the four nest
+        # The copy with a 400 bp deletion came back as two hits; -r joins them.
+        assert "famX: 3 copies (4 blastn hits kept)" in capsys.readouterr().out
+        notes = seen["data"].notes
+        assert any(n.startswith("-r: 4 blastn hits, 4 after") and "3 copies" in n for n in notes)
+        assert not any("annotation rows" in n for n in notes)
 
     def test_the_sheet_says_how_its_copies_were_found(self, tmp_path, monkeypatch):
         from teaid import report
