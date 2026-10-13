@@ -1,0 +1,9 @@
+{
+  "contradiction_ceiling": 0.025,
+  "agreeing_kept": 0.94,
+  "a1_lower_bound": 0.85,
+  "a2_median_span": 0.80,
+  "a2_high_span": 0.90,
+  "a2_high_share": 0.60,
+  "a4_cost_ratio": 2.0
+}
