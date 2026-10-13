@@ -104,6 +104,21 @@ class TestCriteria:
         assert result["A4"]["pass"]
 
 
+def test_a_batched_search_is_rescaled_to_each_consensus_alone():
+    """E scales with database size: one consensus of L bp is L / 1e6 of a 1 Mb batch."""
+    from dataclasses import dataclass
+
+    @dataclass(frozen=True)
+    class H:
+        target: str
+        evalue: float
+
+    found = [H("short", 2000.0), H("short", 1e5), H("long", 0.5)]
+    out = bm.rescale(found, {"short": 100, "long": 2000})
+    assert [h.evalue for h in out["short"]] == [pytest.approx(0.2)]
+    assert [h.evalue for h in out["long"]] == [pytest.approx(0.001)]
+
+
 class TestGuard:
     def test_results_are_refused_until_the_protocol_is_signed(self, monkeypatch):
         monkeypatch.setattr(bm, "protocol_state", lambda: {

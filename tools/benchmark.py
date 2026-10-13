@@ -38,7 +38,8 @@ import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import dataclass
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -50,6 +51,8 @@ PROTOCOL = ROOT / "bench" / "PROTOCOL.md"
 RESULTS = ROOT / "bench" / "results"
 UNSIGNED_MARK = "draft, not yet signed"
 ARMS = ("default", "nofs", "pfam-orf", "tier3", "deep")
+# Sets with a fixed role: the negative control, and the serial run A4 is timed on.
+SHUFFLED, TIMING = "shuffled", "timing"
 SEARCH_E = 1.0
 PRIMARY_E = 1e-3
 E_GRID = (1e-3, 1e-5, 1e-10)
@@ -179,28 +182,94 @@ def _pfam_orf(seq: str, name: str, library, cpus: int, min_orf: int) -> list[hom
     return hits
 
 
-def run_arm(arm: str, families, cpus: int, min_orf: int):
-    """Yield (name, label, hits, seconds) for every family, one arm."""
-    library = None
+# BATH reports E-values for a database of Z megabases; a search of one consensus
+# uses its own length. A batched search fixes Z at 1 Mb and rescales each hit by
+# its consensus length, which reproduces the per-family E-values: tested on two
+# goby families, every hit and bit score matched and the ratio was L / 1e6 within
+# the two significant digits BATH prints (about +/-5%).
+BATCH_Z_MB = 1.0
+
+
+def _library(arm: str):
     if arm in ("default", "nofs", "pfam-orf"):
-        library = proteins.build(repeatpeps=_repeatpeps(), log=lambda m: print(m, file=sys.stderr))
-    elif arm == "deep":
-        library = proteins.build(deep=True, repeatpeps=_repeatpeps(),
-                                 log=lambda m: print(m, file=sys.stderr))
-    peps = _repeatpeps()
-    for name, label, seq in families:
-        t0 = time.perf_counter()
-        if arm in ("default", "deep", "nofs"):
-            hits = homology.search(seq, library, name, evalue=SEARCH_E,
-                                   frameshift_aware=arm != "nofs", cpus=cpus)
-        elif arm == "pfam-orf":
-            hits = _pfam_orf(seq, name, library, cpus, min_orf)
-        elif arm == "tier3":
-            hits = homology.search_repeatpeps(orfs.find_orfs(seq, name, min_size=min_orf),
-                                              peps, evalue=SEARCH_E, target=name) if peps else []
-        else:
-            raise ValueError(f"unknown arm {arm!r}")
-        yield name, label, hits, time.perf_counter() - t0
+        return proteins.build(repeatpeps=_repeatpeps(), log=lambda m: print(m, file=sys.stderr))
+    if arm == "deep":
+        return proteins.build(deep=True, repeatpeps=_repeatpeps(),
+                              log=lambda m: print(m, file=sys.stderr))
+    return None
+
+
+def _search_one(job):
+    """One family through one arm: (name, label, hits, seconds)."""
+    arm, name, label, seq, library, peps, cpus, min_orf = job
+    t0 = time.perf_counter()
+    if arm in ("default", "deep", "nofs"):
+        hits = homology.search(seq, library, name, evalue=SEARCH_E,
+                               frameshift_aware=arm != "nofs", cpus=cpus)
+    elif arm == "pfam-orf":
+        hits = _pfam_orf(seq, name, library, cpus, min_orf)
+    elif arm == "tier3":
+        hits = homology.search_repeatpeps(orfs.find_orfs(seq, name, min_size=min_orf),
+                                          peps, evalue=SEARCH_E, target=name) if peps else []
+    else:
+        raise ValueError(f"unknown arm {arm!r}")
+    return name, label, hits, time.perf_counter() - t0
+
+
+def rescale(found, lengths: dict[str, int], z_mb: float = BATCH_Z_MB,
+            keep: float = SEARCH_E) -> dict[str, list]:
+    """Hits of a batched search per consensus, with the E-value each alone would get."""
+    by_target: dict[str, list] = {}
+    for h in found:
+        h = replace(h, evalue=h.evalue * lengths[h.target] / (z_mb * 1e6))
+        if h.evalue <= keep:
+            by_target.setdefault(h.target, []).append(h)
+    return by_target
+
+
+def _search_batched(arm, families, library, cpus):
+    """Every family in one bathsearch, E-values rescaled to each consensus alone."""
+    lengths = {name: len(seq) for name, _, seq in families}
+    shortest = min(lengths.values())
+    t0 = time.perf_counter()
+    with tempfile.TemporaryDirectory(prefix="teaid-bench-") as tmp:
+        query = Path(tmp) / "all.fa"
+        query.write_text("".join(f">{n}\n{s}\n" for n, _, s in families))
+        table = Path(tmp) / "hits.tbl"
+        # Wide enough that a hit at E <= SEARCH_E on the shortest consensus is reported.
+        report_e = SEARCH_E * BATCH_Z_MB * 1e6 / shortest * 1.5
+        command = ["bathsearch", "--tblout", str(table), "-o", "/dev/null", "-E", f"{report_e:g}",
+                   "-Z", f"{BATCH_Z_MB:g}", "--cpu", str(cpus)]
+        if arm != "nofs":
+            command.append("--fs")
+        subprocess.run(command + [str(library.hmm), str(query)], check=True, capture_output=True)
+        found = homology._parse_tblout(table.read_text())
+    seconds = (time.perf_counter() - t0) / len(families)
+    by_target = rescale(found, lengths)
+    for name, label, _ in families:
+        yield name, label, by_target.get(name, []), seconds
+
+
+def run_arm(arm: str, families, cpus: int, min_orf: int, jobs: int = 1, batch: bool = False):
+    """Yield (name, label, hits, seconds) for every family, one arm.
+
+    ``jobs`` runs families in parallel processes; ``batch`` searches them all in
+    one bathsearch (BATH arms only), which is how --deep stays affordable. A
+    batched run's seconds are the run's total divided by the families.
+    """
+    library, peps = _library(arm), _repeatpeps()
+    if batch:
+        if arm not in ("default", "nofs", "deep"):
+            raise SystemExit(f"--batch applies to the bathsearch arms, not {arm}")
+        yield from _search_batched(arm, families, library, cpus)
+        return
+    jobs_list = [(arm, n, l, s, library, peps, cpus, min_orf) for n, l, s in families]
+    if jobs > 1:
+        with ProcessPoolExecutor(max_workers=jobs) as pool:
+            yield from pool.map(_search_one, jobs_list)
+    else:
+        for job in jobs_list:
+            yield _search_one(job)
 
 
 def tool_versions() -> dict:
@@ -265,7 +334,8 @@ def cmd_run(args) -> None:
     with open(arm_dir / "hits.tsv", "w") as hits_out, open(arm_dir / "timing.tsv", "w") as t_out:
         hits_out.write("\t".join(HIT_FIELDS) + "\n")
         t_out.write("family\tseconds\thits\n")
-        for name, label, hits, seconds in run_arm(args.arm, families, args.cpus, args.min_orf):
+        for name, label, hits, seconds in run_arm(args.arm, families, args.cpus, args.min_orf,
+                                                  jobs=args.jobs, batch=args.batch):
             for h in hits:
                 row = dict(family=name, label=label, model=h.display_name,
                            model_class=h.source_class or "", accession=h.query_accession,
@@ -277,7 +347,10 @@ def cmd_run(args) -> None:
             t_out.write(f"{name}\t{seconds:.3f}\t{len(hits)}\n")
             print(f"{set_name}/{args.arm}: {name} {len(hits)} hits {seconds:.1f} s", file=sys.stderr)
     manifest["arms"].setdefault(set_name, {})[args.arm] = {
-        "cpus": args.cpus, "min_orf": args.min_orf,
+        "cpus": args.cpus, "min_orf": args.min_orf, "jobs": args.jobs, "batch": args.batch,
+        **({"batch_z_mb": BATCH_Z_MB, "evalue_rescale": "E * consensus length / (Z * 1e6)",
+            "evalue_precision": "BATH prints 2 significant digits, so rescaled E-values are +/-5%"}
+           if args.batch else {}),
         "finished": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
@@ -483,13 +556,18 @@ def cmd_report(args) -> None:
     for set_name in manifest["sets"]:
         set_dir = run / set_name
         entry = {}
-        if set_name != "shuffled" and (set_dir / "default" / "hits.tsv").exists():
+        if set_name in (SHUFFLED, TIMING):
+            continue
+        if (set_dir / "default" / "hits.tsv").exists():
             entry["specificity"] = specificity(read_hits(set_dir / "default" / "hits.tsv"), th)
         if (set_dir / "deep" / "hits.tsv").exists() and (set_dir / "default" / "hits.tsv").exists():
             regions = compare(read_hits(set_dir / "deep" / "hits.tsv"),
                               read_hits(set_dir / "default" / "hits.tsv"))
-            deep_s, default_s = median_seconds(set_dir / "deep"), median_seconds(set_dir / "default")
-            cost = {"deep_median_s": deep_s, "default_median_s": default_s,
+            # A batched --deep run has no per-family time; the serial timing set does.
+            timed = run / TIMING
+            src = timed if (timed / "deep" / "timing.tsv").exists() else set_dir
+            deep_s, default_s = median_seconds(src / "deep"), median_seconds(src / "default")
+            cost = {"deep_median_s": deep_s, "default_median_s": default_s, "timed_on": src.name,
                     "ratio": deep_s / default_s if deep_s and default_s else None}
             entry["criteria"] = criteria(regions, cost, th)
         report["sets"][set_name] = entry
@@ -505,6 +583,27 @@ def cmd_report(args) -> None:
     (run / "verdict.json").write_text(json.dumps(report, indent=2) + "\n")
     (run / "verdict.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
+
+
+def cli_hits(name: str, label: str, seq: str) -> set[tuple[str, int, int]]:
+    """Tier 1-2 protein hits the teaid CLI reports for one consensus.
+
+    The genome route with the consensus as its own genome is the shortest way
+    through the CLI's protein search for a family that has no annotation.
+    """
+    teaid = Path(sys.executable).with_name("teaid")
+    with tempfile.TemporaryDirectory(prefix="teaid-bench-cli-") as tmp:
+        fasta = Path(tmp) / "family.fa"
+        fasta.write_text(f">{name}#{label}\n{seq}\n")
+        result = subprocess.run([str(teaid), "-q", str(fasta), "-g", str(fasta), "--tables",
+                                 "--no-dotplot", "-o", tmp], capture_output=True, text=True)
+        tables = list(Path(tmp).glob("*.protein_hits.tsv"))
+        if result.returncode != 0 or not tables:
+            raise RuntimeError(f"teaid failed on {name}: {result.stderr.strip()[-300:]}")
+        lines = tables[0].read_text().splitlines()
+    head = lines[0].split("\t")
+    rows = [dict(zip(head, l.split("\t"))) for l in lines[1:]]
+    return {(r["name"], int(r["start"]) - 1, int(r["end"])) for r in rows if r["source"] == "pfam"}
 
 
 def cmd_verify(args) -> int:
@@ -530,13 +629,29 @@ def cmd_verify(args) -> int:
         checks.append((f"shuffled/{arm}: no hits at E <= {PRIMARY_E}", n == 0, f"{n} hits"))
     if not shuffled:
         checks.append(("negative control run", False, "no 'shuffled' set in this run"))
+    for set_name, info in manifest.get("sets", {}).items():
+        if set_name in (SHUFFLED, TIMING) or "default" not in manifest["arms"].get(set_name, {}):
+            continue
+        arm = read_hits(run / set_name / "default" / "hits.tsv")
+        for name, label, seq in read_families(Path(info["fasta"]))[: args.cli]:
+            ours = {(h.model, h.start, h.end) for h in arm.get(name, []) if h.evalue <= PRIMARY_E}
+            theirs = cli_hits(name, label, seq)
+            checks.append((f"{set_name}/default equals the CLI on {name}", ours == theirs,
+                           f"{len(ours)} hits here, {len(theirs)} from teaid; "
+                           f"{len(ours ^ theirs)} differ"))
     if args.repeat:
+        # Only arms present in both runs are compared, so a small repeat run serves.
         other = Path(args.repeat)
+        compared = 0
         for set_name, arms in manifest.get("arms", {}).items():
             for arm in arms:
                 a, b = run / set_name / arm / "hits.tsv", other / set_name / arm / "hits.tsv"
-                same = b.exists() and a.read_text() == b.read_text()
-                checks.append((f"{set_name}/{arm} identical on a second run", same, str(b)))
+                if b.exists():
+                    compared += 1
+                    checks.append((f"{set_name}/{arm} identical on a second run",
+                                   a.read_text() == b.read_text(), str(b)))
+        if not compared:
+            checks.append(("determinism", False, f"no arm of this run is in {other}"))
     for name, ok, detail in checks:
         print(f"{'pass' if ok else 'FAIL'}  {name}  ({detail})")
     return 0 if all(ok for _, ok, _ in checks) else 1
@@ -551,7 +666,10 @@ def main(argv=None) -> int:
     p.add_argument("--out", required=True)
     p.add_argument("--cpus", type=int, default=2)
     p.add_argument("--min-orf", type=int, default=400, help="getorf minimum, nt (the CLI's default)")
-    p.add_argument("--limit", type=int, help="first N families only, for testing")
+    p.add_argument("--limit", type=int, help="first N families only")
+    p.add_argument("--jobs", type=int, default=1, help="families searched in parallel processes")
+    p.add_argument("--batch", action="store_true",
+                   help="one bathsearch over every family, E-values rescaled (BATH arms; for --deep)")
     p = sub.add_parser("shuffle", help="dinucleotide-shuffled consensus sequences, the negative control")
     p.add_argument("fasta")
     p.add_argument("--n", type=int, default=5)
@@ -569,6 +687,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("verify", help="the protocol's checks before any number counts")
     p.add_argument("run")
     p.add_argument("--repeat", help="a second run of the same arms, for determinism")
+    p.add_argument("--cli", type=int, default=3, help="families per set checked against the CLI")
     args = parser.parse_args(argv)
     if args.cmd == "run":
         cmd_run(args)
