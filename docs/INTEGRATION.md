@@ -83,8 +83,9 @@ by default, `-e` to change), exactly as v1 did, and every HSP becomes one copy.
 That makes this the leakiest route: megablast misses diverged copies, and an
 insertion interrupted by another element arrives as two copies, because a
 search has no ID column to join them. The sheet's notes say so. Its divergence
-axis reads `100 − blastn identity (%)`, not divergence: an uncorrected local
-identity is not RepeatMasker's Kimura-corrected value.
+axis reads `100 − blastn identity (%)`, not divergence: an identity over one
+local alignment, gaps included, is not the substitution rate RepeatMasker
+reports against the consensus.
 
 The blastn database is built beside the genome on first use
 (`makeblastdb -in G -out G`, as v1), so a v1 database is reused; if that
@@ -184,9 +185,10 @@ RepeatModeler writes and what all 482 GenomeArk seed sets use, so a reader that
 handles only the documented 4-part form reads none of them.
 
 **Divergence is not one quantity.** Every record carries a `divergence_kind` of
-`consensus`, `array_homogeneity`, or `none`, because `perc_div` means divergence
-from a library consensus for homology tools but *array homogeneity* for
-tandem-repeat finders, and nothing at all for pure detectors. **Absent
+`consensus`, `array_homogeneity`, `blastn_identity` or `none`, because
+`perc_div` means divergence from a library consensus for homology tools but
+*array homogeneity* for tandem-repeat finders, and nothing at all for pure
+detectors; the genome route's `blastn_identity` is a fourth quantity again. **Absent
 divergence is never plotted as zero** — a zero there reads as a pristine, very
 recent insertion, the opposite of "unknown". BED16 does not record which kind it
 holds, so it is inferred from the class label; override with

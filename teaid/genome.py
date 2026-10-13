@@ -14,8 +14,8 @@ What it copies from v1, deliberately:
 - ``blastn`` runs with its default task (megablast) at v1's E-value, 10e-8.
 
 What it does not copy: v1 plotted ``100 - pident`` as "divergence to consensus".
-That is an uncorrected identity from one local alignment, not RepeatMasker's
-Kimura-corrected divergence, so it is stored as
+That is an identity over one local alignment, not the substitution rate
+RepeatMasker reports against the consensus, so it is stored as
 :attr:`DivergenceKind.BLASTN_IDENTITY` and panel 1's axis names it for what it is.
 
 Nor is ``-r/--remove-redundant`` v1's rule; see :func:`remove_redundant`.

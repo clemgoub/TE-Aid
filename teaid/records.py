@@ -33,9 +33,10 @@ class DivergenceKind(str, Enum):
     - :attr:`ARRAY_HOMOGENEITY` — how uniform a tandem array is. Says nothing
       about age; a young satellite can be wildly heterogeneous.
     - :attr:`BLASTN_IDENTITY` — ``100 - pident`` of one blastn HSP, from the
-      genome route. An uncorrected identity over a local alignment, not a
-      Kimura-corrected divergence, so it reads older or younger than the same
-      copy would in a RepeatMasker annotation. v1 labelled it "divergence".
+      genome route. An identity over one local alignment whose length counts
+      gaps, where RepeatMasker reports substitutions against the consensus and
+      puts indels in separate columns, so the same copy can read older or
+      younger than in a RepeatMasker annotation. v1 labelled it "divergence".
     - :attr:`NONE` — the producer emits no divergence at all.
     """
 
