@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch Dfam's curated families for one clade, through the Dfam REST API.
+"""Fetch Dfam's curated families for a clade or a repeat type, through the Dfam REST API.
 
 We calibrate the protein thresholds (docs/BRIEF_v2.md §5.1a) against families
 whose classification a curator set, and the GenomeArk goby library has none.
@@ -19,10 +19,14 @@ Usage::
 
     tools/fetch_dfam_curated.py --clade 7227 --out dev-data/dfam/dmel
     tools/fetch_dfam_curated.py --clade 9606 --out dev-data/dfam/human
+    tools/fetch_dfam_curated.py --type DNA --subtype Maverick --out dev-data/dfam/maverick
 
 ``--clade`` takes an NCBI Taxonomy ID. Ancestral families are included
 (``clade_relatives=ancestors``), because a genome's repeats include families
-defined higher in its lineage. Uncurated ("DR") families are not.
+defined higher in its lineage. ``--type`` and ``--subtype`` filter on Dfam's
+repeat type and subtype; without ``--clade`` they cover every clade, which is
+how the benchmark gets curated families of a superfamily neither species has.
+Uncurated ("DR") families are not returned.
 """
 from __future__ import annotations
 
@@ -55,11 +59,21 @@ def get(path: str, **params) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--clade", required=True, help="NCBI Taxonomy ID, e.g. 7227")
+    parser.add_argument("--clade", help="NCBI Taxonomy ID, e.g. 7227")
+    parser.add_argument("--type", help="Dfam repeat type, e.g. DNA")
+    parser.add_argument("--subtype", help="Dfam repeat subtype, e.g. Maverick")
     parser.add_argument("--out", required=True, help="output prefix, e.g. dev-data/dfam/dmel")
     args = parser.parse_args()
+    if not (args.clade or args.type or args.subtype):
+        parser.error("give --clade, --type or --subtype; Dfam has too many families to fetch all")
 
-    query = dict(clade=args.clade, clade_relatives="ancestors", format="full")
+    query = dict(format="full")
+    if args.clade:
+        query.update(clade=args.clade, clade_relatives="ancestors")
+    if args.type:
+        query["type"] = args.type
+    if args.subtype:
+        query["subtype"] = args.subtype
     version = get("version")
     records, start, total = [], 0, None
     while total is None or start < total:
