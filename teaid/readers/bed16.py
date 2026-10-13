@@ -66,8 +66,8 @@ def _num(token: str, cast) -> float | int | None:
     try:
         return cast(token)
     except ValueError:
-        # The spec's own coercion rule: an unparseable token becomes null
-        # rather than killing the row.
+        # VGP's coercion rule (pd.to_numeric(errors="coerce") in vgptrack/ingest.py):
+        # an unparseable token becomes null rather than killing the row.
         return None
 
 
@@ -112,7 +112,9 @@ def _parse_row(
     if start is None or end is None:
         raise ValueError("chromStart/chromEnd missing or non-numeric")
 
-    strand = fields[5] if fields[5] in {"+", "-"} else "."
+    # VGP asks producers to write '-' for RepeatMasker's 'C', but one that
+    # forgets would otherwise lose every reverse copy's orientation.
+    strand = {"+": "+", "-": "-", "C": "-"}.get(fields[5], ".")
     class_label = _text(fields[11])
     divergence = _num(fields[7], float)
 
@@ -150,7 +152,10 @@ def _parse_row(
         consensus_start=None if consensus_start is None else consensus_start - 1,
         consensus_end=consensus_end,
         consensus_left=_num(fields[14], int),
-        hit_id=_text(fields[15]),
+        # rmout2bed copies the .out's field 15 unconditionally, and in a -no_id
+        # file that field holds the '*' overlap flag, which is not an ID: read
+        # as one, it would join every flagged row on a chromosome into one copy.
+        hit_id=None if fields[15] == "*" else _text(fields[15]),
         source_line=lineno,
     )
 

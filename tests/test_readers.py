@@ -195,6 +195,24 @@ class TestBed16:
         groups = bed16.read(path).fragment_groups()
         assert sorted(len(g) for g in groups) == [1, 2]
 
+    def test_a_star_in_column_16_is_not_an_id(self, tmp_path):
+        """A -no_id .out converted by rmout2bed puts RepeatMasker's '*' flag there."""
+        path = tmp_path / "star.bed"
+        rows = (
+            "chr1\t100\t200\tfamA\t0\t+\tNA\t5.0\tNA\tNA\tNA\tLINE/L2\t1\t100\t400\t*\n"
+            "chr1\t900\t950\tfamA\t0\t+\tNA\t5.0\tNA\tNA\tNA\tLINE/L2\t1\t50\t450\t*\n"
+        )
+        path.write_text(BED16_HEADER + rows)
+        annotation = bed16.read(path)
+        assert [c.hit_id for c in annotation.copies] == [None, None]
+        assert len(annotation.fragment_groups()) == 2
+
+    def test_repeatmasker_c_strand_reads_as_minus(self, tmp_path):
+        path = tmp_path / "c.bed"
+        path.write_text(BED16_HEADER + "chr1\t100\t200\tfamA\t0\tC\tNA\t5.0\tNA\tNA\tNA"
+                                       "\tLINE/L2\t1\t100\t400\tcopy1\n")
+        assert bed16.read(path).copies[0].strand == "-"
+
     def test_gzip_is_transparent(self, tmp_path):
         path = tmp_path / "sample.bed.gz"
         with gzip.open(path, "wt") as handle:
