@@ -136,3 +136,113 @@ def check(tp: str | None, hits) -> ClassCheck:
         f"the seed declares Class {expected}, but every domain that maps to a class "
         f"is Class {contrary} ({examples})",
     )
+
+
+# --- Order level, for the protein benchmark (bench/PROTOCOL.md) -------------
+#
+# The sheet's flag above judges a family as a whole, at class level. The
+# benchmark judges each hit, and at order level where both sides name an order:
+# a LINE reverse transcriptase on an LTR family, or a TIR transposase on a
+# Helitron, is wrong at order level but not at class level. Nothing here
+# reaches the sheet.
+
+# Each order's transposition class.
+ORDER_CLASS = {
+    "LTR": "I", "DIRS": "I", "LINE": "I", "PLE": "I", "SINE": "I",
+    "TIR": "II", "Helitron": "II", "Maverick": "II", "Crypton": "II",
+}
+
+# te_order values in the curated domain table that name an order. "Class I"
+# names only a class; "domesticated" and the shared tyrosine recombinase of
+# DIRS and Crypton name neither, so hits from them are not judged.
+_TE_ORDER_ORDER = {
+    "LTR": "LTR", "LTR/ERV": "LTR", "LINE": "LINE", "PLE": "PLE",
+    "RC": "Helitron", "RC/Helitron": "Helitron",
+}
+_TE_ORDER_CLASS_ONLY = {"Class I": "I"}
+
+
+def order_of_label(label: str | None) -> tuple[str | None, str | None]:
+    """(order, class) of a RepeatMasker or Dfam label such as ``LTR/Gypsy``.
+
+    Either can be None: ``DNA`` alone gives a class but no order, and
+    ``Unknown``, satellites and RNA genes give neither.
+    """
+    if not label:
+        return None, None
+    head, _, sub = label.partition("/")
+    sub = sub.casefold()
+    if head == "LTR":
+        order = "DIRS" if sub.startswith(("dirs", "ngaro", "viper")) else "LTR"
+    elif head == "LINE":
+        order = "PLE" if sub.startswith("penelope") else "LINE"
+    elif head == "PLE":
+        order = "PLE"
+    elif head == "SINE":
+        order = "SINE"
+    elif head == "DNA":
+        if sub.startswith("maverick") or sub.startswith("polinton"):
+            order = "Maverick"
+        elif sub.startswith("crypton"):
+            order = "Crypton"
+        elif sub.startswith("helitron"):
+            order = "Helitron"
+        else:
+            order = "TIR" if sub else None
+    elif head == "RC":
+        order = "Helitron"
+    elif head == "Retroposon":
+        return None, "I"
+    else:
+        return None, None
+    if order is None:
+        return None, "II"
+    return order, ORDER_CLASS[order]
+
+
+def order_of_hit(hit, orders: dict[str, str] | None = None) -> tuple[str | None, str | None]:
+    """(order, class) a protein hit stands for.
+
+    A Pfam domain takes its te_order from the curated table; a RepeatPeps
+    protein takes the label after the ``#`` in its name.
+    """
+    if orders is None:
+        orders = domain_orders()
+    accession = (getattr(hit, "query_accession", "") or "").split(".")[0]
+    te_order = orders.get(accession)
+    if te_order is not None:
+        if te_order in _TE_ORDER_CLASS_ONLY:
+            return None, _TE_ORDER_CLASS_ONLY[te_order]
+        if te_order.startswith("TIR"):
+            return "TIR", "II"
+        order = _TE_ORDER_ORDER.get(te_order)
+        return (order, ORDER_CLASS[order]) if order else (None, None)
+    return order_of_label(getattr(hit, "source_class", None))
+
+
+@dataclass(frozen=True, slots=True)
+class OrderCall:
+    """Whether one hit agrees with its family, and at which level that was judged."""
+
+    verdict: str | None  # "agree", "contradict", or None when not judged
+    level: str | None  # "order" or "class"
+    family_order: str | None
+    hit_order: str | None
+
+
+def judge(family_label: str | None, hit, orders: dict[str, str] | None = None) -> OrderCall:
+    """Judge a hit against its family's label, at order level where both sides allow.
+
+    A hit that names only a class (a bare reverse transcriptase), or a family
+    whose label names only a class, is judged at class level. A family of
+    unknown class, and a hit that names neither, are not judged.
+    """
+    family_order, family_class = order_of_label(family_label)
+    hit_order, hit_class = order_of_hit(hit, orders)
+    if family_class is None or hit_class is None:
+        return OrderCall(None, None, family_order, hit_order)
+    if family_order and hit_order:
+        verdict = "agree" if family_order == hit_order else "contradict"
+        return OrderCall(verdict, "order", family_order, hit_order)
+    verdict = "agree" if family_class == hit_class else "contradict"
+    return OrderCall(verdict, "class", family_order, hit_order)
