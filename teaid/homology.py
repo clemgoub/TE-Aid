@@ -13,6 +13,7 @@ classification decision. TE-Aid renders the hits and leaves the verdict alone.
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import subprocess
 import tempfile
@@ -65,6 +66,10 @@ class ProteinHit:
     # Which tier the model came from, so the sheet can say what kind of evidence
     # a hit is: a conserved domain, or a named element from RepeatPeps.
     source: str = "pfam"
+    # The consensus the hit lies on. One bathsearch over many consensus
+    # sequences can only be split back into families by this, since the model
+    # and the coordinates alone do not say which sequence they belong to.
+    target: str = ""
 
     @property
     def is_disrupted(self) -> bool:
@@ -192,6 +197,7 @@ def _parse_tblout(text: str) -> list[ProteinHit]:
                     hmm_len=int(row["hmm_len"]),
                     frameshifts=int(row.get("shifts", 0)),
                     stop_codons=int(row.get("stops", 0)),
+                    target=row["target"],
                 )
             )
         except (ValueError, KeyError):
@@ -205,11 +211,50 @@ def _parse_tblout(text: str) -> list[ProteinHit]:
     return hits
 
 
+def repeatpeps_database(repeatpeps: Path, *, scratch: Path) -> Path | None:
+    """A blastp database of RepeatPeps, built once and reused.
+
+    Built under the cache, keyed like the protein library on the file's name and
+    size, so the ~2 s makeblastdb runs once rather than once per family. Falls
+    back to ``scratch`` (rebuilt each call, as before) when the cache cannot be
+    written. Returns None when makeblastdb fails.
+    """
+    from . import proteins
+
+    key = hashlib.sha256(f"{repeatpeps.name}:{repeatpeps.stat().st_size}".encode())
+    home = proteins.cache_root() / "repeatpeps-db" / key.hexdigest()[:16]
+    prefix, done = home / "peps", home / "peps.done"
+    if done.exists():
+        return prefix
+
+    def make(out: Path) -> bool:
+        made = subprocess.run(
+            ["makeblastdb", "-in", str(repeatpeps), "-out", str(out), "-dbtype", "prot"],
+            capture_output=True, text=True, check=False,
+        )
+        return made.returncode == 0
+
+    try:
+        with proteins._exclusive(home.parent / f"{home.name}.lock", log=lambda _: None):
+            if not done.exists():
+                home.mkdir(parents=True, exist_ok=True)
+                if not make(prefix):
+                    return None
+                # makeblastdb writes several files; the stamp says all of them
+                # are finished, so a build cut short is redone, never reused.
+                done.write_text("ok\n")
+        return prefix
+    except (OSError, proteins.LibraryError):
+        fallback = scratch / "peps"
+        return fallback if make(fallback) else None
+
+
 def search_repeatpeps(
     orfs,
     repeatpeps: Path,
     *,
     evalue: float = 1e-5,
+    target: str = "",
 ) -> list[ProteinHit]:
     """Tier 3: ``blastp`` of ORF peptides against RepeatPeps, as v1 did.
 
@@ -236,12 +281,8 @@ def search_repeatpeps(
         if query.stat().st_size == 0:
             return []
 
-        database = tmpdir / "peps"
-        made = subprocess.run(
-            ["makeblastdb", "-in", str(repeatpeps), "-out", str(database), "-dbtype", "prot"],
-            capture_output=True, text=True, check=False,
-        )
-        if made.returncode != 0:
+        database = repeatpeps_database(Path(repeatpeps), scratch=tmpdir)
+        if database is None:
             return []
 
         result = subprocess.run(
@@ -288,10 +329,33 @@ def search_repeatpeps(
                 frameshifts=0,
                 stop_codons=0,
                 source="repeatpeps-blastp",
+                target=target,
             )
         )
     hits.sort(key=lambda h: h.evalue)
     return hits
+
+
+def apply_coverage_floor(hits, floor: float) -> tuple[list, list]:
+    """Split hits into those spanning at least ``floor`` of their model, and the rest.
+
+    E-value alone does not separate a hit covering 8% of a model from one
+    covering 80%, and the short ones are what a curator reported as spurious:
+    brief tier-2 Maverick hits on LTR elements that survive wherever no strong
+    hit overlaps them, since ``best_per_region`` only removes a hit that loses to
+    another. ``floor=0`` keeps everything, and is the default until a
+    calibration against genomes with curated classes sets a number.
+
+    Tier 3 is exempt: a blastp hit's coverage is the fraction of its ORF, not of
+    a model, so the same floor would mean something else there.
+    """
+    if floor <= 0:
+        return list(hits), []
+    kept, dropped = [], []
+    for hit in hits:
+        exempt = getattr(hit, "source", "pfam") == "repeatpeps-blastp"
+        (kept if exempt or hit.coverage >= floor else dropped).append(hit)
+    return kept, dropped
 
 
 def best_per_region(

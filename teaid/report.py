@@ -30,6 +30,7 @@ produces 10,000 Plotly traces, which no browser renders comfortably.
 
 from __future__ import annotations
 
+import textwrap
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -92,6 +93,10 @@ _NOTE_OFFSET_PX = 104
 # Height of one wrapped legend row; the notes line is pushed down by this much
 # per extra row so a long legend cannot land on top of it.
 _LEGEND_ROW_PX = 22
+# Average glyph width of the 10px notes line, and the height of each line it
+# wraps onto.
+_NOTE_CHAR_PX = 5.6
+_NOTE_LINE_PX = 14
 # Extra top margin for the provenance line under the subtitle.
 _SOURCE_LINE_PX = 17
 # Average glyph width of a 12px subplot title, and the gap before its '?'.
@@ -113,6 +118,16 @@ def _legend_rows(fig: go.Figure) -> int:
     # ~6.2px per character at 11px, plus the swatch and padding per entry.
     width = sum(len(label) * 6.2 + 46 for label in labels)
     return max(1, int(width / _PLOT_WIDTH) + 1)
+
+
+def _note_lines(notes: list[str]) -> list[str]:
+    """The notes line, wrapped to the plot's width.
+
+    Plotly does not wrap an annotation, and the page clips whatever runs past
+    its right edge, so a long notes line lost its end with no sign of it.
+    """
+    return textwrap.wrap(" · ".join(notes), width=int(_PLOT_WIDTH / _NOTE_CHAR_PX),
+                         break_long_words=False, break_on_hyphens=False)
 
 
 def _plot_height(cell_rows: float) -> float:
@@ -163,10 +178,11 @@ PANEL_HELP = {
         "matches, at its divergence. A copy RepeatMasker split into several rows "
         "(same ID) counts once, and its divergence is their mean weighted by "
         "consensus length, as RepeatMasker itself merges them.<br><br>"
-        "Where a copy was split: <b>]··[</b> brackets consensus the copy "
-        "<b>lacks</b> (a deletion); <b>|</b> marks sequence the genome carries and "
-        "the consensus does not (an insertion, often a nested element). Zoom in "
-        "to read their sizes.<br><br>"
+        "Where a copy was split: a <b>plum</b> stretch is consensus the copy "
+        "<b>lacks</b> between its rows, bracketed <b>]···[</b> when it is a deletion "
+        "of more than 50 bp; <b>|</b> marks sequence the genome carries and the "
+        "consensus does not (an insertion, often a nested element). Zoom in to read "
+        "their sizes.<br><br>"
         "Copies whose source reports <b>no</b> divergence are left out entirely "
         "rather than drawn at zero — zero here would read as a pristine, very "
         "recent insertion, the opposite of 'unknown'. Any omitted are counted in "
@@ -278,6 +294,11 @@ class SheetData:
     # Result of comparing the seed's TP against the protein hits. None when the
     # comparison has not been run -- which is different from "no disagreement".
     class_check: object | None = None
+    # Panel 1 styling, v1's -a, -F and -y. The default opacities are high enough
+    # for the legend swatches to stay legible on the dark surface.
+    partial_opacity: float = 0.65
+    full_opacity: float = 0.9
+    divergence_max: float | None = None
 
     @property
     def has_seed_qc(self) -> bool:
@@ -311,6 +332,17 @@ def _count(n: int, one: str, many: str) -> str:
     return f"{n:,} {one if n == 1 else many}"
 
 
+def row_noun(source_format: str | None) -> tuple[str, str]:
+    """What one input row is, singular and plural.
+
+    On the genome route rows outnumber copies only after -r, and by then they
+    are the hits it kept, not every hit blastn returned.
+    """
+    if source_format == "blastn":
+        return "blastn hit kept", "blastn hits kept"
+    return "annotation row", "annotation rows"
+
+
 def _segments(starts, ends, ys_start, ys_end):
     """Interleave segment endpoints with None breaks for a single Plotly trace."""
     xs: list[float | None] = []
@@ -328,7 +360,10 @@ def build_figure(data: SheetData, theme: Theme) -> go.Figure:
     # specs below, not assembled up front. Supplying one title short shifts
     # every later panel's title onto the wrong panel, silently.
     titles = [
-        "1 · Annotated copies vs divergence",
+        # A blastn hit is neither annotated nor measured in divergence.
+        "1 · Genomic hits vs identity"
+        if data.divergence_kind is DivergenceKind.BLASTN_IDENTITY
+        else "1 · Annotated copies vs divergence",
         "2 · Consensus coverage",
         "3 · Self dot-plot",
         "4 · Structure",
@@ -440,16 +475,14 @@ def _panel_hits(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: in
                 mode="lines",
                 name=f"{label} (n={len(subset)})",
                 line=dict(color=colour, width=width),
-                # Semi-transparent so overplotted copies read as density, as in
-                # v1; kept high enough that the legend swatch stays legible on
-                # the dark surface.
-                opacity=0.65 if label == "partial" else 0.9,
+                # Semi-transparent so overplotted copies read as density, as in v1.
+                opacity=data.partial_opacity if label == "partial" else data.full_opacity,
                 customdata=customdata,
                 hovertemplate=(
                     "%{customdata[0]}:%{customdata[1]:,}-%{customdata[2]:,} "
                     "(%{customdata[3]})<br>"
                     "consensus %{x:,.0f} bp<br>divergence %{customdata[4]:.1f}%<br>"
-                    "annotation rows: %{customdata[5]}"
+                    + row_noun(data.source_format)[1] + ": %{customdata[5]}"
                     "<extra></extra>"
                 ),
             ),
@@ -464,6 +497,8 @@ def _panel_hits(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: in
         title += (f"<br><span style='font-size:10px'>{omitted:,}/{data.n_insertions:,} "
                   f"omitted: none reported</span>")
     fig.update_yaxes(title_text=title, row=row, col=col)
+    if data.divergence_max is not None:
+        fig.update_yaxes(range=[0, data.divergence_max], row=row, col=col)
     fig.update_xaxes(title_text="consensus (bp)", row=row, col=col)
 
     if not plotted:
@@ -479,10 +514,13 @@ def _junction_glyphs(fig: go.Figure, insertions: list[Insertion], theme: Theme,
                      row: int, col: int) -> None:
     """Mark where each fragmented insertion was split, and what the split was.
 
-    - A **deletion** (the copy lacks consensus that its two fragments bracket)
-      is a real gap on this axis: ``]`` where the missing stretch starts, ``[``
-      where it ends, and a dotted rule between. Zoomed in, the size sits on the
-      rule: ``----]··658 bp··[----``.
+    - Every stretch of consensus the copy lacks between its rows is drawn in
+      the ``missing`` colour, whatever the join is classified as. So a gap under
+      the 50 bp tolerance shows, and so does consensus skipped at a join that is
+      classified as an insertion because its genomic gap is larger still.
+    - A **deletion** (a join whose consensus gap exceeds its genomic gap by more
+      than 50 bp) adds ``]`` where the missing stretch starts and ``[`` where it
+      ends. Zoomed in, its size sits on the segment: ``----]658 bp[----``.
     - An **insertion** (the genome carries sequence the consensus lacks,
       usually a nested element) uses no consensus, so the fragments abut. It is
       a ``|`` at the join, which reads ``[1045 bp]`` zoomed in.
@@ -493,12 +531,20 @@ def _junction_glyphs(fig: go.Figure, insertions: list[Insertion], theme: Theme,
     """
     ins_x, ins_y, ins_far, ins_near, ins_hover = [], [], [], [], []
     end_x, end_y, end_text, end_hover = [], [], [], []
-    rule_x, rule_y = [], []
+    gap_x, gap_y, gap_hover, n_gaps = [], [], [], 0
     size_x, size_y, size_near, size_hover = [], [], [], []
     for insertion in insertions:
         g0, g1 = insertion.genomic_1based()
         where = f"{insertion.chrom}:{g0:,}-{g1:,} ({insertion.strand})"
         y = insertion.divergence
+        blocks = insertion.consensus_blocks
+        for (_, left), (right, _) in zip(blocks, blocks[1:]):
+            n_gaps += 1
+            text = (f"{where}<br>consensus {left + 1:,}-{right:,} not in this copy "
+                    f"({right - left:,} bp)")
+            gap_x += [left, right, None]
+            gap_y += [y, y, None]
+            gap_hover += [text, text, None]
         for junction in insertion.junctions:
             if junction.kind is JunctionKind.INSERTION:
                 ins_x.append(junction.consensus_at)
@@ -515,30 +561,31 @@ def _junction_glyphs(fig: go.Figure, insertions: list[Insertion], theme: Theme,
                 end_y += [y, y]
                 end_text += ["]", "["]
                 end_hover += [text, text]
-                rule_x += [at, to, None]
-                rule_y += [y, y, None]
                 size_x.append((at + to) / 2)
                 size_y.append(y)
                 size_near.append(f"{junction.size:,} bp")
                 size_hover.append(text)
 
     font = dict(color=theme.text_primary, size=11, family=FONT_FAMILY)
-    if rule_x:
+    if gap_x:
         fig.add_trace(go.Scatter(
-            x=rule_x, y=rule_y, mode="lines", legendgroup="deletion",
-            name=f"deletion in the copy (n={len(size_x)})",
-            line=dict(color=theme.text_secondary, width=1, dash="dot"),
-            hoverinfo="skip",
+            x=gap_x, y=gap_y, mode="lines", legendgroup="missing",
+            name=f"consensus missing from the copy (n={n_gaps})",
+            # Drawn no heavier than a copy: on a dense family, thicker gaps
+            # outweighed the copies themselves.
+            line=dict(color=theme.missing, width=1.6), opacity=0.85,
+            hovertext=gap_hover, hovertemplate="%{hovertext}<extra></extra>",
         ), row=row, col=col)
+    if size_x:
         fig.add_trace(go.Scatter(
             x=end_x, y=end_y, mode="text", text=end_text, textfont=font,
-            legendgroup="deletion", showlegend=False,
+            legendgroup="missing", showlegend=False,
             hovertext=end_hover, hovertemplate="%{hovertext}<extra></extra>",
         ), row=row, col=col)
         fig.add_trace(go.Scatter(
             x=size_x, y=size_y, mode="text", text=[""] * len(size_x),
             textfont=font, textposition="top center",
-            legendgroup="deletion", showlegend=False,
+            legendgroup="missing", showlegend=False,
             hovertext=size_hover, hovertemplate="%{hovertext}<extra></extra>",
             meta={"teaidJunction": True, "far": [""] * len(size_x), "near": size_near},
         ), row=row, col=col)
@@ -1396,11 +1443,14 @@ def _layout(
     cell_rows: int = 2,
 ) -> None:
     # A wrapped legend needs the space it takes, or it lands on the notes line.
-    _extra_bottom = max(0, _legend_rows(fig) - 1) * _LEGEND_ROW_PX
+    legend_extra = max(0, _legend_rows(fig) - 1) * _LEGEND_ROW_PX
+    notes = _note_lines(list(dict.fromkeys(data.notes)))
+    # Each line the notes wrap onto below the first needs its room too.
+    _extra_bottom = legend_extra + max(0, len(notes) - 1) * _NOTE_LINE_PX
 
     subtitle_bits = [f"{data.consensus_length:,} bp", _count(data.n_insertions, "copy", "copies")]
     if data.n_rows != data.n_insertions:
-        subtitle_bits.append(_count(data.n_rows, "annotation row", "annotation rows"))
+        subtitle_bits.append(_count(data.n_rows, *row_noun(data.source_format)))
     if data.full_length:
         subtitle_bits.append(
             f"{len(data.full_length):,} full length ≥{data.full_length_threshold:.0%}"
@@ -1518,16 +1568,16 @@ def _layout(
     # Anything the sheet chose not to draw is stated on the sheet. A silent
     # truncation reads as 'this is everything', which is the one thing an
     # evidence sheet must never imply.
-    notes = list(dict.fromkeys(data.notes))
     if notes:
         fig.add_annotation(
-            text=" · ".join(notes),
+            text="<br>".join(notes),
             xref="paper",
             yref="paper",
             x=0,
-            y=-(_NOTE_OFFSET_PX + _extra_bottom) / _plot_height(cell_rows),
+            y=-(_NOTE_OFFSET_PX + legend_extra) / _plot_height(cell_rows),
             xanchor="left",
             yanchor="top",
+            align="left",
             showarrow=False,
             font=dict(size=10, color=theme.muted, family=FONT_FAMILY),
         )
@@ -1709,25 +1759,19 @@ _HTML_TEMPLATE = r"""<!doctype html>
 """
 
 
-def _hits_table(data: SheetData, theme: Theme, tsv_name: str) -> tuple[str, str]:
-    """The expandable table of every protein hit, and its JSON for export.
+def protein_hit_rows(data: SheetData) -> list[dict]:
+    """Every protein hit as one row, 1-based, for the sheet's table and for files.
 
-    Panel 5 draws a readable subset — competitors collapsed, lanes capped — so
-    without this the rest exists only in a note saying how many were dropped.
-    A curator checking a marginal call needs the actual numbers.
+    ``drawn`` says whether panel 5 shows the hit: the panel collapses competing
+    hits and caps its lanes, and the table is where the rest can be found.
     """
-    import html as _html
-    import json as _json
-
     hits = list(data.homology_all or data.homology)
-    if not hits:
-        return "", "null"
-
     drawn = {id(h) for h in homology_lanes(list(data.homology))}
     rows = []
     for hit in sorted(hits, key=lambda h: (h.start, h.evalue)):
         start, end = hit.coordinates_1based()
         rows.append({
+            "consensus": getattr(hit, "target", "") or data.family,
             "name": getattr(hit, "display_name", hit.query),
             "class": getattr(hit, "source_class", None) or "",
             "accession": hit.query_accession,
@@ -1743,6 +1787,22 @@ def _hits_table(data: SheetData, theme: Theme, tsv_name: str) -> tuple[str, str]
             "source": getattr(hit, "source", "pfam"),
             "drawn": "yes" if id(hit) in drawn else "no",
         })
+    return rows
+
+
+def _hits_table(data: SheetData, theme: Theme, tsv_name: str) -> tuple[str, str]:
+    """The expandable table of every protein hit, and its JSON for export.
+
+    Panel 5 draws a readable subset — competitors collapsed, lanes capped — so
+    without this the rest exists only in a note saying how many were dropped.
+    A curator checking a marginal call needs the actual numbers.
+    """
+    import html as _html
+    import json as _json
+
+    rows = protein_hit_rows(data)
+    if not rows:
+        return "", "null"
 
     headers = ["name", "class", "accession", "start", "end", "strand", "evalue",
                "score", "identity_pct", "model_coverage_pct", "frameshifts",
@@ -1936,6 +1996,52 @@ def _add_help_marker(fig: go.Figure, title, help_text: str, theme: Theme) -> Non
         ),
         captureevents=True,
     )
+
+
+# Seconds a static export may take before it is abandoned. The largest dev
+# family (10,851 copies) renders in about 25 s, so this is generous.
+STATIC_TIMEOUT = 120.0
+
+_EXPORT = (
+    "import sys\n"
+    "import plotly.io as pio\n"
+    "pio.read_json(sys.argv[1]).write_image(sys.argv[2], scale=2)\n"
+)
+
+
+def export_static(fig: go.Figure, path, *, timeout: float = STATIC_TIMEOUT) -> None:
+    """Write a PNG, PDF or SVG of the sheet, in a child process with a deadline.
+
+    kaleido drives a headless Chrome, and that Chrome can stall: in a 50-family
+    batch at -j 5, one export sat idle for over seven minutes and held its
+    worker, and so the whole batch, with it. The child runs in its own process
+    group, so on timeout the group (Chrome included) is killed and the caller
+    gets a TimeoutError it can report as a warning.
+    """
+    import os
+    import signal
+    import subprocess
+    import sys
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="teaid-static-") as tmp:
+        spec = os.path.join(tmp, "figure.json")
+        with open(spec, "w", encoding="utf-8") as handle:
+            handle.write(strip_help_markers(fig).to_json())
+        child = subprocess.Popen(
+            [sys.executable, "-c", _EXPORT, spec, str(path)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            start_new_session=True,
+        )
+        try:
+            _, err = child.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            os.killpg(child.pid, signal.SIGKILL)
+            child.communicate()
+            raise TimeoutError(f"static export did not finish in {timeout:.0f} s") from None
+    if child.returncode != 0:
+        lines = [ln for ln in err.strip().splitlines() if ln.strip()]
+        raise RuntimeError(lines[-1] if lines else f"exit {child.returncode}")
 
 
 def strip_help_markers(fig: go.Figure) -> go.Figure:

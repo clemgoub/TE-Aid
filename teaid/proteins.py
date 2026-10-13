@@ -51,13 +51,15 @@ sit beside a library that finished. Anything added here that writes an output
 directly is a silent-partial-library bug waiting to happen; route it through
 ``_build_atomic``.
 
-``build()`` takes no lock, so concurrent first-runs would race on the same
-cache directory. A batch caller must warm the cache with one serial run before
-fanning out.
+``build()`` holds an exclusive ``flock`` on ``<cache>/<signature>.lock`` while it
+builds, so concurrent first runs queue rather than race: the first builds and the
+others find the library finished when the lock frees. Reuse takes no lock.
 """
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import gzip
 import hashlib
 import os
@@ -250,13 +252,31 @@ def build(
     home = cache_root() / signature
     hmm = home / ("deep.bhmm" if deep else "default.bhmm")
     stamp = home / ("deep.done" if deep else "default.done")
+
+    def finished() -> bool:
+        return (stamp.exists() and hmm.exists()
+                and _tier1_trustworthy(home, deep) and _tier2_current(home, deep, peps))
+
+    def reuse() -> Library:
+        tiers = [t for t in stamp.read_text().split(",") if t]
+        return Library(hmm=hmm, repeatpeps=peps, tiers=tuple(tiers))
+
+    if not force and finished():
+        return reuse()
+
+    # Only one process builds a given library at a time. The others wait, and
+    # then usually find it finished: a raced build is the worst failure this
+    # module has, because it produces a library that looks whole and is not.
+    with _exclusive(cache_root() / f"{signature}.lock", log):
+        if not force and finished():
+            return reuse()
+        return _build(home, hmm, stamp, deep=deep, peps=peps, force=force, log=log)
+
+
+def _build(home: Path, hmm: Path, stamp: Path, *, deep: bool, peps: Path | None,
+           force: bool, log) -> Library:
+    """The build itself; only ever called holding the library's lock."""
     tiers: list[str] = []
-
-    if (stamp.exists() and hmm.exists() and not force
-            and _tier1_trustworthy(home, deep) and _tier2_current(home, deep, peps)):
-        tiers = stamp.read_text().split(",")
-        return Library(hmm=hmm, repeatpeps=peps, tiers=tuple(t for t in tiers if t))
-
     home.mkdir(parents=True, exist_ok=True)
     # From here the old library no longer counts as finished. Without this, a
     # rebuild interrupted after it started would leave the previous stamp beside
@@ -342,6 +362,30 @@ def build(
             part.unlink(missing_ok=True)
     stamp.write_text(",".join(tiers))
     return Library(hmm=hmm, repeatpeps=peps, tiers=tuple(tiers))
+
+
+@contextlib.contextmanager
+def _exclusive(path: Path, log):
+    """Hold an exclusive lock on ``path`` for the duration of the block.
+
+    ``flock`` is released by the kernel when the process exits, so a killed
+    build never leaves a stale lock behind, unlike a sentinel file.
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handle = path.open("a")
+    except OSError as exc:
+        raise LibraryError(f"cannot lock the protein cache at {path}: {exc}") from exc
+    with handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            log("waiting for another teaid process to finish building the protein library")
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def _tier1_trustworthy(home: Path, deep: bool) -> bool:

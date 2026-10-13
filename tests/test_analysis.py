@@ -238,7 +238,7 @@ class TestRecords:
 
     def test_divergence_kind_axis_labels_differ(self):
         labels = {k.axis_label for k in DivergenceKind}
-        assert len(labels) == 3
+        assert len(labels) == len(DivergenceKind)
 
 
 def piece(cons_start, cons_end, g_start, *, hit_id="1"):

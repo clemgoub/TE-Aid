@@ -301,6 +301,15 @@ would is exactly what the §5.5 benchmark measures, and the framework is being
 built first so that benchmark has something to run. Do not present the tiering
 as validated until it has been.
 
+**Specificity is the open question the maintainer raised (2026-09-24).** On LTR
+elements, tiers 1–2 return many short hits from Polinton integrase models: on
+`ltr-1_family-26`, `-20` and `-45`, 91 such hits spanning 20–59% of their
+model, all hidden behind a stronger hit. Where no stronger hit overlaps, they
+would be drawn. E-value does not separate them, so `--min-model-coverage FRAC`
+exists and defaults to 0 (off). Its value, and whether the E-value default
+should move, are to be set by calibrating against genomes with curated
+classes (D. melanogaster, then human), not chosen by hand.
+
 **Nucleotide row — `nhmmer` against a taxonomic slice of Dfam FamDB.**
 - `--species <taxon>` extracts a famdb slice, cached under
   `~/.teaid/famdb_slices/<taxon>-<dfam_version>/`.
@@ -525,7 +534,7 @@ This section is status and direction only.
 | 7 | Benchmark (§5.5) → set the default protein path | next |
 | 8 | Nucleotide row: famdb slice + `nhmmer` + cache + docs | |
 | 9 | TSD detection in the flank path (§5.2) + `#=GF TD` | |
-| 10 | `--blastn` legacy path, with the leakiness warning | |
+| 10 | `--blastn` legacy path, with the leakiness warning | done 2026-09-24/25 as `--genome` (`-g`, `--blastn`); every v1 flag accepted with its v1 meaning (`-f` threshold, `-t`/`-T` tables, `-a`, `-F`, `-y`) except `-D`, ignored, and `-r`, given a new rule on 2026-09-28 (best hit per locus, interrupted copies joined); family moved to `-n` |
 | 11 | Tag `v2.0` | |
 
 ### Open items, smallest first
@@ -560,10 +569,14 @@ This section is status and direction only.
 
 ### Direction after step 7 (raised 2026-08-25, not yet scoped)
 
-- **Whole-library runs and parallelism.** Today `teaid` is one family per
-  invocation. A 400-family library at ~10 s of `bathsearch` each is over an
-  hour serially, and the model load dominates that (§5.5). Wants: a batch mode,
-  a worker pool, and probably one library load reused across families.
+- **Whole-library runs and parallelism.** *Batch mode landed 2026-09-24*
+  (`--all`, `--families`, `-j`, `results.tsv`, `index.html`; see
+  `docs/INTEGRATION.md` §5), with every item in the table below hoisted. Still
+  open: one `bathsearch` over many families. Model load is ~98% of a BATH run
+  (10.44 s for a 60 bp dummy query, 10.61 s for `ltr-1_family-22`), so that is
+  the remaining order-of-magnitude saving, and `ProteinHit.target` now makes it
+  possible. Originally: a 400-family library at ~10 s of `bathsearch` each is
+  over an hour serially.
 
   **Everything a batch mode must hoist out of the per-family path** — all of it
   is currently repeated for every single family:
@@ -575,15 +588,23 @@ This section is status and direction only.
   | `makeblastdb` over RepeatPeps into a fresh temp dir | `homology.py` |
   | cold protein-library build, unlocked and racy | `proteins.build()` |
 
-  Two constraints on the obvious shortcuts. **One multi-family `bathsearch`
-  cannot be split back apart**: `ProteinHit` drops tblout's `target` column, so
-  there is nothing to group hits by — adding that field is a prerequisite. And
-  **`proteins.build()` takes no lock**, so a pool must warm the cache with one
-  serial run before fanning out. `homology.search(cpus=)` exists but no flag
-  reaches it.
+  Two constraints on the obvious shortcuts, both lifted on 2026-09-24:
+  `ProteinHit` now keeps tblout's `target` column, so one multi-family
+  `bathsearch` can be split back apart; and `proteins.build()` holds an
+  exclusive lock while it builds, so a pool no longer races on a cold cache.
+  `homology.search(cpus=)` exists but no flag reaches it.
 - **CLI update.** The flag surface has grown organically across steps 2–6 and
   deserves a pass: grouping, defaults, and a `--version`-style summary of which
   external tools were found.
+- **Visualisation with SODA, a parallel track (raised 2026-09-25).** The
+  maintainer kept panel 1's junction glyphs for now and asked us to consider
+  [SODA](https://github.com/sodaviz/soda), a TypeScript library for drawing
+  biological annotation (NAR Genomics and Bioinformatics, 2022; BSD-3), for
+  better views. It runs in the browser from an npm package, so it would add a
+  second rendering stack beside Plotly. We think the least disruptive way in
+  is a separate viewer that reads the files `--all-tables` already writes
+  (`copies.tsv` carries every row with its copy number), leaving the sheet as
+  it is. Not started.
 - **GUI.** Unscoped. The sheet is already a standalone HTML page, so the
   smallest useful version may be an index over many sheets rather than a new
   application. One correction to that idea: the sheet is **not** self-contained
