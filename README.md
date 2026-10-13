@@ -41,9 +41,10 @@ The working brief for this rewrite, including every settled design decision, is
 | Benchmark (cost and relative sensitivity) | ⬜ **next** |
 | Nucleotide row (Dfam slice + nhmmer) | ⬜ |
 | TSD detection, `#=GF TD` output | ⬜ |
-| `--blastn` legacy path | ⬜ |
+| `--genome` route (v1's blastn search) and v1's input flags | ✅ done |
 | Panel 7 (consensus vs library entries) | ⬜ needs an agreed input hook |
-| Whole-library runs, batch mode · CLI pass · GUI | ⬜ raised, not yet scoped |
+| Batch mode: `--all`, `--families`, `-j`, `results.tsv`, `index.html` | ✅ done |
+| CLI pass · GUI | ⬜ raised, not yet scoped |
 
 The remaining steps are numbered and tracked in
 [`docs/BRIEF_v2.md`](docs/BRIEF_v2.md) §6, which is the authority on order and
@@ -186,15 +187,20 @@ Four, and they compose:
 | Route | Flags |
 |---|---|
 | annotation you trust | `--annot FILE --consensus FASTA --family NAME` |
-| genome search (v1 path, not yet implemented) | `--blastn` |
+| genome search (v1's route) | `-q consensus.fa -g genome.fa` (or `--genome`, `--blastn`) |
 | Stockholm seed | `--stk FILE [--family ID]` |
-| **both together** | `--annot FILE --stk FILE --family NAME` |
+| **both together** | `--stk FILE` with `--annot FILE` or `--genome FASTA` |
 
 The last is not a contest between the two. The seed says which copies were
 *chosen*; the annotation says which *exist*. Given both, the seed supplies the
 consensus and the seed-QC panels while panels 1–2 show every annotated genomic
 copy, and the sheet states the comparison — `panels 1-2 show 515 annotated
 genomic copies; the seed uses 44`. That ratio is the QC signal.
+
+**v1 command lines run as they are.** Every v1 flag keeps its v1 meaning,
+including `-f` (full-length threshold) and `-t`/`-T` (tables); `-D` is accepted
+and ignored, since panel 3 replaces the dotmatcher plot. The one new short flag
+is `-n` for the family name.
 
 ### From a Stockholm seed
 
@@ -231,6 +237,19 @@ artefact is a seed.
 
 Run `teaid --help` for the full option list.
 
+### A whole library at once
+
+```bash
+teaid --annot genome.fa.out --consensus families.fa --all -j 8 -o sheets/
+```
+
+`--all` draws every family with annotated copies, or every seed record with
+`--stk`. `--families FILE` draws a list instead, one name per line; the output
+of `tools/select_families.py` works as it is. Each input is read once, and
+`-j` draws that many families at a time. Beside the sheets go `results.tsv`,
+one row per family with its exit code and warnings, and `index.html`, a contact
+sheet grouped by TE class. The run exits 8 if any family failed.
+
 ### A note on divergence
 
 `perc_div` does not mean the same thing in every file. For homology-based tools
@@ -256,10 +275,11 @@ teaid: error [no-family]: family 'x' not in families.fa
 | 0 | — | a sheet was written (possibly with panels dropped — see below) |
 | 1 | *none* | uncaught internal error; a traceback |
 | 2 | `usage` | argument error |
-| 3 | `no-input` | an input file is missing or unreadable |
+| 3 | `no-input` | an input file is missing or unreadable, or the `--genome` route cannot run BLAST+ |
 | 4 | `no-family` | the family is not in the consensus library |
 | 5 | `no-evidence` | the family has nothing plottable |
 | 6 | `bad-seed` | the Stockholm file could not be parsed |
+| 8 | `batch-incomplete` | batch mode: at least one family failed; see `results.tsv` |
 
 Parse the slug, not the prose. Only code 1, an uncaught exception, carries no
 slug. **Exit 0 does not mean a complete sheet:** a missing

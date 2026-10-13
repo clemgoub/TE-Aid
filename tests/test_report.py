@@ -681,7 +681,26 @@ class TestInsertionsOnTheSheet:
         fig = report.build_figure(fragmented_data(), theme.LIGHT)
         names = [t.name for t in fig.data if t.name]
         assert "insertion in the copy (n=1)" in names
-        assert "deletion in the copy (n=1)" in names
+        assert "consensus missing from the copy (n=1)" in names
+        brackets = [t for t in fig.data if t.mode == "text" and list(t.text or []) == ["]", "["]]
+        assert brackets, "the deletion keeps its ]··[ brackets"
+
+    def test_a_gap_that_is_not_a_deletion_is_still_drawn(self):
+        """A join that skips 40 bp of consensus but carries 1,000 bp of extra
+        genome is an insertion by net difference; the 40 bp it lacks still shows."""
+        rows = [
+            Copy(chrom="chr1", start=0, end=300, strand="+", family="fam", divergence=5.0,
+                 divergence_kind=DivergenceKind.CONSENSUS, consensus_start=0,
+                 consensus_end=300, hit_id="9"),
+            Copy(chrom="chr1", start=1300, end=1560, strand="+", family="fam", divergence=5.0,
+                 divergence_kind=DivergenceKind.CONSENSUS, consensus_start=340,
+                 consensus_end=600, hit_id="9"),
+        ]
+        fig = report.build_figure(make_data(insertions=[Insertion(rows)], full_length=[]),
+                                  theme.LIGHT)
+        gap = [t for t in fig.data if t.name and t.name.startswith("consensus missing")][0]
+        assert list(gap.x[:2]) == [300, 340]
+        assert "insertion in the copy (n=1)" in [t.name for t in fig.data if t.name]
 
     def test_junction_sizes_wait_for_a_zoom(self):
         fig = report.build_figure(fragmented_data(), theme.LIGHT)
@@ -722,3 +741,23 @@ class TestThePageScriptRuns:
         source.write_text(script)
         result = subprocess.run([node, "--check", str(source)], capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
+
+
+class TestStaticExportIsBounded:
+    def test_a_normal_export_still_works(self, tmp_path):
+        pytest.importorskip("kaleido")
+        path = tmp_path / "sheet.svg"
+        report.export_static(report.build_figure(make_data(), theme.LIGHT), path)
+        assert path.stat().st_size > 5_000
+
+    def test_a_stalled_export_is_killed_at_the_deadline(self, tmp_path, monkeypatch):
+        """kaleido's headless Chrome stalled once in a 50-family batch and held
+        the whole run. A stand-in child that never finishes must be killed."""
+        import time
+
+        monkeypatch.setattr(report, "_EXPORT", "import time\ntime.sleep(60)\n")
+        started = time.perf_counter()
+        with pytest.raises(TimeoutError):
+            report.export_static(report.build_figure(make_data(), theme.LIGHT),
+                                 tmp_path / "sheet.png", timeout=1.0)
+        assert time.perf_counter() - started < 10

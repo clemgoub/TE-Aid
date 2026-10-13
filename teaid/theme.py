@@ -7,6 +7,12 @@ means the same thing wherever it appears on the sheet:
   trace, same-strand (direct) self-matches.
 - **highlight** — the notable subset: full-length copies.
 - **inverted** — opposite-strand features: TIR-like self-matches.
+- **missing** — consensus a copy lacks between its annotation rows (panel 1).
+  Plum, chosen with the same validator run over all four slots: light
+  ``#7d4778`` passes every check (normal-vision ΔE 19.2 to the nearest slot) and
+  adds no warning; dark ``#8b5282`` passes every check, 3:1 contrast included.
+  We tried the palette's yellow and magenta first; both failed the normal-vision
+  floor against ``highlight``.
 
 Both palettes were validated with the data-viz validator over all pairs
 (``--pairs all``): light passes lightness band, chroma, CVD separation (worst
@@ -34,6 +40,7 @@ class Theme:
     base: str
     highlight: str
     inverted: str
+    missing: str
     # ORF strand, carried over from v1 where a forward ORF had a black outline
     # and a reverse one a red outline. 'Black' becomes near-white on the dark
     # surface: the meaning is 'forward', not 'black'.
@@ -57,6 +64,7 @@ LIGHT = Theme(
     base="#2a78d6",
     highlight="#eb6834",
     inverted="#1baf7a",
+    missing="#7d4778",
     orf_forward="#1c1c1a",
     orf_reverse="#d03b3b",
 )
@@ -73,6 +81,7 @@ DARK = Theme(
     base="#3987e5",
     highlight="#d95926",
     inverted="#199e70",
+    missing="#8b5282",
     orf_forward="#e8e8e2",
     orf_reverse="#e8756a",
 )

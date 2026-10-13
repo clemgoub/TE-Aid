@@ -67,6 +67,12 @@ class TestTbloutParsing:
         assert disrupted.frameshifts == 2 and disrupted.stop_codons == 1
         assert disrupted.is_disrupted is True
 
+    def test_each_hit_names_the_consensus_it_lies_on(self):
+        """The prerequisite for one bathsearch over many families: without it the
+        hits cannot be split back apart."""
+        assert {h.target for h in homology._parse_tblout(TBLOUT)} == {"ltr-1_family-26"}
+        assert homology._parse_tblout(TBLOUT_NO_FS)[0].target == "ltr-1_family-22#LTR/Pao"
+
     def test_hits_are_sorted_by_evalue(self):
         parsed = homology._parse_tblout(TBLOUT)
         assert parsed[0].evalue < parsed[1].evalue
@@ -389,6 +395,33 @@ class TestTierTwoIsNeverStale:
         assert calls == []
         assert (home / "pfam_blind.fa.keys").exists()
 
+    def test_concurrent_first_builds_queue_instead_of_racing(self, toolchain, monkeypatch):
+        """Two builds of one cold library: the second must wait for the first and
+        then reuse it, so each tool runs once. Without the lock both build, and
+        they write the same files at the same time."""
+        import threading
+        import time
+
+        peps, home, calls = toolchain
+        slow = proteins._run
+
+        def slow_run(command):
+            time.sleep(0.3)
+            slow(command)
+
+        monkeypatch.setattr(proteins, "_run", slow_run)
+        results = []
+        workers = [threading.Thread(target=lambda: results.append(
+            proteins.build(repeatpeps=peps, log=self.quiet))) for _ in range(2)]
+        workers[0].start()
+        time.sleep(0.05)
+        workers[1].start()
+        for worker in workers:
+            worker.join(timeout=10)
+        assert len(results) == 2
+        assert calls.count("bathbuild") == 1 and calls.count("bathconvert") == 1
+        assert (home / "default.done").exists()
+
     def test_a_deep_or_peps_less_cache_has_no_tier_two_to_vouch_for(self, tmp_path):
         assert proteins._tier2_current(tmp_path, deep=True, peps=None)
         assert proteins._tier2_current(tmp_path, deep=False, peps=None)
@@ -466,3 +499,51 @@ class TestCrossTierCompetition:
         late = hit(query="late", start=5000, end=5200, source="pfam")
         early = hit(query="early", start=10, end=200, source="repeatpeps-blastp")
         assert [h.query for h in homology.best_per_region([late, early])] == ["early", "late"]
+
+
+class TestRepeatPepsDatabaseIsBuiltOnce:
+    def test_the_second_family_reuses_the_database(self, tmp_path, monkeypatch):
+        import shutil
+        import subprocess
+
+        if shutil.which("makeblastdb") is None:
+            pytest.skip("makeblastdb not installed")
+        monkeypatch.setenv("TEAID_CACHE", str(tmp_path / "cache"))
+        peps = tmp_path / "RepeatPeps.lib"
+        peps.write_text(">p1#DNA/hAT\nMKVLAAGGHHKLMMNPQRST\n>p2#LTR/Gypsy\nMSTRVLLKKAAGGHHWWYY\n")
+        real = subprocess.run
+        calls = []
+
+        def counting(command, *a, **k):
+            calls.append(command[0])
+            return real(command, *a, **k)
+
+        monkeypatch.setattr(homology.subprocess, "run", counting)
+        first = homology.repeatpeps_database(peps, scratch=tmp_path)
+        second = homology.repeatpeps_database(peps, scratch=tmp_path)
+        assert first == second and first is not None
+        assert calls.count("makeblastdb") == 1
+
+
+class TestModelCoverageFloor:
+    """A hit spanning 8% of a model and one spanning 80% can share an E-value;
+    only coverage separates them. The floor is off by default until the
+    calibration against known genomes sets it."""
+
+    def test_the_floor_is_off_by_default(self):
+        short = hit(hmm_from=1, hmm_to=16, hmm_len=200)
+        kept, dropped = homology.apply_coverage_floor([short], 0.0)
+        assert kept == [short] and dropped == []
+
+    def test_hits_below_the_floor_are_set_aside(self):
+        short = hit(hmm_from=1, hmm_to=16, hmm_len=200)      # 8% of the model
+        long = hit(hmm_from=1, hmm_to=160, hmm_len=200)      # 80%
+        kept, dropped = homology.apply_coverage_floor([short, long], 0.5)
+        assert kept == [long] and dropped == [short]
+
+    def test_tier_three_is_exempt(self):
+        """A blastp hit's 'coverage' is the fraction of its ORF, not of a model,
+        so the floor does not apply to it."""
+        blastp = hit(hmm_from=1, hmm_to=10, hmm_len=200, source="repeatpeps-blastp")
+        kept, _ = homology.apply_coverage_floor([blastp], 0.5)
+        assert kept == [blastp]

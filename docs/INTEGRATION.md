@@ -36,9 +36,9 @@ Four routes, designed to compose:
 | Route | Flags | Use when |
 |---|---|---|
 | **a** | `--annot FILE --consensus FASTA --family NAME` | you have an annotation you trust |
-| **b** | `--blastn` *(flag not yet present)* | you have only a genome and a consensus |
+| **b** | `--genome FASTA --consensus FASTA` (v1: `-g`, `-q`; also `--blastn`) | you have only a genome and a consensus |
 | **c** | `--stk FILE [--family ID]` | you have a Stockholm seed |
-| **d** | `--annot FILE --stk FILE --family NAME` | you have both — the richest sheet |
+| **d** | `--stk FILE` with `--annot FILE` or `--genome FASTA` | you have a seed and its genome — the richest sheet |
 
 `--annot` accepts RepeatMasker `.out`, RepeatMasker GFF, or BED16, gzipped or
 not. **The format is detected from content, not extension**, because `.bed`
@@ -60,13 +60,37 @@ comparison distinguishes them. If the family is absent from the annotation,
 TE-Aid warns on stderr and falls back to the seed's own sequences — it does not
 fail.
 
-`--pipeline` reverses the standalone input priority (`--annot`, `--blastn`,
+`--pipeline` reverses the standalone input priority (`--annot`, `--genome`,
 `--stk`) to seed-first, for callers whose primary artefact is a seed. It does
-not change route d, where the seed is primary either way.
+not change route d, where the seed is primary either way. `--annot` and
+`--genome` together, without a seed, use the annotation and say on the sheet
+that the genome was ignored.
 
-Route **b** is listed for shape only: `--blastn` is **not in the argument parser
-at all**, so passing it is an `unrecognized arguments` error (exit 2, no slug),
-not a graceful "not implemented" message. Do not feature-detect by passing it.
+### Coming from v1
+
+Every v1 flag is accepted with its v1 meaning, so a v1 command line runs as it
+is, through `teaid` or the `TE-Aid` alias: `-q` consensus, `-g` genome, `-o`,
+`-e` genome E-value, `-f` full-length threshold, `-m`, `-R`, `-r`, `-t` and `-T`
+tables, `-a` and `-F` opacities, `-y` divergence-axis maximum. `-D`
+(dotmatcher) is accepted and ignored, with a note, because panel 3 replaces it.
+The family name, which v1 did not need, is `-n`/`--family`.
+
+### Route b: v1's genome search
+
+The consensus is searched against the genome with `blastn` (megablast, E ≤ 10e-8
+by default, `-e` to change), exactly as v1 did, and every HSP becomes one copy.
+That makes this the leakiest route: megablast misses diverged copies, and an
+insertion interrupted by another element arrives as two copies, because a
+search has no ID column to join them. The sheet's notes say so. Its divergence
+axis reads `100 − blastn identity (%)`, not divergence: an uncorrected local
+identity is not RepeatMasker's Kimura-corrected value.
+
+The blastn database is built beside the genome on first use
+(`makeblastdb -in G -out G`, as v1), so a v1 database is reused; if that
+directory is not writable it goes under the cache. `-r` applies v1's
+`reduce.cpp` rule, dropping hits nested inside another hit's locus. Without
+`blastn` or `makeblastdb` the route has no copies, so it fails with `no-input`
+(exit 3) rather than dropping a panel.
 
 ---
 
@@ -86,10 +110,11 @@ teaid: error [bad-seed]: families.stk: no record with #=GF ID 'absent'
 | 0 | — | a sheet was written — but see *exit 0 is not "complete"* below |
 | 1 | *none* | uncaught internal error; a Python traceback, not a message |
 | 2 | `usage` | argument error: an unknown flag, a missing input, a value out of range, or `--family` omitted for a multi-entry library |
-| 3 | `no-input` | an input file is missing or unreadable |
+| 3 | `no-input` | an input file is missing or unreadable, or the `--genome` route cannot run BLAST+ |
 | 4 | `no-family` | the family is not in the consensus library |
 | 5 | `no-evidence` | the family exists but carries nothing plottable |
 | 6 | `bad-seed` | the Stockholm file could not be parsed |
+| 8 | `batch-incomplete` | batch mode (`--all`, `--families`): at least one family failed; `results.tsv` says which and why |
 
 **Only exit 1 has no slug.** It is an unhandled exception and prints a Python
 traceback. Treat any failure whose stderr has no `[slug]` bracket as
@@ -179,8 +204,12 @@ curated domain table. Three consequences for anyone calling TE-Aid:
 
 - **Point `TEAID_CACHE` at shared, writable storage** so every invocation reuses
   one library rather than each user building their own.
-- **`build()` takes no lock.** Concurrent first-runs race on the same directory.
-  A batch caller must warm the cache with **one serial run** before fanning out.
+- **`build()` locks while it builds.** Concurrent first runs queue on an
+  exclusive `flock` at `<cache>/<signature>.lock`: the first builds, and the rest
+  wait and then reuse what it finished. Warming the cache with one serial run is
+  no longer required, but it still avoids a long silent wait in the workers. The
+  lock needs a writable cache directory; on a read-only one, prebuild the
+  library and pass `--proteins`.
 - **`--proteins FILE` searches a prebuilt library and skips the build entirely**,
   which suits an offline or read-only environment. It replaces tiers 1–2 only:
   tier 3 still runs against `--repeatpeps` or the discovered RepeatPeps.lib, as in
@@ -259,14 +288,60 @@ The CLI writes into `-o/--output` (default: `.`, created if absent):
 ```
 <output>/<stem>.teaid.html            always
 <output>/<stem>.teaid.{png,pdf,svg}   with --static png|pdf|svg (needs kaleido)
+<output>/<stem>.selfhits.tsv          with --tables or --all-tables
+<output>/<stem>.orfs.tsv              with --tables or --all-tables
+<output>/<stem>.protein_hits.tsv      with --tables or --all-tables
+<output>/<stem>.copies.tsv            with --all-tables
 ```
+
+The tables are v1's `-t` and `-T`. Each has a header row and uses **1-based,
+fully closed** coordinates. `copies.tsv` has one row per annotation row, with a
+`copy` number shared by the rows grouped into one insertion, so it can be read
+at either level. `protein_hits.tsv` is the sheet's hit table, `drawn` column
+included, and leads with a `consensus` column so tables from many families
+concatenate. Self hits keep blastn's orientation: `s_start > s_end` on a reverse
+hit.
 
 `<stem>` is the consensus name up to the first `#`, with every character outside
 `[A-Za-z0-9-._]` replaced by `_` — so `rnd-1_family-257#LTR/Gypsy` writes
 `rnd-1_family-257.teaid.html`. A seed with no `#=GF ID` is named `seed`.
-**Collisions overwrite silently**, which matters for batch callers: two families
-whose names differ only in a character that gets replaced land on the same file.
-Give each family its own `--output`, or check for the path first.
+In a single-family run, **collisions overwrite silently**: two families whose
+names differ only in a replaced character land on the same file. Batch mode
+checks for this up front and writes the later ones as `<stem>.2`, `<stem>.3`,
+with a warning and the stem recorded in `results.tsv`.
+
+### Batch mode
+
+`--all` draws every family: each record of a seed (`--stk`), each consensus
+with annotated copies (`--annot`), or each consensus (`--genome`). `--families
+FILE` draws those named, one per line, reading only the first tab-separated
+column, so `tools/select_families.py` output works as it is; `-` reads stdin.
+`-j N` draws N families at once, in separate processes.
+
+Each input is read once: the annotation (a 147k-row `.fa.out` took several
+seconds a family), the consensus library, every seed record, the genome's
+blastn database and the protein library, which is built before any worker
+starts. Each worker receives only its own family's rows.
+
+Besides the sheets, a batch writes:
+
+```
+<output>/results.tsv   one row per family, with a header
+<output>/index.html    a contact sheet over the batch, grouped by TE class
+```
+
+`results.tsv` columns: `family stem exit slug seconds copies annotation_rows
+full_length class consensus_length warnings error`. `warnings` joins the
+family's warning lines with ` | `; `error` holds its error line. One family's
+failure or crash does not stop the batch. The run exits 0 only when every family
+drew, and 8 (`batch-incomplete`) otherwise. Families `--all` skipped for having
+no annotated copies are not failures: the run says how many on stderr and on the
+index. `--no-index` skips the contact sheet.
+
+Stdout keeps the single-family contract: one `wrote <path>` line per file,
+including the two above, plus each family's summary line. Stderr carries one
+progress line per family (`teaid: [3/50] fam: ok (12 s)`) rather than each
+family's own warnings, which are in the manifest.
 
 Each file written prints one `wrote <path>` line on **stdout**. Errors and
 warnings go to stderr, so stdout stays parseable.
@@ -314,7 +389,6 @@ better terminal-repeat heuristic, a panel that any curator would want.
 |---|---|
 | Panel 5's **nucleotide** row (Dfam slice + `nhmmer`) | work-order step 8 |
 | Panel 7, consensus vs contributing library entries | an agreed input hook — see below |
-| `--blastn` legacy route | work-order step 10 |
 | TSD detection, `#=GF TD` output | the flank-analysis path; work-order step 9 |
 
 Panel 5's **protein** row ships: ORFs from `getorf` with frameshift-aware domain

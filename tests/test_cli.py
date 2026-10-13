@@ -42,7 +42,7 @@ class TestSuccessPath:
     def test_writes_a_sheet_and_exits_zero(self, inputs, tmp_path, capsys):
         fasta, annot = inputs
         out = tmp_path / "sheets"
-        code = run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", out, "--no-dotplot"])
+        code = run(["--annot", annot, "-c", fasta, "-n", "fam1", "-o", out, "--no-dotplot"])
         assert code == cli.EXIT_OK
         assert (out / "fam1.teaid.html").exists()
         assert "2 copies" in capsys.readouterr().out
@@ -50,7 +50,7 @@ class TestSuccessPath:
     def test_html_is_self_describing(self, inputs, tmp_path):
         fasta, annot = inputs
         out = tmp_path / "sheets"
-        run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", out, "--no-dotplot"])
+        run(["--annot", annot, "-c", fasta, "-n", "fam1", "-o", out, "--no-dotplot"])
         html = (out / "fam1.teaid.html").read_text()
         assert "fam1" in html
         assert "divergence from consensus" in html
@@ -60,7 +60,7 @@ class TestSuccessPath:
     def test_family_resolves_across_a_class_suffix(self, inputs, tmp_path):
         fasta, annot = inputs
         code = run(
-            ["--annot", annot, "-c", fasta, "-f", "fam1#LTR/Gypsy", "-o", tmp_path, "--no-dotplot"]
+            ["--annot", annot, "-c", fasta, "-n", "fam1#LTR/Gypsy", "-o", tmp_path, "--no-dotplot"]
         )
         assert code == cli.EXIT_OK
 
@@ -68,19 +68,19 @@ class TestSuccessPath:
 class TestFailurePaths:
     def test_missing_annotation_exits_no_input(self, inputs, tmp_path):
         fasta, _ = inputs
-        code = run(["--annot", tmp_path / "absent.out", "-c", fasta, "-f", "fam1", "-o", tmp_path])
+        code = run(["--annot", tmp_path / "absent.out", "-c", fasta, "-n", "fam1", "-o", tmp_path])
         assert code == cli.EXIT_NO_INPUT
 
     def test_unknown_family_exits_no_family_and_suggests(self, inputs, tmp_path, capsys):
         fasta, annot = inputs
-        code = run(["--annot", annot, "-c", fasta, "-f", "fam11", "-o", tmp_path])
+        code = run(["--annot", annot, "-c", fasta, "-n", "fam11", "-o", tmp_path])
         assert code == cli.EXIT_NO_FAMILY
         assert "did you mean" in capsys.readouterr().err
 
     def test_family_with_no_annotated_copies_exits_no_evidence(self, inputs, tmp_path, capsys):
         """fam2 has a consensus but no rows in the annotation."""
         fasta, annot = inputs
-        code = run(["--annot", annot, "-c", fasta, "-f", "fam2", "-o", tmp_path])
+        code = run(["--annot", annot, "-c", fasta, "-n", "fam2", "-o", tmp_path])
         assert code == cli.EXIT_NO_EVIDENCE
         assert "no copies" in capsys.readouterr().err
 
@@ -100,7 +100,7 @@ class TestFailurePaths:
     def test_out_of_range_threshold_is_rejected(self, inputs, tmp_path):
         fasta, annot = inputs
         with pytest.raises(SystemExit):
-            run(["--annot", annot, "-c", fasta, "-f", "fam1", "-t", "1.5", "-o", tmp_path])
+            run(["--annot", annot, "-c", fasta, "-n", "fam1", "-f", "1.5", "-o", tmp_path])
 
 
 SEED = """\
@@ -127,13 +127,13 @@ class TestSeedInput:
     def test_seed_alone_produces_a_sheet(self, seed_file, tmp_path, capsys):
         """The seed carries copies, loci, consensus and alignment, so no
         separate FASTA is needed."""
-        code = run(["--stk", seed_file, "-f", "fam1", "-o", tmp_path, "--no-dotplot", "--no-orfs"])
+        code = run(["--stk", seed_file, "-n", "fam1", "-o", tmp_path, "--no-dotplot", "--no-orfs"])
         assert code == cli.EXIT_OK
         assert (tmp_path / "fam1.teaid.html").exists()
         assert "3 copies" in capsys.readouterr().out
 
     def test_seed_qc_is_opt_in(self, seed_file, tmp_path):
-        base = ["--stk", seed_file, "-f", "fam1", "-o", tmp_path, "--no-dotplot", "--no-orfs"]
+        base = ["--stk", seed_file, "-n", "fam1", "-o", tmp_path, "--no-dotplot", "--no-orfs"]
         run(base)
         without = (tmp_path / "fam1.teaid.html").read_text()
         run(base + ["--seed-qc"])
@@ -148,7 +148,7 @@ class TestSeedInput:
         fasta, annot = inputs
         code = run([
             "--pipeline", "--stk", seed_file, "--annot", annot, "-c", fasta,
-            "-f", "fam1", "-o", tmp_path, "--seed-qc", "--no-dotplot", "--no-orfs",
+            "-n", "fam1", "-o", tmp_path, "--seed-qc", "--no-dotplot", "--no-orfs",
         ])
         assert code == cli.EXIT_OK
         assert "Seed depth" in (tmp_path / "fam1.teaid.html").read_text()
@@ -161,7 +161,7 @@ class TestSeedInput:
         seed's sampling — the comparison is the whole point of seed QC."""
         fasta, annot = inputs
         code = run([
-            "--stk", seed_file, "--annot", annot, "-f", "fam1",
+            "--stk", seed_file, "--annot", annot, "-n", "fam1",
             "-o", tmp_path, "--seed-qc", "--no-dotplot", "--no-orfs",
         ])
         assert code == cli.EXIT_OK
@@ -180,7 +180,7 @@ class TestSeedInput:
         seed = tmp_path / "other.stk"
         seed.write_text(SEED.replace("fam1", "orphan"))
         code = run([
-            "--stk", seed, "--annot", annot, "-f", "orphan",
+            "--stk", seed, "--annot", annot, "-n", "orphan",
             "-o", tmp_path, "--no-dotplot", "--no-orfs",
         ])
         assert code == cli.EXIT_OK
@@ -191,7 +191,7 @@ class TestSeedInput:
         the depth panel is drawn from."""
         fasta, _ = inputs
         code = run([
-            "--stk", seed_file, "-c", fasta, "-f", "fam1",
+            "--stk", seed_file, "-c", fasta, "-n", "fam1",
             "-o", tmp_path, "--no-dotplot", "--no-orfs",
         ])
         assert code == cli.EXIT_OK
@@ -200,7 +200,7 @@ class TestSeedInput:
     def test_unknown_record_exits_bad_seed_and_lists_what_is_there(
         self, seed_file, tmp_path, capsys
     ):
-        code = run(["--stk", seed_file, "-f", "absent", "-o", tmp_path])
+        code = run(["--stk", seed_file, "-n", "absent", "-o", tmp_path])
         assert code == cli.EXIT_BAD_SEED
         err = capsys.readouterr().err
         assert "[bad-seed]" in err
@@ -224,11 +224,11 @@ class TestFailSoftContract:
     def test_each_failure_carries_a_distinct_code_and_slug(self, inputs, tmp_path, capsys):
         fasta, annot = inputs
         cases = [
-            (["--annot", tmp_path / "absent.out", "-c", fasta, "-f", "fam1"],
+            (["--annot", tmp_path / "absent.out", "-c", fasta, "-n", "fam1"],
              cli.EXIT_NO_INPUT, "no-input"),
-            (["--annot", annot, "-c", fasta, "-f", "nope"],
+            (["--annot", annot, "-c", fasta, "-n", "nope"],
              cli.EXIT_NO_FAMILY, "no-family"),
-            (["--annot", annot, "-c", fasta, "-f", "fam2"],
+            (["--annot", annot, "-c", fasta, "-n", "fam2"],
              cli.EXIT_NO_EVIDENCE, "no-evidence"),
             (["--annot", annot, "-c", fasta],
              cli.EXIT_USAGE, "usage"),
@@ -269,10 +269,11 @@ class TestLegacyAlias:
     def test_alias_warns_and_still_works(self, inputs, tmp_path, capsys):
         fasta, annot = inputs
         code = cli.main_legacy_alias(
-            ["--annot", str(annot), "-c", str(fasta), "-f", "fam1", "-o", str(tmp_path), "--no-dotplot"]
+            ["--annot", str(annot), "-c", str(fasta), "-n", "fam1", "-o", str(tmp_path), "--no-dotplot"]
         )
         assert code == cli.EXIT_OK
-        assert "'TE-Aid' is now 'teaid'" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "'TE-Aid' is now 'teaid'" in err and "Every v1 flag is accepted" in err
 
 
 class TestProteinProvenance:
@@ -306,7 +307,7 @@ class TestProteinProvenance:
         prebuilt.write_text("")
         peps = tmp_path / "RepeatPeps.lib"
         peps.write_text(">x\nMK\n")
-        run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path, "--no-dotplot",
+        run(["--annot", annot, "-c", fasta, "-n", "fam1", "-o", tmp_path, "--no-dotplot",
              "--proteins", prebuilt, "--repeatpeps", peps])
         assert captured["repeatpeps"] == peps
 
@@ -314,7 +315,7 @@ class TestProteinProvenance:
         fasta, annot = inputs
         prebuilt = tmp_path / "mine.bhmm"
         prebuilt.write_text("")
-        run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path, "--no-dotplot",
+        run(["--annot", annot, "-c", fasta, "-n", "fam1", "-o", tmp_path, "--no-dotplot",
              "--proteins", prebuilt])
         assert any("mine.bhmm" in s for s in captured["data"].sources)
 
@@ -325,7 +326,7 @@ class TestProteinProvenance:
         library = proteins.Library(hmm=tmp_path / "x.bhmm", repeatpeps=None,
                                    tiers=("pfam:130", "repeatpeps-gaps"))
         monkeypatch.setattr(proteins, "build", lambda **k: library)
-        base = ["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path, "--no-dotplot"]
+        base = ["--annot", annot, "-c", fasta, "-n", "fam1", "-o", tmp_path, "--no-dotplot"]
         for extra, reason in (([], "RepeatPeps.lib not found"),
                               (["--no-orfs"], "--no-orfs"),
                               (["--deep"], "--deep")):
@@ -356,13 +357,13 @@ class TestFragmentGrouping:
 
     def test_rows_sharing_an_id_are_one_copy(self, split, tmp_path, capsys):
         fasta, annot = split
-        assert run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path,
+        assert run(["--annot", annot, "-c", fasta, "-n", "fam1", "-o", tmp_path,
                     "--no-dotplot", "--no-orfs", "--no-homology"]) == cli.EXIT_OK
         assert "fam1: 1 copy (2 annotation rows), 1 full length" in capsys.readouterr().out
 
     def test_no_group_fragments_counts_rows(self, split, tmp_path, capsys):
         fasta, annot = split
-        run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path,
+        run(["--annot", annot, "-c", fasta, "-n", "fam1", "-o", tmp_path,
              "--no-dotplot", "--no-orfs", "--no-homology", "--no-group-fragments"])
         assert "fam1: 2 copies, 0 full length" in capsys.readouterr().out
 
@@ -378,6 +379,89 @@ class TestFragmentGrouping:
 
         monkeypatch.setattr(report, "build_figure", keep)
         fasta, annot = split
-        run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path,
+        run(["--annot", annot, "-c", fasta, "-n", "fam1", "-o", tmp_path,
              "--no-dotplot", "--no-orfs", "--no-homology"])
         assert any("2 annotation rows grouped into 1 copy" in n for n in seen["notes"])
+
+
+class TestTables:
+    """v1's -t and -T, as --tables and --all-tables."""
+
+    def test_tables_are_written_with_headers_and_1_based_coordinates(self, tmp_path, capsys):
+        fasta = tmp_path / "families.fa"
+        fasta.write_text(FASTA)
+        annot = tmp_path / "split.fa.out"
+        annot.write_text(SPLIT)
+        assert run(["--annot", annot, "-c", fasta, "-n", "fam1", "-o", tmp_path,
+                    "--no-dotplot", "--no-orfs", "--no-homology", "--all-tables"]) == cli.EXIT_OK
+        names = {p.name for p in tmp_path.glob("fam1.*.tsv")}
+        assert names == {"fam1.selfhits.tsv", "fam1.orfs.tsv", "fam1.protein_hits.tsv",
+                         "fam1.copies.tsv"}
+        rows = (tmp_path / "fam1.copies.tsv").read_text().splitlines()
+        assert rows[0].split("\t")[:4] == ["copy", "chrom", "start", "end"]
+        first, second = (r.split("\t") for r in rows[1:])
+        # The .out rows are 1000-1159 and 2160-2319, 1-based, and one copy.
+        assert first[:4] == ["1", "chr1", "1000", "1159"]
+        assert second[:4] == ["1", "chr1", "2160", "2319"]
+        assert first[-2:] == ["2", "yes"]
+
+    def test_tables_only_when_asked(self, inputs, tmp_path):
+        fasta, annot = inputs
+        run(["--annot", annot, "-c", fasta, "-n", "fam1", "-o", tmp_path, "--no-dotplot"])
+        assert not list(tmp_path.glob("*.tsv"))
+
+
+class TestV1ShortFlags:
+    """-f and -t mean what they meant in v1 (decided 2026-09-25)."""
+
+    def test_f_is_the_full_length_threshold_and_t_writes_tables(self, tmp_path, capsys):
+        fasta = tmp_path / "families.fa"
+        fasta.write_text(FASTA)
+        annot = tmp_path / "split.fa.out"
+        annot.write_text(SPLIT)
+        # One copy covering the whole 320 bp consensus: full length at any threshold.
+        assert run(["--annot", annot, "-c", fasta, "-n", "fam1", "-f", "1.0", "-t",
+                    "-o", tmp_path, *("--no-dotplot", "--no-orfs", "--no-homology")]) == cli.EXIT_OK
+        assert "1 full length" in capsys.readouterr().out
+        assert (tmp_path / "fam1.orfs.tsv").exists()
+        assert not (tmp_path / "fam1.copies.tsv").exists()
+
+    def test_the_family_is_n(self):
+        args = cli.build_parser().parse_args(["-n", "fam1", "-f", "0.8"])
+        assert args.family == "fam1" and args.full_length_threshold == 0.8
+
+
+class TestV1DisplayFlags:
+    def test_alpha_full_length_alpha_and_auto_y_reach_panel_1(self, tmp_path, monkeypatch):
+        from teaid import report
+
+        seen = {}
+        original = report.build_figure
+
+        def keep(data, theme):
+            seen["fig"] = original(data, theme)
+            seen["data"] = data
+            return seen["fig"]
+
+        monkeypatch.setattr(report, "build_figure", keep)
+        fasta = tmp_path / "families.fa"
+        fasta.write_text(FASTA)
+        annot = tmp_path / "genome.fa.out"
+        annot.write_text(RMOUT)
+        assert run(["--annot", annot, "-c", fasta, "-n", "fam1", "-o", tmp_path, "-a", "0.3",
+                    "-F", "1", "-y", "30", "--no-dotplot", "--no-orfs", "--no-homology"]) == cli.EXIT_OK
+        opacities = {t.name.split(" ")[0]: t.opacity for t in seen["fig"].data
+                     if t.name and t.name.split(" ")[0] in ("partial", "full")}
+        assert opacities == {"partial": 0.3, "full": 1.0}
+        assert list(seen["fig"].layout.yaxis.range) == [0, 30]
+
+    def test_dotmatcher_is_accepted_and_ignored_with_a_note(self, inputs, tmp_path, capsys):
+        fasta, annot = inputs
+        assert run(["--annot", annot, "-c", fasta, "-n", "fam1", "-o", tmp_path, "-D",
+                    "--no-dotplot", "--no-orfs", "--no-homology"]) == cli.EXIT_OK
+        assert "-D ignored" in capsys.readouterr().err
+
+    def test_an_alpha_outside_0_1_is_a_usage_error(self, inputs, tmp_path):
+        fasta, annot = inputs
+        with pytest.raises(SystemExit):
+            run(["--annot", annot, "-c", fasta, "-n", "fam1", "-o", tmp_path, "-a", "2"])
