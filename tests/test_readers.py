@@ -112,11 +112,10 @@ class TestRepeatMaskerFragments:
         copy = self.parse(tmp_path, ROW + "  *").copies[0]
         assert copy.hit_id is None and copy.is_overlapping_lower_score
 
-    def test_simple_repeat_divergence_is_array_homogeneity(self, rmout_file):
-        """perc_div means different things per class; TRF rows are not age proxies."""
+    def test_every_row_reads_divergence_from_consensus(self, rmout_file):
+        """Decided 2026-10-13: Simple_repeat rows included; array homogeneity is VGP's."""
         copies = rmout.read(rmout_file).copies
-        assert copies[0].divergence_kind is DivergenceKind.ARRAY_HOMOGENEITY
-        assert copies[1].divergence_kind is DivergenceKind.CONSENSUS
+        assert {c.divergence_kind for c in copies} == {DivergenceKind.CONSENSUS}
 
     def test_unparsable_row_is_skipped_not_raised(self, tmp_path):
         path = tmp_path / "bad.out"
@@ -173,9 +172,9 @@ class TestBed16:
     def test_strandless_features_are_legal(self, bed16_file):
         assert bed16.read(bed16_file).copies[2].strand == "."
 
-    def test_divergence_kind_inferred_from_class(self, bed16_file):
+    def test_every_row_reads_divergence_from_consensus(self, bed16_file):
         copies = bed16.read(bed16_file).copies
-        assert copies[0].divergence_kind is DivergenceKind.ARRAY_HOMOGENEITY  # Simple_repeat
+        assert copies[0].divergence_kind is DivergenceKind.CONSENSUS  # Simple_repeat
         assert copies[1].divergence_kind is DivergenceKind.CONSENSUS  # LINE/L2
 
     def test_divergence_kind_can_be_forced(self, bed16_file):
@@ -194,6 +193,24 @@ class TestBed16:
         path.write_text(BED16_HEADER + rows)
         groups = bed16.read(path).fragment_groups()
         assert sorted(len(g) for g in groups) == [1, 2]
+
+    def test_a_star_in_column_16_is_not_an_id(self, tmp_path):
+        """A -no_id .out converted by rmout2bed puts RepeatMasker's '*' flag there."""
+        path = tmp_path / "star.bed"
+        rows = (
+            "chr1\t100\t200\tfamA\t0\t+\tNA\t5.0\tNA\tNA\tNA\tLINE/L2\t1\t100\t400\t*\n"
+            "chr1\t900\t950\tfamA\t0\t+\tNA\t5.0\tNA\tNA\tNA\tLINE/L2\t1\t50\t450\t*\n"
+        )
+        path.write_text(BED16_HEADER + rows)
+        annotation = bed16.read(path)
+        assert [c.hit_id for c in annotation.copies] == [None, None]
+        assert len(annotation.fragment_groups()) == 2
+
+    def test_repeatmasker_c_strand_reads_as_minus(self, tmp_path):
+        path = tmp_path / "c.bed"
+        path.write_text(BED16_HEADER + "chr1\t100\t200\tfamA\t0\tC\tNA\t5.0\tNA\tNA\tNA"
+                                       "\tLINE/L2\t1\t100\t400\tcopy1\n")
+        assert bed16.read(path).copies[0].strand == "-"
 
     def test_gzip_is_transparent(self, tmp_path):
         path = tmp_path / "sample.bed.gz"

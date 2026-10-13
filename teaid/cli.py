@@ -145,8 +145,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--divergence-kind",
         choices=[k.value for k in DivergenceKind],
         help=(
-            "what the annotation's divergence column measures, when you know it. "
-            "BED16 does not record this; the default infers it from the class label"
+            "what a BED16 file's divergence column measures, when it is not "
+            "divergence from the consensus (the default for every row)"
         ),
     )
 

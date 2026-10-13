@@ -34,8 +34,6 @@ from urllib.parse import unquote
 
 from ..records import Annotation, Copy, DivergenceKind
 
-_ARRAY_HOMOGENEITY_CLASSES = frozenset({"simple_repeat", "low_complexity", "satellite"})
-
 # Target=NAME START END  |  Target "Motif:NAME" START END
 _TARGET = re.compile(
     r'Target[=\s]+"?(?:Motif:)?(?P<name>[^";\s]+)"?\s+(?P<start>\d+)\s+(?P<end>\d+)'
@@ -106,12 +104,7 @@ def _parse_row(fields: list[str], lineno: int) -> Copy:
         raw_div = attrs.get("Divergence") or attrs.get("perc_div")
         try:
             divergence = float(raw_div)
-            head = (class_label or "").split("/", 1)[0].casefold()
-            kind = (
-                DivergenceKind.ARRAY_HOMOGENEITY
-                if head in _ARRAY_HOMOGENEITY_CLASSES
-                else DivergenceKind.CONSENSUS
-            )
+            kind = DivergenceKind.CONSENSUS
         except (TypeError, ValueError):
             divergence = None
 

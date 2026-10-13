@@ -95,6 +95,11 @@ proxy) for homology tools, but *array homogeneity* for tandem-repeat finders,
 and nothing at all for pure detectors. Carry
 `consensus | array_homogeneity | none` per record and **never plot absent
 divergence as zero** — leave the point out and say so in the axis label.
+**Decided 2026-10-13:** TE-Aid reads every input's divergence as from the
+consensus, whether it comes from RepeatMasker, a blastn table or a Dfam seed. The
+readers no longer infer `array_homogeneity` from class labels; BED16 callers can
+still set it with `--divergence-kind`, and tandem arrays are the VGP pipeline's
+concern.
 
 ---
 

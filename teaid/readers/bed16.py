@@ -41,13 +41,10 @@ _NULL = frozenset({"NA", "na", ".", "", "nan", "NaN"})
 
 _HEADER_FIRST_FIELDS = frozenset({"chrom", "chr", "chromosome"})
 
-# BED16 carries no statement of which quantity perc_div holds; that lives in the
-# hub's per-tool manifest, which a standalone TE-Aid run does not have. These
-# class labels are produced by tandem/array callers whose divergence is
-# unit-to-unit array homogeneity rather than divergence from a consensus.
-_ARRAY_HOMOGENEITY_CLASSES = frozenset(
-    {"satellite", "simple_repeat", "low_complexity", "tandem", "trf"}
-)
+# BED16 carries no statement of which quantity perc_div holds; the VGP hub keeps
+# it in a per-tool manifest. TE-Aid reads it as divergence from the consensus for
+# every row. Tandem callers' array homogeneity is the VGP pipeline's concern, and
+# a caller that knows its file holds it can say so with divergence_kind.
 
 
 def _open(path: Path) -> io.TextIOBase:
@@ -66,8 +63,8 @@ def _num(token: str, cast) -> float | int | None:
     try:
         return cast(token)
     except ValueError:
-        # The spec's own coercion rule: an unparseable token becomes null
-        # rather than killing the row.
+        # VGP's coercion rule (pd.to_numeric(errors="coerce") in vgptrack/ingest.py):
+        # an unparseable token becomes null rather than killing the row.
         return None
 
 
@@ -78,9 +75,9 @@ def _is_header(fields: list[str]) -> bool:
 def read(path: str | Path, *, divergence_kind: DivergenceKind | None = None) -> Annotation:
     """Parse a BED16 file into the shared record struct.
 
-    ``divergence_kind`` overrides the per-record heuristic. Pass it when you
-    know what produced the file — a structural caller's ``perc_div``, if it has
-    one at all, is rarely divergence from a consensus.
+    Every row with a divergence is read as divergence from the consensus.
+    ``divergence_kind`` overrides that for the whole file, for a caller that
+    knows its producer reports something else.
     """
     path = Path(path)
     annotation = Annotation(source_path=str(path), source_format="bed16")
@@ -112,7 +109,9 @@ def _parse_row(
     if start is None or end is None:
         raise ValueError("chromStart/chromEnd missing or non-numeric")
 
-    strand = fields[5] if fields[5] in {"+", "-"} else "."
+    # VGP asks producers to write '-' for RepeatMasker's 'C', but one that
+    # forgets would otherwise lose every reverse copy's orientation.
+    strand = {"+": "+", "-": "-", "C": "-"}.get(fields[5], ".")
     class_label = _text(fields[11])
     divergence = _num(fields[7], float)
 
@@ -121,7 +120,7 @@ def _parse_row(
     elif forced_kind is not None:
         kind = forced_kind
     else:
-        kind = _infer_divergence_kind(class_label)
+        kind = DivergenceKind.CONSENSUS
 
     consensus_start = _num(fields[12], int)
     consensus_end = _num(fields[13], int)
@@ -150,17 +149,11 @@ def _parse_row(
         consensus_start=None if consensus_start is None else consensus_start - 1,
         consensus_end=consensus_end,
         consensus_left=_num(fields[14], int),
-        hit_id=_text(fields[15]),
+        # rmout2bed copies the .out's field 15 unconditionally, and in a -no_id
+        # file that field holds the '*' overlap flag, which is not an ID: read
+        # as one, it would join every flagged row on a chromosome into one copy.
+        hit_id=None if fields[15] == "*" else _text(fields[15]),
         source_line=lineno,
     )
 
 
-def _infer_divergence_kind(class_label: str | None) -> DivergenceKind:
-    if class_label is None:
-        return DivergenceKind.CONSENSUS
-    head = class_label.split("/", 1)[0].casefold()
-    return (
-        DivergenceKind.ARRAY_HOMOGENEITY
-        if head in _ARRAY_HOMOGENEITY_CLASSES
-        else DivergenceKind.CONSENSUS
-    )

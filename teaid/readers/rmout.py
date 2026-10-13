@@ -45,11 +45,6 @@ from pathlib import Path
 
 from ..records import Annotation, Copy, DivergenceKind
 
-# RepeatMasker delegates these classes to TRF and dust, which report how uniform
-# an array is rather than how far it has drifted from a library consensus. Same
-# column, different meaning — see DivergenceKind.
-_ARRAY_HOMOGENEITY_CLASSES = frozenset({"simple_repeat", "low_complexity"})
-
 _PAREN = re.compile(r"^\((-?\d+)\)$")
 
 
@@ -57,14 +52,6 @@ def _int_maybe_paren(token: str) -> int:
     """Parse ``123`` or ``(123)`` — RepeatMasker parenthesises 'remaining'."""
     m = _PAREN.match(token)
     return int(m.group(1)) if m else int(token)
-
-
-def _divergence_kind(class_label: str) -> DivergenceKind:
-    return (
-        DivergenceKind.ARRAY_HOMOGENEITY
-        if class_label.split("/", 1)[0].casefold() in _ARRAY_HOMOGENEITY_CLASSES
-        else DivergenceKind.CONSENSUS
-    )
 
 
 def read(path: str | Path) -> Annotation:
@@ -138,7 +125,9 @@ def _parse_row(fields: list[str], lineno: int) -> Copy:
         family=family,
         class_label=class_label,
         divergence=divergence,
-        divergence_kind=_divergence_kind(class_label),
+        # Every .out row's perc_div is measured against the consensus it was
+        # aligned to, a Simple_repeat unit included, so TE-Aid reads one kind.
+        divergence_kind=DivergenceKind.CONSENSUS,
         consensus_start=c_begin - 1,
         consensus_end=c_end,
         consensus_left=c_left,
