@@ -127,6 +127,227 @@ class Copy:
         return self.consensus_start + 1, self.consensus_end
 
 
+class JunctionKind(str, Enum):
+    """What lies between two fragments of one insertion, relative to consensus.
+
+    - :attr:`INSERTION` — the genome carries sequence the consensus does not,
+      most often another element nested in this copy. It uses no consensus,
+      so on a consensus axis the two fragments abut.
+    - :attr:`DELETION` — the copy lacks consensus sequence that its two
+      neighbouring fragments bracket. On a consensus axis it is a real gap.
+    - :attr:`FLUSH` — the two differences cancel to within
+      :data:`JUNCTION_TOLERANCE`, as when an alignment was split for its score.
+    """
+
+    INSERTION = "insertion"
+    DELETION = "deletion"
+    FLUSH = "flush"
+
+
+# Base pairs by which the genomic and consensus gaps may differ before a join
+# counts as an insertion or a deletion. RepeatMasker fragments routinely
+# overlap or leave a few unaligned bases at a join, and those are not indels.
+# On the GenomeArk goby (11,629 classifiable joins) this gives 68.9% insertions
+# (median 243 bp), 20.2% deletions (median 218 bp) and 10.9% flush, with the
+# same split on either strand.
+JUNCTION_TOLERANCE = 50
+
+
+@dataclass(slots=True, frozen=True)
+class Junction:
+    """The join between two fragments that are adjacent in the genome.
+
+    ``consensus_at`` and ``consensus_to`` bound the consensus interval the join
+    skips (a deletion) or the point where it sits (an insertion or a flush
+    join, where the two are equal). ``size`` is the indel length in bp, 0 when
+    flush. A join can skip some consensus and also carry extra genome; it is
+    classified by the net difference, and both gaps are kept here.
+    """
+
+    consensus_at: int
+    consensus_to: int
+    kind: JunctionKind
+    size: int
+    genomic_gap: int
+    consensus_gap: int
+
+
+def _junction(prev: Copy, nxt: Copy, strand: str) -> Junction | None:
+    """Classify the join between two genomically adjacent fragments.
+
+    On the minus strand the element runs backwards along the genome, so the
+    fragment later in the genome sits *earlier* in the consensus. Ignoring that
+    turns every minus-strand join into a spurious insertion.
+    """
+    if None in (prev.consensus_start, prev.consensus_end,
+                nxt.consensus_start, nxt.consensus_end) or strand not in "+-":
+        return None
+    genomic_gap = nxt.start - prev.end
+    if strand == "+":
+        at, to = prev.consensus_end, nxt.consensus_start
+    else:
+        at, to = nxt.consensus_end, prev.consensus_start
+    consensus_gap = to - at
+    delta = consensus_gap - genomic_gap
+    if delta > JUNCTION_TOLERANCE:
+        kind, size = JunctionKind.DELETION, delta
+    elif delta < -JUNCTION_TOLERANCE:
+        kind, size = JunctionKind.INSERTION, -delta
+    else:
+        kind, size = JunctionKind.FLUSH, 0
+    if kind is not JunctionKind.DELETION or to < at:
+        to = at  # a point on the consensus axis, not an interval
+    return Junction(at, to, kind, size, genomic_gap, consensus_gap)
+
+
+def _merge(blocks: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(blocks):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+@dataclass(slots=True)
+class Insertion:
+    """One genomic insertion: the annotation rows RepeatMasker split it into.
+
+    Panels 1 and 2 count insertions, not rows. A copy interrupted by a nested
+    element arrives as two rows sharing one ID, and counting both is the copy
+    inflation v2 exists to fix. An ungrouped row is an insertion of one
+    fragment, so every consumer handles one type.
+    """
+
+    fragments: list[Copy]  # sorted by genomic start
+
+    @property
+    def chrom(self) -> str:
+        return self.fragments[0].chrom
+
+    @property
+    def family(self) -> str:
+        return self.fragments[0].family
+
+    @property
+    def class_label(self) -> str | None:
+        return self.fragments[0].class_label
+
+    @property
+    def hit_id(self) -> str | None:
+        return self.fragments[0].hit_id
+
+    @property
+    def start(self) -> int:
+        return min(f.start for f in self.fragments)
+
+    @property
+    def end(self) -> int:
+        return max(f.end for f in self.fragments)
+
+    @property
+    def strand(self) -> str:
+        strands = {f.strand for f in self.fragments}
+        return strands.pop() if len(strands) == 1 else "."
+
+    @property
+    def n_fragments(self) -> int:
+        return len(self.fragments)
+
+    @property
+    def is_fragmented(self) -> bool:
+        return len(self.fragments) > 1
+
+    def genomic_1based(self) -> tuple[int, int]:
+        return self.start + 1, self.end
+
+    @property
+    def consensus_blocks(self) -> list[tuple[int, int]]:
+        """Consensus intervals the fragments align to, merged, ascending."""
+        return _merge([
+            (f.consensus_start, f.consensus_end) for f in self.fragments
+            if f.consensus_start is not None and f.consensus_end is not None
+        ])
+
+    @property
+    def consensus_covered(self) -> int:
+        """Consensus bases aligned by any fragment: the union, not the span.
+
+        A 5' and a 3' fragment of a 5 kb element span nearly all of it while
+        covering a few hundred bases, and full-length has to measure the
+        second. Deletions inside a single alignment are not visible here,
+        because a row gives only its two endpoints.
+        """
+        return sum(end - start for start, end in self.consensus_blocks)
+
+    @property
+    def consensus_start(self) -> int | None:
+        blocks = self.consensus_blocks
+        return blocks[0][0] if blocks else None
+
+    @property
+    def consensus_end(self) -> int | None:
+        blocks = self.consensus_blocks
+        return blocks[-1][1] if blocks else None
+
+    @property
+    def divergence_kind(self) -> DivergenceKind:
+        kind, _ = self._divergence()
+        return kind
+
+    @property
+    def divergence(self) -> float | None:
+        _, value = self._divergence()
+        return value
+
+    @property
+    def has_divergence(self) -> bool:
+        kind, value = self._divergence()
+        return value is not None and kind is not DivergenceKind.NONE
+
+    def _divergence(self) -> tuple[DivergenceKind, float | None]:
+        """Mean divergence, weighted by each fragment's consensus extent.
+
+        This is RepeatMasker's own rule when it merges two annotations
+        (ProcessRepeats, where the weight is SubjEnd - SubjStart + 1, the
+        consensus length of each piece). Fragments with no divergence do not
+        vote; if the fragments disagree on what divergence means, the kind
+        carrying the most consensus wins and only its fragments are averaged.
+        """
+        weights: dict[DivergenceKind, list[tuple[float, int]]] = {}
+        for f in self.fragments:
+            if not f.has_divergence:
+                continue
+            extent = (
+                f.consensus_end - f.consensus_start
+                if f.consensus_start is not None and f.consensus_end is not None
+                else f.length
+            )
+            weights.setdefault(f.divergence_kind, []).append((f.divergence, max(extent, 1)))
+        if not weights:
+            return self.fragments[0].divergence_kind, None
+        kind = max(weights, key=lambda k: sum(w for _, w in weights[k]))
+        pairs = weights[kind]
+        total = sum(w for _, w in pairs)
+        return kind, sum(d * w for d, w in pairs) / total
+
+    @property
+    def junctions(self) -> list[Junction]:
+        """One per pair of genomically adjacent fragments, when classifiable.
+
+        A pair is skipped when either fragment lacks consensus coordinates or
+        the insertion's fragments disagree on strand.
+        """
+        strand = self.strand
+        found = []
+        for prev, nxt in zip(self.fragments, self.fragments[1:]):
+            junction = _junction(prev, nxt, strand)
+            if junction is not None:
+                found.append(junction)
+        return found
+
+
 @dataclass(slots=True)
 class Annotation:
     """All copies read from one annotation file, plus where they came from."""
@@ -186,6 +407,17 @@ class Annotation:
                 groups.setdefault(f"{copy.chrom}\t{copy.hit_id}", []).append(copy)
         joined = [sorted(g, key=lambda c: c.start) for g in groups.values()]
         return joined + singles
+
+    def insertions(self, *, group: bool = True) -> list[Insertion]:
+        """The copies as insertions, ordered by locus.
+
+        With ``group=False`` every row is an insertion of one fragment, which
+        reproduces row counting without changing the type consumers see.
+        """
+        groups = self.fragment_groups() if group else [[c] for c in self.copies]
+        found = [Insertion(sorted(g, key=lambda c: c.start)) for g in groups]
+        found.sort(key=lambda i: (i.chrom, i.start))
+        return found
 
     def consensus_length(self) -> int | None:
         """Best estimate of consensus length from the copies themselves.

@@ -9,7 +9,7 @@ import pytest
 
 from teaid import report, theme
 from teaid.readers import stockholm
-from teaid.records import DivergenceKind
+from teaid.records import DivergenceKind, Insertion
 
 # Two records, the second interleaved across blocks and using the short (2-part)
 # Smitten identifier RepeatModeler writes. Gap character is Dfam's '.'.
@@ -220,11 +220,12 @@ class TestSeedQcPanels:
                 consensus_start=0, consensus_end=900,
             )
         ]
+        insertions = [Insertion([c]) for c in copies]
         return report.SheetData(
             family="f",
             consensus_length=len(depth) if depth is not None else 1000,
-            copies=copies,
-            full_length=copies,
+            insertions=insertions,
+            full_length=insertions,
             coverage=np.ones(1000, dtype=np.int64),
             seed_depth=depth,
             expected_class=expected_class,
@@ -322,3 +323,12 @@ class TestRunsBelow:
 
     def test_handles_a_shortfall_at_both_edges(self):
         assert report._runs_below(np.array([0, 9, 0]), 3) == [(0, 1), (2, 3)]
+
+
+class TestSeedCountsAreUnchangedByGrouping:
+    def test_seed_sequences_stay_one_copy_each(self, seed_file):
+        """Seed sequences carry no hit_id, so grouping must leave every seed-derived
+        number as it was. This pins that promise for --seed-qc."""
+        annotation = stockholm.read(seed_file, "fam-two").to_annotation()
+        assert all(c.hit_id is None for c in annotation)
+        assert len(annotation.insertions()) == len(annotation)

@@ -55,6 +55,11 @@ is readable at a glance. The bottom-right quadrant splits: panel 4 shows what th
 dot-plot implies (terminal repeats), panel 5 shows what sequence annotation
 implies (ORFs with their protein domains inlaid).
 
+Copies are counted as insertions, not annotation rows: rows that share an ID
+(RepeatMasker `ID`, BED16 column 16) are one copy, and panel 1 marks where each
+was split, with `]··[` for consensus the copy lacks and `|` for sequence the
+genome carries that the consensus does not. `--no-group-fragments` counts rows.
+
 ORFs keep v1's strand convention — black outline forward, red reverse — and
 protein domains keep **v1's TE-class colours**: green LTR, blue LINE, salmon DNA
 transposon.
@@ -106,7 +111,8 @@ and is keyed by a hash of the domain table, so editing the table rebuilds rather
 than silently reusing a stale library. Three flags cover the awkward cases:
 
 - `--proteins FILE` — search a **prebuilt** library and skip the build entirely.
-  The route for offline or read-only machines. Note it also disables tier 3.
+  The route for offline or read-only machines. It replaces tiers 1–2 only;
+  tier 3 still runs when RepeatPeps.lib is found.
 - `--rebuild-proteins` — force a rebuild, if a cache is ever suspect.
 - `--repeatpeps FILE` — point at `RepeatPeps.lib` explicitly.
 
@@ -249,14 +255,14 @@ teaid: error [no-family]: family 'x' not in families.fa
 |---|---|---|
 | 0 | — | a sheet was written (possibly with panels dropped — see below) |
 | 1 | *none* | uncaught internal error; a traceback |
-| 2 | *none* | argument error, straight from `argparse` |
+| 2 | `usage` | argument error |
 | 3 | `no-input` | an input file is missing or unreadable |
 | 4 | `no-family` | the family is not in the consensus library |
 | 5 | `no-evidence` | the family has nothing plottable |
 | 6 | `bad-seed` | the Stockholm file could not be parsed |
 
-Parse the slug, not the prose — and note that codes 1 and 2 carry **no** slug, so
-branch on the code first. **Exit 0 does not mean a complete sheet:** a missing
+Parse the slug, not the prose. Only code 1, an uncaught exception, carries no
+slug. **Exit 0 does not mean a complete sheet:** a missing
 `blastn`, `getorf` or `bathsearch` drops the affected panel with a
 `teaid: warning: …` line and still exits 0. Callers that need a full sheet must
 check stderr for warnings.
@@ -299,7 +305,7 @@ teaid --annot dev-data/GCA_963082875.1.fa.out \
 should end with exactly:
 
 ```
-ltr-1_family-65: 16 copies, 0 full length, consensus 2,092 bp, terminal-repeat candidates: 1 LTR-like, 1 TIR-like
+ltr-1_family-65: 13 copies (16 annotation rows), 1 full length, consensus 2,092 bp, terminal-repeat candidates: 1 LTR-like, 1 TIR-like
 ```
 
 If BATH is not on `PATH` you also get `warning: protein row skipped: …` and still

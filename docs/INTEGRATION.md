@@ -85,22 +85,20 @@ teaid: error [bad-seed]: families.stk: no record with #=GF ID 'absent'
 |---|---|---|
 | 0 | — | a sheet was written — but see *exit 0 is not "complete"* below |
 | 1 | *none* | uncaught internal error; a Python traceback, not a message |
-| 2 | *none* | argument error, straight from `argparse` |
+| 2 | `usage` | argument error: an unknown flag, a missing input, a value out of range, or `--family` omitted for a multi-entry library |
 | 3 | `no-input` | an input file is missing or unreadable |
 | 4 | `no-family` | the family is not in the consensus library |
 | 5 | `no-evidence` | the family exists but carries nothing plottable |
 | 6 | `bad-seed` | the Stockholm file could not be parsed |
 
-**Two of these have no slug, so branch on the code first.** Exit 2 comes from
-`argparse` before TE-Aid's own error path runs, so it prints `teaid: error: …`
-with no `[slug]` bracket — that covers unknown flags, a missing `--annot`/`--stk`,
-and an out-of-range `--full-length-threshold`. Exit 1 is an unhandled exception.
-Treat *any* failure whose stderr has no `[slug]` bracket as fatal-unknown and
-log the stderr verbatim; do not try to parse it.
+**Only exit 1 has no slug.** It is an unhandled exception and prints a Python
+traceback. Treat any failure whose stderr has no `[slug]` bracket as
+fatal-unknown and log the stderr verbatim; do not try to parse it. Argument
+errors from `argparse` itself carry the `usage` slug too, and they arrive as
+`SystemExit(2)` when TE-Aid is called in-process.
 
-There is no `usage` slug. A multi-record seed given without `--family` is not an
-argument error — it reports `bad-seed` and exit 6, because the file was read and
-found ambiguous.
+A multi-record seed given without `--family` is not an argument error. It reports
+`bad-seed` and exit 6, because the file was read and found ambiguous.
 
 **Exit 0 is not "complete".** The sheet is fail-soft by design: if `blastn`,
 `getorf` or `bathsearch` is missing or fails, the affected panel is dropped, a
@@ -183,20 +181,38 @@ curated domain table. Three consequences for anyone calling TE-Aid:
   one library rather than each user building their own.
 - **`build()` takes no lock.** Concurrent first-runs race on the same directory.
   A batch caller must warm the cache with **one serial run** before fanning out.
-- **`--proteins FILE` searches a prebuilt library and skips the build entirely** —
-  the right flag for an offline or read-only environment. It also leaves
-  `repeatpeps=None`, which **silently disables the tier-3 `blastp` fallback**.
+- **`--proteins FILE` searches a prebuilt library and skips the build entirely**,
+  which suits an offline or read-only environment. It replaces tiers 1–2 only:
+  tier 3 still runs against `--repeatpeps` or the discovered RepeatPeps.lib, as in
+  any other run. The sheet's provenance line names the library searched, and a
+  note says why whenever tier 3 did not run.
 
 `--rebuild-proteins` forces a rebuild; it is the recovery path if a cache is
 ever suspect. `--deep` **replaces** tiers 1–2 rather than adding to them, and
 turns off tier 3 as well, so a deep run carries no Pfam accessions and panel 5
 loses its order-derived colours.
 
-**Fragments.** BED16 column 16 (`hit_id`, the `.out` `ID` column) groups
-fragments of one insertion split by an indel or a nested element.
-`Annotation.fragment_groups()` exposes the grouping. Counting fragments as
-independent copies inflates copy number — the specific failure that motivated
-v2's move away from search-driven discovery.
+**Fragments.** Rows that share an ID are one copy: BED16 column 16, the `.out`
+`ID` column, or the GFF3 `ID` attribute, all read into `Copy.hit_id`. TE-Aid
+groups them by default, keyed on chromosome and ID, and counts copies, not
+rows, in panels 1 and 2, the full-length count, the subtitle and the stdout
+summary. `--no-group-fragments` counts rows instead. A `.out` written with
+RepeatMasker `-no_id` has no ID column and is read with every row its own copy.
+
+What a grouped copy measures:
+
+- **coverage and full length** use the union of the consensus its rows align
+  to, never the span from first to last row;
+- **divergence** is the rows' mean weighted by consensus length, RepeatMasker's
+  own rule when it merges annotations;
+- **each join** between rows is classified from the genomic and consensus gaps:
+  an *insertion* in the copy when the genome carries more (often a nested
+  element), a *deletion* when the consensus carries more, and *flush* within
+  50 bp. Panel 1 draws the first two.
+
+A producer that writes one constant into the ID column would collapse a family
+into one copy. The sheet's notes line names the largest group, which is how
+that shows up.
 
 ---
 

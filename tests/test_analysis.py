@@ -27,7 +27,7 @@ def copy(cons_start, cons_end, *, divergence=5.0, family="fam", chrom="chr1"):
 class TestCoverage:
     def test_counts_copies_overlapping_each_position(self):
         annotation = Annotation(copies=[copy(0, 10), copy(5, 15), copy(5, 8)])
-        result = analysis.coverage(annotation, 20)
+        result = analysis.coverage(annotation.insertions(), 20)
         assert result[0] == 1  # only the first copy
         assert result[5] == 3  # all three
         assert result[9] == 2  # first and second
@@ -49,22 +49,22 @@ class TestCoverage:
         for row, c in enumerate(copies):
             naive[row, c.consensus_start : c.consensus_end] = 1
 
-        assert np.array_equal(analysis.coverage(annotation, length), naive.sum(axis=0))
+        assert np.array_equal(analysis.coverage(annotation.insertions(), length), naive.sum(axis=0))
 
     def test_copies_without_consensus_coordinates_are_ignored(self):
         blind = Copy(chrom="chr1", start=0, end=100, strand="+", family="fam")
         annotation = Annotation(copies=[copy(0, 10), blind])
-        assert analysis.coverage(annotation, 20)[0] == 1
+        assert analysis.coverage(annotation.insertions(), 20)[0] == 1
 
     def test_clamps_copies_extending_past_the_consensus(self):
         annotation = Annotation(copies=[copy(0, 50)])
-        result = analysis.coverage(annotation, 10)
+        result = analysis.coverage(annotation.insertions(), 10)
         assert len(result) == 10
         assert result.max() == 1
 
     def test_rejects_a_nonpositive_length(self):
         with pytest.raises(ValueError):
-            analysis.coverage(Annotation(), 0)
+            analysis.coverage([], 0)
 
 
 class TestFullLength:
@@ -74,7 +74,7 @@ class TestFullLength:
         annotation = Annotation(
             copies=[copy(0, 100), copy(0, 50), copy(10, 100), copy(10, 99)]
         )
-        selected = analysis.full_length(annotation, 100, 0.9)
+        selected = analysis.full_length(annotation.insertions(), 100, 0.9)
         assert [(c.consensus_start, c.consensus_end) for c in selected] == [
             (0, 100),
             (10, 100),
@@ -84,11 +84,11 @@ class TestFullLength:
         """v1 measured the span as abs(qend - qstart) on closed coordinates, so a
         copy covering the consensus end to end scored L-1 and missed."""
         annotation = Annotation(copies=[copy(0, 100)])
-        assert len(analysis.full_length(annotation, 100, 1.0)) == 1
+        assert len(analysis.full_length(annotation.insertions(), 100, 1.0)) == 1
 
     def test_ignores_copies_without_consensus_coordinates(self):
         blind = Copy(chrom="chr1", start=0, end=100, strand="+", family="fam")
-        assert analysis.full_length(Annotation(copies=[blind]), 100, 0.9) == []
+        assert analysis.full_length(Annotation(copies=[blind]).insertions(), 100, 0.9) == []
 
 
 class TestSelfBlast:
@@ -239,3 +239,40 @@ class TestRecords:
     def test_divergence_kind_axis_labels_differ(self):
         labels = {k.axis_label for k in DivergenceKind}
         assert len(labels) == 3
+
+
+def piece(cons_start, cons_end, g_start, *, hit_id="1"):
+    return Copy(chrom="chr1", start=g_start, end=g_start + cons_end - cons_start,
+                strand="+", family="fam", divergence=5.0,
+                divergence_kind=DivergenceKind.CONSENSUS,
+                consensus_start=cons_start, consensus_end=cons_end, hit_id=hit_id)
+
+
+class TestInsertionsNotRows:
+    """Panels 1-2 count insertions: rows sharing an ID are one copy."""
+
+    def test_an_insertion_is_counted_once_where_its_fragments_overlap(self):
+        # Two rows of one insertion aligning to the same consensus stretch, as
+        # happens with a tandem micro-repeat inside a copy.
+        annotation = Annotation(copies=[piece(0, 50, 0), piece(0, 50, 400)])
+        assert analysis.coverage(annotation.insertions(), 60)[10] == 1
+        assert analysis.coverage(annotation.insertions(group=False), 60)[10] == 2
+
+    def test_the_gap_between_fragments_is_not_filled(self):
+        annotation = Annotation(copies=[piece(0, 20, 0), piece(80, 100, 20)])
+        depth = analysis.coverage(annotation.insertions(), 100)
+        assert depth[10] == 1 and depth[50] == 0 and depth[90] == 1
+
+    def test_full_length_measures_the_union_not_the_span(self):
+        # A 5' and a 3' piece span the whole consensus and cover 40 of 100 bp.
+        ends = Annotation(copies=[piece(0, 20, 0), piece(80, 100, 900)])
+        assert analysis.full_length(ends.insertions(), 100, 0.9) == []
+        # Two pieces that together cover 95 bp are one full-length copy.
+        whole = Annotation(copies=[piece(0, 60, 0), piece(55, 95, 900)])
+        assert len(analysis.full_length(whole.insertions(), 100, 0.9)) == 1
+
+    def test_a_bare_annotation_is_refused(self):
+        """Passing rows would count them one by one, which is the inflation the
+        insertion unit removes. The caller has to choose the grouping."""
+        with pytest.raises(TypeError, match="insertions"):
+            analysis.coverage(Annotation(copies=[piece(0, 20, 0)]), 100)

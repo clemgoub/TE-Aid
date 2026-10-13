@@ -10,14 +10,32 @@ from pathlib import Path
 
 import numpy as np
 
-from .records import Annotation, Copy
+from .records import Annotation, Insertion
 
 
-def coverage(annotation: Annotation, consensus_length: int) -> np.ndarray:
-    """Per-position count of copies overlapping each consensus base.
+def _insertions(insertions, caller: str) -> list[Insertion]:
+    # A bare Annotation would be counted row by row, which is the inflation the
+    # insertion unit exists to remove. Make the caller decide the grouping.
+    if isinstance(insertions, Annotation):
+        raise TypeError(
+            f"{caller}() takes insertions; pass annotation.insertions() so the "
+            f"fragment grouping is decided once, by the caller"
+        )
+    return list(insertions)
+
+
+def coverage(insertions, consensus_length: int) -> np.ndarray:
+    """Per-position count of insertions spanning each consensus base.
 
     Returns a length-``consensus_length`` integer array; index *i* is the number
-    of copies covering 0-based consensus position *i*.
+    of insertions that align to 0-based consensus position *i*.
+
+    An insertion counts once per position its fragments align to, and not in
+    the gap between two fragments: that gap is observed, and panel 1 draws it.
+    On ``ltr-1_family-22`` this takes the peak from 32 to 12: several copies
+    carry a short tandem array over consensus 4827-4854, which RepeatMasker
+    reported as up to nine rows per copy. A deletion inside a single row stays
+    counted, since a row gives only its endpoints.
 
     v1 built a dense ``n_copies x consensus_length`` matrix of zeros and summed
     the columns, which is O(n x L) memory — roughly 2 GB for 50k copies on a 5 kb
@@ -28,25 +46,26 @@ def coverage(annotation: Annotation, consensus_length: int) -> np.ndarray:
         raise ValueError(f"consensus_length must be positive, got {consensus_length}")
 
     diff = np.zeros(consensus_length + 1, dtype=np.int64)
-    for copy in annotation:
-        if copy.consensus_start is None or copy.consensus_end is None:
-            continue
-        start = max(0, copy.consensus_start)
-        end = min(consensus_length, copy.consensus_end)
-        if end > start:
-            diff[start] += 1
-            diff[end] -= 1
+    for insertion in _insertions(insertions, "coverage"):
+        for block_start, block_end in insertion.consensus_blocks:
+            start = max(0, block_start)
+            end = min(consensus_length, block_end)
+            if end > start:
+                diff[start] += 1
+                diff[end] -= 1
     return np.cumsum(diff[:-1])
 
 
 def full_length(
-    annotation: Annotation, consensus_length: int, threshold: float = 0.9
-) -> list[Copy]:
-    """Copies spanning at least ``threshold`` of the consensus.
+    insertions, consensus_length: int, threshold: float = 0.9
+) -> list[Insertion]:
+    """Insertions whose fragments cover at least ``threshold`` of the consensus.
 
-    Measured on the consensus interval, so a copy interrupted by a genomic
-    insertion is judged on how much of the *family* it represents rather than
-    how much genome it occupies.
+    Measured on the consensus, so an insertion interrupted by a nested element
+    is judged on how much of the *family* it holds rather than how much genome it
+    occupies. It is the union of the fragments, not their span: a 5' and a 3'
+    piece of an element span it end to end while holding a few hundred bases.
+    On ``rnd-1_family-117`` the span would call 7 such pairs full length.
 
     v1 computed the span as ``abs(qend - qstart)`` on 1-based closed
     coordinates, one short of the true length; a copy covering a consensus
@@ -55,11 +74,8 @@ def full_length(
     """
     cutoff = threshold * consensus_length
     return [
-        c
-        for c in annotation
-        if c.consensus_start is not None
-        and c.consensus_end is not None
-        and (c.consensus_end - c.consensus_start) >= cutoff
+        i for i in _insertions(insertions, "full_length")
+        if i.consensus_blocks and i.consensus_covered >= cutoff
     ]
 
 

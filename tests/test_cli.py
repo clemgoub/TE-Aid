@@ -7,6 +7,9 @@ exit code alone.
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pytest
 
 from teaid import cli
@@ -237,6 +240,22 @@ class TestFailSoftContract:
             seen.add(code)
         assert len(seen) == len(cases), "exit codes must be distinguishable"
 
+    def test_an_argparse_error_also_carries_the_usage_slug(self, capsys):
+        with pytest.raises(SystemExit) as raised:
+            run(["--no-such-flag"])
+        assert raised.value.code == cli.EXIT_USAGE
+        assert "[usage]" in capsys.readouterr().err
+
+    def test_the_documented_exit_table_matches_the_code(self):
+        # INTEGRATION.md is what callers read, so its table is the contract.
+        doc = Path(__file__).resolve().parents[1] / "docs" / "INTEGRATION.md"
+        rows = re.findall(r"^\| (\d) \| ([^|]+?) \|", doc.read_text(), re.M)
+        documented = {int(code): cell.strip().strip("`") for code, cell in rows}
+        for code, slug in cli._SLUG.items():
+            assert documented.get(code) == slug, f"exit {code}"
+        assert documented[1] == "*none*"
+        assert set(documented) == set(cli._SLUG) | {0, 1}
+
     def test_slugs_and_codes_stay_in_step(self):
         for code in (
             cli.EXIT_USAGE, cli.EXIT_NO_INPUT, cli.EXIT_NO_FAMILY,
@@ -254,3 +273,111 @@ class TestLegacyAlias:
         )
         assert code == cli.EXIT_OK
         assert "'TE-Aid' is now 'teaid'" in capsys.readouterr().err
+
+
+class TestProteinProvenance:
+    """Panel 5 must say which library produced it, and why tier 3 did not run."""
+
+    @pytest.fixture
+    def captured(self, monkeypatch):
+        from teaid import homology, orfs, report
+
+        seen = {"repeatpeps": None}
+
+        def fake_repeatpeps(found, path, **kw):
+            seen["repeatpeps"] = path
+            return []
+
+        monkeypatch.setattr(homology, "search", lambda *a, **k: [])
+        monkeypatch.setattr(homology, "search_repeatpeps", fake_repeatpeps)
+        monkeypatch.setattr(orfs, "find_orfs", lambda *a, **k: [])
+        original = report.build_figure
+
+        def keep(data, theme):
+            seen["data"] = data
+            return original(data, theme)
+
+        monkeypatch.setattr(report, "build_figure", keep)
+        return seen
+
+    def test_a_prebuilt_library_still_honours_repeatpeps(self, inputs, tmp_path, captured):
+        fasta, annot = inputs
+        prebuilt = tmp_path / "mine.bhmm"
+        prebuilt.write_text("")
+        peps = tmp_path / "RepeatPeps.lib"
+        peps.write_text(">x\nMK\n")
+        run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path, "--no-dotplot",
+             "--proteins", prebuilt, "--repeatpeps", peps])
+        assert captured["repeatpeps"] == peps
+
+    def test_the_sheet_names_the_protein_library_it_searched(self, inputs, tmp_path, captured):
+        fasta, annot = inputs
+        prebuilt = tmp_path / "mine.bhmm"
+        prebuilt.write_text("")
+        run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path, "--no-dotplot",
+             "--proteins", prebuilt])
+        assert any("mine.bhmm" in s for s in captured["data"].sources)
+
+    def test_a_tier_three_that_did_not_run_says_why(self, inputs, tmp_path, captured, monkeypatch):
+        from teaid import proteins
+
+        fasta, annot = inputs
+        library = proteins.Library(hmm=tmp_path / "x.bhmm", repeatpeps=None,
+                                   tiers=("pfam:130", "repeatpeps-gaps"))
+        monkeypatch.setattr(proteins, "build", lambda **k: library)
+        base = ["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path, "--no-dotplot"]
+        for extra, reason in (([], "RepeatPeps.lib not found"),
+                              (["--no-orfs"], "--no-orfs"),
+                              (["--deep"], "--deep")):
+            run(base + extra)
+            notes = " | ".join(captured["data"].notes)
+            assert "tier 3" in notes and reason in notes, (extra, notes)
+
+
+SPLIT = """\
+   SW   perc perc perc  query       position in query              matching          repeat                position in repeat
+score   div. del. ins.  sequence    begin    end          (left)   repeat            class/family      begin   end    (left)     ID
+
+ 1000    5.0  0.0  0.0  chr1            1000     1159    (5000) + fam1              LTR/Gypsy               1    160   (160)     4
+  900    5.0  0.0  0.0  chr1            2160     2319    (4000) + fam1              LTR/Gypsy             161    320     (0)     4
+"""
+
+
+class TestFragmentGrouping:
+    """Two rows sharing an ID are one copy interrupted by 1,000 bp of genome."""
+
+    @pytest.fixture
+    def split(self, tmp_path):
+        fasta = tmp_path / "families.fa"
+        fasta.write_text(FASTA)
+        annot = tmp_path / "split.fa.out"
+        annot.write_text(SPLIT)
+        return fasta, annot
+
+    def test_rows_sharing_an_id_are_one_copy(self, split, tmp_path, capsys):
+        fasta, annot = split
+        assert run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path,
+                    "--no-dotplot", "--no-orfs", "--no-homology"]) == cli.EXIT_OK
+        assert "fam1: 1 copy (2 annotation rows), 1 full length" in capsys.readouterr().out
+
+    def test_no_group_fragments_counts_rows(self, split, tmp_path, capsys):
+        fasta, annot = split
+        run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path,
+             "--no-dotplot", "--no-orfs", "--no-homology", "--no-group-fragments"])
+        assert "fam1: 2 copies, 0 full length" in capsys.readouterr().out
+
+    def test_the_sheet_says_how_rows_became_copies(self, split, tmp_path, monkeypatch):
+        from teaid import report
+
+        seen = {}
+        original = report.build_figure
+
+        def keep(data, theme):
+            seen["notes"] = data.notes
+            return original(data, theme)
+
+        monkeypatch.setattr(report, "build_figure", keep)
+        fasta, annot = split
+        run(["--annot", annot, "-c", fasta, "-f", "fam1", "-o", tmp_path,
+             "--no-dotplot", "--no-orfs", "--no-homology"])
+        assert any("2 annotation rows grouped into 1 copy" in n for n in seen["notes"])

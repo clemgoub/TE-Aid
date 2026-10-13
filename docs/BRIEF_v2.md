@@ -113,8 +113,18 @@ divergence as zero** — leave the point out and say so in the axis label.
         what the dot-plot says  |  what annotation says
 ```
 
-1. Genomic hits vs divergence (from the annotation / seed / blastn).
-2. Consensus coverage pileup — copies **spanning** each position.
+1. Genomic hits vs divergence (from the annotation / seed / blastn). One line
+   per **copy**, not per annotation row (decided 2026-09-24): rows sharing an
+   ID are one insertion, drawn as the consensus blocks its rows align to at one
+   length-weighted divergence. Each join between rows carries a glyph: `]··[`
+   around consensus the copy lacks (a deletion), `|` where the genome carries
+   sequence the consensus lacks (an insertion, usually a nested element).
+   Zoomed in, the glyphs read their sizes (`]··658 bp··[`, `[1,045 bp]`).
+2. Consensus coverage pileup — copies **spanning** each position. A copy counts
+   once per base its rows align to and **not across the gap between rows**,
+   since panel 1 draws that gap; full length likewise tests the union of the
+   rows, not their span. Deletions *inside* one row remain invisible here, so
+   the panel-2 vs panel-6 difference below still means what it says.
 3. Self dot-plot (see §5.2), at a **true 1:1 data aspect** — both axes are
    consensus base pairs, and the square is what makes an off-diagonal repeat
    read as parallel to the main diagonal.
@@ -484,11 +494,10 @@ everything already measured.
 - **A pre-registered pass/fail rule, written before the numbers exist**, plus
   where the verdict is recorded (here, in §5.1a, or both).
 
-**Two invocation traps.** `--proteins FILE` constructs `Library(repeatpeps=None)`
-and so **silently disables tier 3** — an arm meant to include it must not use
-that flag. And no CLI flag exposes `homology.search(frameshift_aware=…)` or
-`cpus`, so the `--fs` on/off comparison and any threading have to drive the
-Python API directly, not the CLI.
+**One invocation trap.** No CLI flag exposes `homology.search(frameshift_aware=…)`
+or `cpus`, so the `--fs` on/off comparison and any threading have to drive the
+Python API directly, not the CLI. (A second trap, `--proteins FILE` silently
+disabling tier 3, was fixed on 2026-09-24.)
 
 **One cost is already measured:** ~10 s per family for `bathsearch` against the
 233 MB tier-1+2 library, dominated by loading the models rather than by the
@@ -526,23 +535,23 @@ This section is status and direction only.
   but a row whose hits share one sub-lane still lists several names against a
   single y — so the ordering is right while a strict one-name-to-one-bar mapping
   is not. Direct-labelling each bar, or leader lines, would close it.
-- **Cosmetic, one red means two things.** `report.STATUS_BELOW_FLOOR` (the Dfam
-  floor warning, panel 6) is the same `#d03b3b` as `theme.orf_reverse` (v1's
-  reverse-strand ORF outline, panel 5). On a `--seed-qc` sheet both are visible.
-  They never share a panel and both are labelled, so nothing is unreadable — but
-  a reserved status colour that is also a routine data colour is a smell. Either
-  move the status red, or accept it and delete the "reserved" framing.
+- **Closed 2026-09-24: one red, two meanings.** `report.STATUS_BELOW_FLOOR` (the
+  Dfam floor, panel 6) shares `#d03b3b` with `theme.orf_reverse` (v1's
+  reverse-strand ORF outline, panel 5) in the light theme only; the dark theme
+  draws reverse ORFs in `#e8756a`. The two never share a panel and both are
+  labelled, so we left the colours as they are and dropped the "reserved
+  colour" framing from the comment in `report.py`.
 - **Judgement call, panel 5 colour.** `RVT_1` and other order-agnostic domains
   render Unknown grey, because a bare reverse transcriptase is shared by every
   Class I order and colouring it LTR would assert what the hit cannot support.
   It does make the most important domains look uninformative. The alternative
   is to let such a domain inherit the colour when every element-level hit on the
   sheet agrees. Undecided.
-- **Panel 1 does not yet use `Annotation.fragment_groups()`.** BED16 column 16
-  (and the `.out` `ID` column) groups fragments of one interrupted insertion;
-  counting them separately inflates copy number, which is the specific failure
-  that motivates v2. The grouping is implemented and tested; panel 1 still
-  counts rows.
+- **Closed 2026-09-24: panels 1–2 count copies, not rows.** The `.out` reader
+  never read its ID column, so grouping was inert on the main route as well as
+  unused. Both are fixed (`records.Insertion`); on the 50 example families the
+  copy count moves by up to half (`ltr-1_family-22`: 57 rows, 30 copies). See
+  §4 panels 1–2 and `docs/INTEGRATION.md` §4.
 - **Panel 7** (consensus vs contributing library entries) needs the source
   entries, which only a seed *producer* has. Design the hook generically — a
   FASTA of candidate source entries — rather than around any one pipeline.

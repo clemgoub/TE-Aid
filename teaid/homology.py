@@ -27,6 +27,18 @@ _TBL_FIELDS = (
     "hmm_from", "hmm_to", "seq_len", "ali_from", "ali_to", "evalue",
     "score", "bias", "pid", "shifts", "stops", "description",
 )
+# Without --fs, bathsearch leaves both of those columns out, so a table written
+# that way needs its own layout; reading it with the one above turns the first
+# words of the description into 'shifts' and 'stops' and every row fails.
+_TBL_FIELDS_NO_FS = tuple(f for f in _TBL_FIELDS if f not in ("shifts", "stops"))
+
+
+def _tblout_layout(text: str) -> tuple[str, ...]:
+    """The column layout a --tblout table declares in its own header line."""
+    for line in text.splitlines():
+        if line.startswith("#") and "target name" in line:
+            return _TBL_FIELDS if "shifts" in line.split() else _TBL_FIELDS_NO_FS
+    return _TBL_FIELDS
 
 
 class BathNotFound(RuntimeError):
@@ -136,18 +148,29 @@ def search(
 
 
 def _parse_tblout(text: str) -> list[ProteinHit]:
+    """Hits from a bathsearch --tblout table, in either column layout.
+
+    A table written without --fs has no 'shifts' or 'stops' columns. Its hits get
+    frameshifts=0 (the alignment cannot contain one in that mode) and
+    stop_codons=0, which in that mode means only that BATH reported none.
+
+    Raises RuntimeError when rows long enough to parse all fail to, rather
+    than returning no hits: an empty list is what a clean search with nothing
+    to find returns, and a changed layout must not look like that.
+    """
+    layout = _tblout_layout(text)
     hits: list[ProteinHit] = []
+    unreadable = 0
     for line in text.splitlines():
         if not line.strip() or line.startswith("#"):
             continue
         # The final column is a free-text description that may contain spaces,
         # so it takes the remainder. Splitting one field short instead makes the
-        # last numeric column swallow it, and every row is then dropped by the
-        # parse guard below -- silently, since a bad row is meant to be skipped.
-        fields = line.split(None, len(_TBL_FIELDS) - 1)
-        if len(fields) < len(_TBL_FIELDS) - 1:
+        # last numeric column swallow it, and every row then fails the parse.
+        fields = line.split(None, len(layout) - 1)
+        if len(fields) < len(layout) - 1:
             continue
-        row = dict(zip(_TBL_FIELDS, fields))
+        row = dict(zip(layout, fields))
         try:
             ali_from, ali_to = int(row["ali_from"]), int(row["ali_to"])
             # bathsearch reports a reverse-strand hit with descending
@@ -167,12 +190,17 @@ def _parse_tblout(text: str) -> list[ProteinHit]:
                     hmm_from=int(row["hmm_from"]),
                     hmm_to=int(row["hmm_to"]),
                     hmm_len=int(row["hmm_len"]),
-                    frameshifts=int(row["shifts"]),
-                    stop_codons=int(row["stops"]),
+                    frameshifts=int(row.get("shifts", 0)),
+                    stop_codons=int(row.get("stops", 0)),
                 )
             )
         except (ValueError, KeyError):
-            continue
+            unreadable += 1
+    if unreadable and not hits:
+        raise RuntimeError(
+            f"could not read any of {unreadable} bathsearch --tblout rows; "
+            "the column layout may have changed"
+        )
     hits.sort(key=lambda h: h.evalue)
     return hits
 

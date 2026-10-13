@@ -58,8 +58,22 @@ def fail(code: int, message: str, hint: str | None = None) -> int:
     return code
 
 
+class _Parser(argparse.ArgumentParser):
+    """argparse, with its errors reported in the fail-soft form.
+
+    Stock argparse prints ``teaid: error: ...`` with no slug, so a batch caller
+    could not tell a mistyped flag from a crash. With this override every error
+    TE-Aid diagnoses carries a slug, and only an uncaught exception (exit 1)
+    has none. The exit code stays 2 and argparse still raises SystemExit.
+    """
+
+    def error(self, message: str):
+        self.print_usage(sys.stderr)
+        self.exit(EXIT_USAGE, f"teaid: error [{_SLUG[EXIT_USAGE]}]: {message}\n")
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         prog="teaid",
         description=(
             "Build an evidence sheet for one TE family, to support manual curation. "
@@ -147,7 +161,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.9,
         metavar="FRAC",
-        help="fraction of the consensus a copy must span to count as full length (default 0.9)",
+        help="fraction of the consensus a copy must cover to count as full length (default 0.9)",
+    )
+    tuning.add_argument(
+        "--no-group-fragments",
+        action="store_true",
+        help="count every annotation row as a copy, instead of joining the rows "
+             "that share an ID (RepeatMasker ID, BED16 column 16) into one insertion",
     )
     tuning.add_argument(
         "--word-size",
@@ -188,7 +208,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     homology_group.add_argument(
         "--proteins", metavar="FILE",
-        help="a prebuilt BATH pHMM library to search, instead of building one",
+        help="a prebuilt BATH pHMM library to search instead of building tiers 1-2; "
+             "tier 3 (blastp vs RepeatPeps) still runs",
     )
     homology_group.add_argument(
         "--repeatpeps", metavar="FILE",
@@ -213,19 +234,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _protein_homology(args, consensus, found_orfs, notes) -> tuple[list, str | None, list]:
+def _protein_homology(args, consensus, found_orfs, notes, sources) -> tuple[list, list]:
     """Protein hits for panel 5, degrading to an empty row rather than failing.
 
     A missing BATH install or an unbuildable library costs the sheet one panel;
     it must not cost it the whole run, since the other four panels are
-    independent of it.
+    independent of it. Returns (hits kept for drawing, every hit found), and
+    appends to ``notes`` and ``sources`` so the sheet says which library was
+    searched and, when tier 3 did not run, why.
     """
     from pathlib import Path as _Path
 
     try:
         if args.proteins:
-            library = proteins.Library(hmm=_Path(args.proteins), repeatpeps=None,
-                                       tiers=("prebuilt",))
+            # A prebuilt pHMM library replaces tiers 1-2 only. Tier 3 still
+            # follows --repeatpeps and the usual discovery, as in any other run.
+            library = proteins.Library(
+                hmm=_Path(args.proteins),
+                repeatpeps=proteins.find_repeatpeps(args.repeatpeps),
+                tiers=(f"prebuilt {_Path(args.proteins).name}",),
+            )
         else:
             library = proteins.build(
                 deep=args.deep,
@@ -235,7 +263,8 @@ def _protein_homology(args, consensus, found_orfs, notes) -> tuple[list, str | N
             )
     except proteins.LibraryError as exc:
         print(f"teaid: warning: protein row skipped: {exc}", file=sys.stderr)
-        return [], f"protein row skipped: {exc}", []
+        notes.append(f"protein row skipped: {exc}")
+        return [], []
 
     try:
         hits = homology.search(
@@ -246,21 +275,47 @@ def _protein_homology(args, consensus, found_orfs, notes) -> tuple[list, str | N
         )
     except (homology.BathNotFound, RuntimeError) as exc:
         print(f"teaid: warning: protein row skipped: {exc}", file=sys.stderr)
-        return [], f"protein row skipped: {exc}", []
+        notes.append(f"protein row skipped: {exc}")
+        return [], []
+    sources.append(f"proteins <b>{', '.join(library.tiers)}</b> (bathsearch)")
 
     # Tier 3: named-element evidence from RepeatPeps, via the ORF peptides.
     # Answers a different question from tiers 1-2 -- which named element this
     # resembles, rather than which domain it encodes -- and costs 17 MB.
-    if library.repeatpeps is not None and not args.no_orfs and not args.deep:
+    if args.deep:
+        notes.append("tier 3 (blastp vs RepeatPeps) off: --deep already searches "
+                     "all of RepeatPeps")
+    elif args.no_orfs:
+        notes.append("tier 3 (blastp vs RepeatPeps) off: it searches the ORF "
+                     "peptides, and --no-orfs turned those off")
+    elif library.repeatpeps is None:
+        notes.append("tier 3 (blastp vs RepeatPeps) off: RepeatPeps.lib not found")
+    else:
         hits += homology.search_repeatpeps(found_orfs, library.repeatpeps)
+        sources.append(f"<b>{library.repeatpeps.name}</b> (blastp)")
 
     kept = homology.best_per_region(hits)
     dropped = len(hits) - len(kept)
-    note = None
     if dropped:
-        note = (f"{dropped} competing protein hit{'s' if dropped != 1 else ''} collapsed "
-                f"— all {len(hits)} are listed under the sheet")
-    return kept, note, hits
+        notes.append(f"{dropped} competing protein hit{'s' if dropped != 1 else ''} "
+                     f"collapsed — all {len(hits)} are listed under the sheet")
+    return kept, hits
+
+
+def _grouping_note(rows: Annotation, insertions: list, disabled: bool) -> str | None:
+    """Say on the sheet how rows became copies, so the count can be checked.
+
+    Naming the largest group matters: a producer that writes one constant into
+    the ID column would otherwise collapse a family to a single 'copy' silently.
+    """
+    if disabled:
+        return f"fragment grouping off: each of {len(rows):,} annotation rows counted as a copy"
+    if len(insertions) == len(rows):
+        return None
+    largest = max(i.n_fragments for i in insertions)
+    return (f"{len(rows):,} annotation rows grouped into "
+            f"{report._count(len(insertions), 'copy', 'copies')} by their shared ID "
+            f"(largest: {largest} rows)")
 
 
 def _seed_qc_fields(seed, enabled: bool) -> dict:
@@ -279,7 +334,8 @@ def _seed_qc_fields(seed, enabled: bool) -> dict:
         # The same positions counted the way panel 2 counts them, so panel 6 can
         # show both and make the difference between 'spans' and 'has a base'
         # visible rather than leaving it to be inferred across two panels.
-        "seed_span": analysis.coverage(seed.to_annotation(), len(depth)),
+        # Seed sequences carry no hit_id, so grouping leaves them one per row.
+        "seed_span": analysis.coverage(seed.to_annotation().insertions(), len(depth)),
         "seed_mismatches": np.asarray(seed.mismatches(), dtype=np.int64),
         "seed_blocks": seed.aligned_blocks(),
         "expected_class": seed.expected_class,
@@ -487,8 +543,9 @@ def main(argv: list[str] | None = None) -> int:
                 f"annotation <b>{Path(args.annot).name}</b> "
                 f"({genomic.source_format})"
             )
+            copies = len(genomic.insertions(group=not args.no_group_fragments))
             loaded.notes.append(
-                f"panels 1-2 show {len(genomic):,} annotated genomic copies; "
+                f"panels 1-2 show {copies:,} annotated genomic copies; "
                 f"the seed uses {len(loaded.annotation):,}"
             )
 
@@ -502,8 +559,13 @@ def main(argv: list[str] | None = None) -> int:
     # alongside a seed that is every annotated copy; otherwise it is whatever
     # the single source gave us.
     shown = loaded.genomic if loaded.genomic is not None else subset
-    coverage = analysis.coverage(shown, consensus_length)
-    full = analysis.full_length(shown, consensus_length, args.full_length_threshold)
+    # The one place the grouping is decided; everything downstream takes these.
+    insertions = shown.insertions(group=not args.no_group_fragments)
+    grouping = _grouping_note(shown, insertions, args.no_group_fragments)
+    if grouping:
+        notes.append(grouping)
+    coverage = analysis.coverage(insertions, consensus_length)
+    full = analysis.full_length(insertions, consensus_length, args.full_length_threshold)
 
     self_hits = []
     terminal: dict[str, list] = {}
@@ -537,18 +599,16 @@ def main(argv: list[str] | None = None) -> int:
     all_hits: list = []
     class_check = None
     if not args.no_homology:
-        protein_hits, note, all_hits = _protein_homology(
-            args, consensus, found_orfs, notes
+        protein_hits, all_hits = _protein_homology(
+            args, consensus, found_orfs, notes, loaded.sources
         )
-        if note:
-            notes.append(note)
         if protein_hits and seed is not None and args.seed_qc:
             class_check = classcheck.check(seed.expected_class, protein_hits)
 
     data = report.SheetData(
         family=consensus.bare_name,
         consensus_length=consensus_length,
-        copies=list(shown),
+        insertions=insertions,
         full_length=full,
         coverage=coverage,
         self_hits=self_hits,
@@ -587,9 +647,10 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
 
+    rows = f" ({len(shown):,} annotation rows)" if len(shown) != len(insertions) else ""
     summary = (
-        f"{consensus.bare_name}: {len(shown):,} copies, {len(full):,} full length, "
-        f"consensus {consensus_length:,} bp"
+        f"{consensus.bare_name}: {report._count(len(insertions), 'copy', 'copies')}{rows}, "
+        f"{len(full):,} full length, consensus {consensus_length:,} bp"
     )
     if terminal.get("LTR") or terminal.get("TIR"):
         summary += (
