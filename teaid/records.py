@@ -31,7 +31,8 @@ class DivergenceKind(str, Enum):
     - :attr:`CONSENSUS` — divergence from a library consensus. A proxy for the
       age of the insertion; this is the one panel 1 is designed around.
     - :attr:`ARRAY_HOMOGENEITY` — how uniform a tandem array is. Says nothing
-      about age; a young satellite can be wildly heterogeneous.
+      about age; a young satellite can be wildly heterogeneous. No reader infers
+      it; a BED16 caller sets it with ``--divergence-kind``.
     - :attr:`BLASTN_IDENTITY` — ``100 - pident`` of one blastn HSP, from the
       genome route. An identity over one local alignment whose length counts
       gaps, where RepeatMasker reports substitutions against the consensus and

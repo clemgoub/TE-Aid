@@ -184,15 +184,16 @@ Emit the 4-part form if you have an assembly accession. The 2-part form is what
 RepeatModeler writes and what all 482 GenomeArk seed sets use, so a reader that
 handles only the documented 4-part form reads none of them.
 
-**Divergence is not one quantity.** Every record carries a `divergence_kind` of
-`consensus`, `array_homogeneity`, `blastn_identity` or `none`, because
-`perc_div` means divergence from a library consensus for homology tools but
-*array homogeneity* for tandem-repeat finders, and nothing at all for pure
-detectors; the genome route's `blastn_identity` is a fourth quantity again. **Absent
-divergence is never plotted as zero** — a zero there reads as a pristine, very
-recent insertion, the opposite of "unknown". BED16 does not record which kind it
-holds, so it is inferred from the class label; override with
-`--divergence-kind`.
+**Divergence is read as divergence from the consensus.** Every record carries a
+`divergence_kind`: `consensus` for `.out`, BED16, GFF3 and seed rows that report
+one, `blastn_identity` on the genome route, and `none` where the producer reports
+nothing. **Absent divergence is never plotted as zero**, since a zero there reads
+as a pristine, very recent insertion, the opposite of "unknown". BED16 does not
+record which quantity it holds, and TE-Aid reads it as divergence from the
+consensus whatever the class label. A file whose producer reports something else,
+such as a tandem-repeat finder's array homogeneity, needs
+`--divergence-kind array_homogeneity`; tandem arrays are the VGP pipeline's
+concern rather than TE-Aid's (decided 2026-10-13).
 
 `--divergence-kind` **applies to BED16 only**. `.out` and GFF3 state their own
 kind, so the flag is silently discarded for them (`readers/__init__.py`) with no

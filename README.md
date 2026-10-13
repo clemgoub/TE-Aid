@@ -254,14 +254,14 @@ sheet grouped by TE class. The run exits 8 if any family failed.
 
 ### A note on divergence
 
-`perc_div` does not mean the same thing in every file. For homology-based tools
-it is divergence from a library consensus (a proxy for the age of an insertion);
-for tandem-repeat finders it is array homogeneity; some tools report nothing at
-all. TE-Aid tracks which of the three it has, labels the axis accordingly, and
-**never plots an absent divergence as zero** — a zero there would read as a
-pristine, very recent insertion. Copies with no divergence are left out of panel
-1 and counted in the axis label. Use `--divergence-kind` when you know what
-produced the file.
+TE-Aid reads `perc_div` as divergence from the consensus in every input it
+takes: a RepeatMasker `.out`, BED16, GFF3 or a Dfam seed. On the genome route
+the axis says it is a blastn identity instead. Some files report no divergence
+at all, and TE-Aid **never plots an absent divergence as zero**, since a zero
+there would read as a pristine, very recent insertion. Copies with no divergence
+are left out of panel 1 and counted in the axis label. For a BED16 file whose
+producer reports something else, such as a tandem caller's array homogeneity,
+`--divergence-kind` says so for the whole file.
 
 ### Exit codes
 
