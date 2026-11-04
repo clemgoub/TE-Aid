@@ -37,7 +37,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from . import annotation_rows, classcheck, tetypes
+from . import annotation_rows, classcheck, homology, tetypes
 from .analysis import SelfHit
 from .orfs import ORF
 from .records import Annotation, DivergenceKind, Insertion, JunctionKind
@@ -1080,22 +1080,23 @@ def homology_lanes(hits: list, limit: int = MAX_HOMOLOGY_LANES) -> list:
 
     Slicing the position-ordered list instead keeps the leftmost hits and drops
     the strongest, while the note claims the opposite. Strength is ranked within
-    a source, since a blastp bitscore and a profile-HMM bit score are not
-    comparable, and taken round-robin so one source cannot crowd out the other.
+    each ``homology.ranking_group``, since a blastp bitscore and a profile-HMM
+    bit score are not comparable, and taken round-robin so one group cannot
+    crowd out the other.
     """
     if len(hits) <= limit:
         return list(hits)
 
-    by_source: dict[str, list] = {}
+    by_group: dict[str, list] = {}
     for hit in hits:
-        by_source.setdefault(getattr(hit, "source", "pfam"), []).append(hit)
-    for group in by_source.values():
+        by_group.setdefault(homology.ranking_group(hit), []).append(hit)
+    for group in by_group.values():
         group.sort(key=lambda h: (h.evalue, -h.score))
 
     shown: list = []
     index = 0
-    while len(shown) < limit and any(index < len(g) for g in by_source.values()):
-        for group in by_source.values():
+    while len(shown) < limit and any(index < len(g) for g in by_group.values()):
+        for group in by_group.values():
             if index < len(group):
                 shown.append(group[index])
                 if len(shown) == limit:

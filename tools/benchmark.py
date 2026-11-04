@@ -243,7 +243,7 @@ def _search_batched(arm, families, library, cpus):
         if arm != "nofs":
             command.append("--fs")
         subprocess.run(command + [str(library.hmm), str(query)], check=True, capture_output=True)
-        found = homology._parse_tblout(table.read_text())
+        found = homology.label_tiers(homology._parse_tblout(table.read_text()), library)
     seconds = (time.perf_counter() - t0) / len(families)
     by_target = rescale(found, lengths)
     for name, label, _ in families:
@@ -603,7 +603,8 @@ def cli_hits(name: str, label: str, seq: str) -> set[tuple[str, int, int]]:
         lines = tables[0].read_text().splitlines()
     head = lines[0].split("\t")
     rows = [dict(zip(head, l.split("\t"))) for l in lines[1:]]
-    return {(r["name"], int(r["start"]) - 1, int(r["end"])) for r in rows if r["source"] == "pfam"}
+    return {(r["name"], int(r["start"]) - 1, int(r["end"])) for r in rows
+            if r["source"] != "repeatpeps-blastp"}
 
 
 def cmd_verify(args) -> int:

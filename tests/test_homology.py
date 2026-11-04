@@ -500,6 +500,58 @@ class TestCrossTierCompetition:
         early = hit(query="early", start=10, end=200, source="repeatpeps-blastp")
         assert [h.query for h in homology.best_per_region([late, early])] == ["early", "late"]
 
+    def test_tiers_one_and_two_compete(self):
+        """Tier-1 and tier-2 hits both have profile-HMM bit scores from one
+        bathsearch, so best_per_region ranks them against each other, as it did
+        before tier 2 had its own label."""
+        domain = hit(query="RVT_1", start=0, end=600, score=40.0, source="pfam")
+        element = hit(query="Polinton-9_NVi_polb#DNA/Maverick", query_accession="-",
+                      start=50, end=560, score=200.0, source="repeatpeps-gaps")
+        kept = homology.best_per_region([domain, element])
+        assert [h.source for h in kept] == ["repeatpeps-gaps"]
+
+
+class TestTierLabels:
+    """The hit table's tier column. search() used to label every tier-2 hit
+    'pfam', because it left each bathsearch hit with the dataclass default."""
+
+    @staticmethod
+    def _pair():
+        return [hit(query="RVT_1", query_accession="PF00078.33"),
+                hit(query="Polinton-9_NVi_polb#DNA/Maverick", query_accession="-")]
+
+    def test_default_library(self):
+        library = proteins.Library(hmm=None, repeatpeps=None,
+                                   tiers=("pfam:130", "repeatpeps-gaps"))
+        hits = homology.label_tiers(self._pair(), library)
+        assert [h.source for h in hits] == ["pfam", "repeatpeps-gaps"]
+
+    def test_deep_library(self):
+        library = proteins.Library(hmm=None, repeatpeps=None, tiers=("deep:RepeatPeps",))
+        hits = homology.label_tiers(self._pair(), library)
+        assert [h.source for h in hits] == ["pfam", "repeatpeps-deep"]
+
+    def test_a_prebuilt_library_does_not_claim_repeatpeps(self):
+        library = proteins.Library(hmm=None, repeatpeps=None, tiers=("prebuilt mine.bhmm",))
+        hits = homology.label_tiers(self._pair(), library)
+        assert [h.source for h in hits] == ["pfam", "prebuilt"]
+
+    def test_search_labels_its_hits(self, tmp_path, monkeypatch):
+        rows = TBLOUT.replace("RVT_1                PF00078.33",
+                              "Polinton-9_NVi_polb  -         ", 1)
+
+        def fake_run(command, **_):
+            Path(command[command.index("--tblout") + 1]).write_text(rows)
+            return type("Done", (), {"returncode": 0, "stderr": ""})()
+
+        monkeypatch.setattr(homology.shutil, "which", lambda _: "/bin/bathsearch")
+        monkeypatch.setattr(homology.subprocess, "run", fake_run)
+        library = proteins.Library(hmm=tmp_path / "x.bhmm", repeatpeps=None,
+                                   tiers=("pfam:130", "repeatpeps-gaps"))
+        hits = homology.search("ACGT", library, "ltr-1_family-26")
+        assert {(h.query, h.source) for h in hits} == {
+            ("Polinton-9_NVi_polb", "repeatpeps-gaps"), ("RVT_1", "pfam")}
+
 
 class TestRepeatPepsDatabaseIsBuiltOnce:
     def test_the_second_family_reuses_the_database(self, tmp_path, monkeypatch):
