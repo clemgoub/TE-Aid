@@ -711,8 +711,26 @@ class TestInsertionsOnTheSheet:
         names = [t.name for t in fig.data if t.name]
         assert "insertion in the copy (n=1)" in names
         assert "consensus missing from the copy (n=1)" in names
-        brackets = [t for t in fig.data if t.mode == "text" and list(t.text or []) == ["]", "["]]
-        assert brackets, "the deletion keeps its ]··[ brackets"
+        gap = [t for t in fig.data if t.name and t.name.startswith("consensus missing")][0]
+        assert gap.line.dash == "dash"
+        assert gap.line.color == theme.LIGHT.base, "a partial copy's gap is in its own colour"
+        assert not [t for t in fig.data if t.mode == "text" and "]" in list(t.text or [])]
+
+    def test_a_full_length_copy_has_a_gap_in_its_own_colour(self):
+        data = fragmented_data()
+        data = make_data(insertions=data.insertions, full_length=list(data.insertions))
+        fig = report.build_figure(data, theme.LIGHT)
+        gaps = [t for t in fig.data if t.legendgroup == "missing" and t.mode == "lines"]
+        assert [g.line.color for g in gaps] == [theme.LIGHT.highlight]
+        assert [g.showlegend for g in gaps] == [True]
+
+    def test_panel_1_lines_carry_their_resting_width(self):
+        fig = report.build_figure(fragmented_data(), theme.LIGHT)
+        lines = [t for t in fig.data if t.meta and t.meta.get("teaidWidth")]
+        assert sorted(t.meta["teaidWidth"] for t in lines) == [report.COPY_WIDTH] * 2
+        for trace in lines:
+            assert trace.line.width == trace.meta["teaidWidth"]
+        assert "line.width" in report._HTML_TEMPLATE and "teaidWidth" in report._HTML_TEMPLATE
 
     def test_a_gap_that_is_not_a_deletion_is_still_drawn(self):
         """A join that skips 40 bp of consensus but carries 1,000 bp of extra
@@ -730,6 +748,9 @@ class TestInsertionsOnTheSheet:
         gap = [t for t in fig.data if t.name and t.name.startswith("consensus missing")][0]
         assert list(gap.x[:2]) == [300, 340]
         assert "insertion in the copy (n=1)" in [t.name for t in fig.data if t.name]
+        labels = [t for t in fig.data if t.meta and t.meta.get("teaidJunction")
+                  and list(t.meta["near"]) == ["40 bp"]]
+        assert labels, "the 40 bp gap is labelled with the consensus it spans"
 
     def test_junction_sizes_wait_for_a_zoom(self):
         fig = report.build_figure(fragmented_data(), theme.LIGHT)

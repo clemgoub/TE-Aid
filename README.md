@@ -58,8 +58,9 @@ implies (ORFs with their protein domains inlaid).
 
 Copies are counted as insertions, not annotation rows: rows that share an ID
 (RepeatMasker `ID`, BED16 column 16) are one copy, and panel 1 marks where each
-was split, with `]··[` for consensus the copy lacks and `|` for sequence the
-genome carries that the consensus does not. `--no-group-fragments` counts rows.
+was split, with a dashed stretch for consensus the copy lacks and `|` for
+sequence the genome carries that the consensus does not. Zoom in on panel 1:
+the lines thicken, and each gap and insertion shows its length. `--no-group-fragments` counts rows.
 
 ORFs keep v1's strand convention — black outline forward, red reverse — and
 protein domains keep **v1's TE-class colours**: green LTR, blue LINE, salmon DNA
