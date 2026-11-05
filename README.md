@@ -60,7 +60,9 @@ Copies are counted as insertions, not annotation rows: rows that share an ID
 (RepeatMasker `ID`, BED16 column 16) are one copy, and panel 1 marks where each
 was split, with a dashed grey stretch for consensus the copy lacks and a tick for
 sequence the genome carries that the consensus does not. Hover either for its
-length. The lines thicken as you zoom in on panel 1. `--no-group-fragments` counts rows.
+length. The lines thicken as you zoom in on panel 1, and zoomed in to a quarter
+of the consensus or closer each tick carries its insertion's size.
+`--no-group-fragments` counts rows. Each panel's legend sits under that panel.
 
 ORFs keep v1's strand convention — black outline forward, red reverse — and
 protein domains keep **v1's TE-class colours**: green LTR, blue LINE, salmon DNA

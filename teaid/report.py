@@ -72,7 +72,10 @@ X_PAD_FRACTION = 0.025
 # quadrant itself is square, so the figure is sized to make it so — the same
 # reason v1 used a 12x12 inch page with a 2x2 grid of 6x6 inch panels.
 _MARGIN_L, _MARGIN_R, _MARGIN_T, _MARGIN_B = 68, 26, 96, 128
-_H_SPACING, _V_SPACING = 0.10, 0.085
+# The band between two rows of panels holds, top to bottom, the upper panel's
+# tick labels and axis title (40 px), two rows of its legend (see
+# _place_legends) and the lower panel's title (17 px): 115 px at this spacing.
+_H_SPACING, _V_SPACING = 0.10, 0.105
 
 SHEET_WIDTH = 1180
 _PLOT_WIDTH = SHEET_WIDTH - _MARGIN_L - _MARGIN_R
@@ -86,13 +89,21 @@ def sheet_height(cell_rows: float = 2) -> int:
 
 SHEET_HEIGHT = sheet_height(2)
 
-# Distance below the plotting area, in pixels, for the legend and the notes
-# line. Both must stay inside the bottom margin.
-_LEGEND_OFFSET_PX = 62
-_NOTE_OFFSET_PX = 104
-# Height of one wrapped legend row; the notes line is pushed down by this much
-# per extra row so a long legend cannot land on top of it.
+# Distance below a panel's axis line, in pixels, at which its legend starts:
+# under the tick labels and the axis title, or close under the axis line on a
+# panel that shows neither (panel 4 above panel 5).
+_LEGEND_OFFSET_PX = 46
+_LEGEND_OFFSET_BARE_PX = 8
+# Pitch of the legend rows under one panel: a 19 px entry and a 3 px gap.
 _LEGEND_ROW_PX = 22
+# Average glyph width of an 11px legend entry, and the swatch and padding
+# around it, for packing a panel's entries into rows no wider than the panel.
+_LEGEND_CHAR_PX = 5.8
+_LEGEND_ENTRY_PAD_PX = 44
+# Distance below the plotting area, in pixels, for the notes line when the
+# deepest bottom-row legend is one row; a deeper one pushes it down by the
+# difference. The notes line must stay inside the bottom margin.
+_NOTE_OFFSET_PX = 86
 # Average glyph width of the 10px notes line, and the height of each line it
 # wraps onto.
 _NOTE_CHAR_PX = 5.6
@@ -104,20 +115,83 @@ _TITLE_CHAR_PX = 6.6
 _HELP_GAP_PX = 7
 
 
-def _legend_rows(fig: go.Figure) -> int:
-    """How many rows the horizontal legend will wrap onto.
+def _legend_rows(entries: list, width_px: float) -> list[list]:
+    """Pack legend entries, in order, into rows no wider than ``width_px``.
 
-    Plotly wraps a horizontal legend silently, and the extra row lands on top of
-    the notes line beneath it. Estimating the wrap from the labels' own width is
-    cheaper and more reliable than reserving space for a worst case that usually
-    is not there.
+    An entry counts as ``_LEGEND_CHAR_PX`` per character of its name plus
+    ``_LEGEND_ENTRY_PAD_PX``. Plotly wraps a horizontal legend at the full
+    plot width, twice a panel's, so the rows are packed here.
     """
-    labels = [t.name for t in fig.data if t.name and t.showlegend is not False]
-    if not labels:
-        return 0
-    # ~6.2px per character at 11px, plus the swatch and padding per entry.
-    width = sum(len(label) * 6.2 + 46 for label in labels)
-    return max(1, int(width / _PLOT_WIDTH) + 1)
+    rows: list[list] = []
+    row: list = []
+    used = 0.0
+    for trace in entries:
+        need = len(trace.name) * _LEGEND_CHAR_PX + _LEGEND_ENTRY_PAD_PX
+        if row and used + need > width_px:
+            rows.append(row)
+            row, used = [], 0.0
+        row.append(trace)
+        used += need
+    if row:
+        rows.append(row)
+    return rows
+
+
+def _place_legends(fig: go.Figure, theme: Theme, cell_rows: float) -> float:
+    """Give each panel its own legend, centred under it.
+
+    Plotly draws one legend unless a trace names another, and wraps a
+    horizontal legend at the full plot width. The one legend under the grid
+    mixed every panel's entries, and a legend under one panel would wrap
+    across its neighbour's column. So this packs each panel's entries into
+    rows no wider than the panel and makes each row a legend of its own
+    ('legend', 'legend2', ...), anchored below the panel's axis title. A trace
+    that shares a legend group with an entry goes in that entry's legend, so a
+    click still toggles the group.
+
+    Returns how far below the plotting area the deepest legend reaches, in
+    pixels. The notes line must clear it.
+    """
+    plot_height = _plot_height(cell_rows)
+    panels: dict[tuple[str, str], list] = {}
+    for trace in fig.data:
+        if trace.name and trace.showlegend is not False:
+            panels.setdefault((trace.xaxis or "x", trace.yaxis or "y"), []).append(trace)
+
+    depth = 0.0
+    count = 0
+    for (xref, yref), entries in panels.items():
+        xaxis = fig.layout[xref.replace("x", "xaxis", 1)]
+        yaxis = fig.layout[yref.replace("y", "yaxis", 1)]
+        x0, x1 = xaxis.domain
+        bare = xaxis.showticklabels is False
+        offset = _LEGEND_OFFSET_BARE_PX if bare else _LEGEND_OFFSET_PX
+        rows = _legend_rows(entries, (x1 - x0) * _PLOT_WIDTH)
+        groups: dict[str, str] = {}
+        for index, row in enumerate(rows):
+            count += 1
+            legend_id = "legend" if count == 1 else f"legend{count}"
+            fig.update_layout({legend_id: dict(
+                orientation="h",
+                xanchor="center",
+                x=(x0 + x1) / 2,
+                yanchor="top",
+                # Offsets are pixels converted to a paper fraction, so they
+                # stay put as the sheet grows taller with optional blocks.
+                y=yaxis.domain[0] - (offset + index * _LEGEND_ROW_PX) / plot_height,
+                bgcolor="rgba(0,0,0,0)",
+                font=dict(color=theme.text_secondary, size=11),
+            )})
+            for trace in row:
+                trace.legend = legend_id
+                if trace.legendgroup:
+                    groups[trace.legendgroup] = legend_id
+        for trace in fig.data:
+            if ((trace.xaxis or "x", trace.yaxis or "y") == (xref, yref)
+                    and trace.legendgroup in groups):
+                trace.legend = groups[trace.legendgroup]
+        depth = max(depth, offset + len(rows) * _LEGEND_ROW_PX - yaxis.domain[0] * plot_height)
+    return depth
 
 
 def _note_lines(notes: list[str]) -> list[str]:
@@ -181,7 +255,9 @@ PANEL_HELP = {
         "Where a copy was split: a <b>dashed grey</b> stretch is consensus the copy "
         "<b>lacks</b> between its rows; a <b>tick</b> marks sequence the genome "
         "carries and the consensus does not (an insertion, often a nested element). "
-        "Hover either for its size. The lines thicken as you zoom in.<br><br>"
+        "Hover either for its size. The lines thicken as you zoom in, and zoomed "
+        "in to a quarter of the consensus or closer each tick carries its "
+        "insertion's size.<br><br>"
         "Copies whose source reports <b>no</b> divergence are left out entirely "
         "rather than drawn at zero — zero here would read as a pristine, very "
         "recent insertion, the opposite of 'unknown'. Any omitted are counted in "
@@ -511,6 +587,16 @@ def _panel_hits(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: in
 # The vertical tick that marks an insertion in panel 1, in pixels.
 INSERTION_TICK = 8
 
+# Zoom factor (full consensus span / visible span) from which the page script
+# prints each insertion's size above its tick. At rest the sizes are hover-only:
+# the y axis is divergence, so copies at close divergences share pixels and a
+# label printed at a join lands on its neighbours as often as on its own line
+# (seen on rnd-1_family-21, 19,597 copies, 2026-11-04). Zoomed in to a quarter
+# of the consensus the label sits above its tick rather than on the copy's
+# line; ticks that share a position still stack their labels (rnd-1_family-21
+# at 3,245 bp, 2026-11-05).
+INSERTION_LABEL_ZOOM = 4.0
+
 # Resting line widths in panel 1, in pixels. The page script multiplies them by
 # the square root of the zoom factor (full consensus span / visible span), up
 # to WIDTH_ZOOM_MAX pixels, so a junction gets room as the view closes in on it.
@@ -532,15 +618,15 @@ def _junction_glyphs(fig: go.Figure, insertions: list[Insertion], theme: Theme,
       its length, and the join's kind and net indel size.
     - An **insertion** (the genome carries sequence the consensus lacks,
       usually a nested element) uses no consensus, so the fragments abut. It is
-      a short vertical tick at the join; its size is in the hover.
+      a short vertical tick at the join, its size in the hover. Past
+      ``INSERTION_LABEL_ZOOM`` the page script also prints the size above the
+      tick, from a text trace that starts hidden.
 
     Flush joins are not drawn: they are a split in the alignment, not an indel.
-    The panel prints no size. The y axis is divergence, so copies at
-    close divergences share pixels, and a label printed at the join lands on
-    its neighbours as often as on its own line (seen on rnd-1_family-21,
-    19,597 copies, 2026-11-04).
+    A gap's length stays in the hover; the maintainer asked for printed sizes
+    on insertions only (2026-11-05).
     """
-    ins_x, ins_y, ins_hover = [], [], []
+    ins_x, ins_y, ins_hover, ins_label = [], [], [], []
     xs, ys, hovers = [], [], []
     n_gaps = 0
     for insertion in insertions:
@@ -568,6 +654,7 @@ def _junction_glyphs(fig: go.Figure, insertions: list[Insertion], theme: Theme,
                 ins_hover.append(f"{where}<br>insertion in the copy: {junction.size:,} bp "
                                  f"of genome not in the consensus, at "
                                  f"{junction.consensus_at:,}")
+                ins_label.append(f"{junction.size:,} bp")
 
     if xs:
         fig.add_trace(go.Scatter(
@@ -589,6 +676,15 @@ def _junction_glyphs(fig: go.Figure, insertions: list[Insertion], theme: Theme,
             marker=dict(symbol="line-ns-open", size=INSERTION_TICK, color=theme.text_primary,
                         line=dict(color=theme.text_primary, width=1.5)),
             hovertext=ins_hover, hovertemplate="%{hovertext}<extra></extra>",
+        ), row=row, col=col)
+        # The sizes, hidden until the view is zoomed in past INSERTION_LABEL_ZOOM
+        # (see write_html). A separate trace rather than 'markers+text' on the
+        # tick: Plotly's legend sample for a text mode is 'Aa'.
+        fig.add_trace(go.Scatter(
+            x=ins_x, y=ins_y, mode="text", text=ins_label, textposition="top center",
+            textfont=dict(size=10, color=theme.text_primary),
+            visible=False, showlegend=False, hoverinfo="skip",
+            meta={"teaidInsertionLabel": True},
         ), row=row, col=col)
 
 
@@ -1428,8 +1524,22 @@ def _layout(
     seed_row: int | None = None,
     cell_rows: int = 2,
 ) -> None:
-    # A wrapped legend needs the space it takes, or it lands on the notes line.
-    legend_extra = max(0, _legend_rows(fig) - 1) * _LEGEND_ROW_PX
+    # Panels 4 and 5 share one consensus x-axis so features line up vertically.
+    # This runs before _place_legends, which puts panel 4's legend close under
+    # the axis once it shows no tick labels.
+    if homology_row is not None:
+        structure_axis = fig.get_subplot(structure_row, 2)
+        fig.update_xaxes(
+            matches=structure_axis.xaxis.anchor.replace("y", "x"),
+            row=homology_row,
+            col=2,
+        )
+        fig.update_xaxes(title_text=None, showticklabels=False, row=structure_row, col=2)
+
+    # A legend deeper than one row under a bottom panel needs the space it
+    # takes, or it lands on the notes line.
+    legend_depth = _place_legends(fig, theme, cell_rows)
+    legend_extra = max(0.0, legend_depth - (_LEGEND_OFFSET_PX + _LEGEND_ROW_PX))
     notes = _note_lines(list(dict.fromkeys(data.notes)))
     # Each line the notes wrap onto below the first needs its room too.
     _extra_bottom = legend_extra + max(0, len(notes) - 1) * _NOTE_LINE_PX
@@ -1474,22 +1584,6 @@ def _layout(
         paper_bgcolor=theme.paper,
         plot_bgcolor=theme.surface,
         font=dict(family=FONT_FAMILY, color=theme.text_secondary, size=11),
-        # The legend sits below the grid, centred. In a 2x2 the top-right
-        # subplot title occupies the same band as a top-anchored legend, so
-        # anywhere at the top collides with it by construction.
-        legend=dict(
-            orientation="h",
-            yanchor="top",
-            # Offsets below the plot are expressed in pixels and converted, so
-            # they stay put as the sheet grows taller with optional blocks. A
-            # fixed paper fraction scales with plot height and pushes the note
-            # past the bottom margin on a tall sheet.
-            y=-_LEGEND_OFFSET_PX / _plot_height(cell_rows),
-            xanchor="center",
-            x=0.5,
-            bgcolor="rgba(0,0,0,0)",
-            font=dict(color=theme.text_secondary, size=11),
-        ),
         margin=dict(
             l=_MARGIN_L, r=_MARGIN_R, t=top_margin, b=_MARGIN_B + _extra_bottom
         ),
@@ -1540,16 +1634,6 @@ def _layout(
     # Plotly's default — makes the dot-plot silently wider than its neighbours
     # and destroys the alignment the grid exists for.
     fig.update_xaxes(range=span, constrain="domain", row=2, col=1)
-
-    # Panels 4 and 5 share one consensus x-axis so features line up vertically.
-    if homology_row is not None:
-        structure_axis = fig.get_subplot(structure_row, 2)
-        fig.update_xaxes(
-            matches=structure_axis.xaxis.anchor.replace("y", "x"),
-            row=homology_row,
-            col=2,
-        )
-        fig.update_xaxes(title_text=None, showticklabels=False, row=structure_row, col=2)
 
     # Anything the sheet chose not to draw is stated on the sheet. A silent
     # truncation reads as 'this is everything', which is the one thing an
@@ -1687,31 +1771,44 @@ _HTML_TEMPLATE = r"""<!doctype html>
 
   // Panel 1 line widths grow with the square root of the zoom factor from the
   // resting width in meta.teaidWidth, in half-pixel steps, up to WIDTH_MAX.
+  // Past LABEL_ZOOM it shows the insertion sizes (traces tagged
+  // meta.teaidInsertionLabel, hidden at rest) above their ticks.
   (function () {{
     var gd = document.getElementById({div_id!r});
     var FULL = {junction_full};
     var WIDTH_MAX = {width_max};
+    var LABEL_ZOOM = {label_zoom};
     if (!gd || !FULL) return;
     function attach() {{
       var step = 0;
+      var labels = false;
       var timer = null;
       function follow() {{
         timer = null;
         var axis = gd.layout.xaxis;
         if (!axis || !axis.range) return;
-        var span = axis.range[1] - axis.range[0];
-        var factor = Math.sqrt(Math.max(1, FULL / span));
-        var now = Math.round(factor * 2) / 2;
-        if (now === step) return;
-        step = now;
-        var widths = [], indices = [];
-        gd.data.forEach(function (trace, i) {{
-          if (trace.meta && trace.meta.teaidWidth) {{
-            widths.push(Math.min(WIDTH_MAX, trace.meta.teaidWidth * step));
-            indices.push(i);
-          }}
-        }});
-        if (indices.length) Plotly.restyle(gd, {{'line.width': widths}}, indices);
+        var zoom = Math.max(1, FULL / (axis.range[1] - axis.range[0]));
+        var now = Math.round(Math.sqrt(zoom) * 2) / 2;
+        if (now !== step) {{
+          step = now;
+          var widths = [], indices = [];
+          gd.data.forEach(function (trace, i) {{
+            if (trace.meta && trace.meta.teaidWidth) {{
+              widths.push(Math.min(WIDTH_MAX, trace.meta.teaidWidth * step));
+              indices.push(i);
+            }}
+          }});
+          if (indices.length) Plotly.restyle(gd, {{'line.width': widths}}, indices);
+        }}
+        var show = zoom >= LABEL_ZOOM;
+        if (show !== labels) {{
+          labels = show;
+          var tagged = [];
+          gd.data.forEach(function (trace, i) {{
+            if (trace.meta && trace.meta.teaidInsertionLabel) tagged.push(i);
+          }});
+          if (tagged.length) Plotly.restyle(gd, {{visible: show}}, tagged);
+        }}
       }}
       // A short timer, not requestAnimationFrame: a scroll-zoom fires a burst
       // of relayouts and only the last one needs a restyle, and the browser
@@ -1909,6 +2006,7 @@ def write_html(fig: go.Figure, path, data: SheetData, theme: Theme) -> None:
                 alarm=STATUS_BELOW_FLOOR,
                 junction_full=data.consensus_length,
                 width_max=WIDTH_ZOOM_MAX,
+                label_zoom=INSERTION_LABEL_ZOOM,
             )
         )
 
