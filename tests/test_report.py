@@ -749,14 +749,115 @@ class TestInsertionsOnTheSheet:
         assert list(gap.x[:2]) == [300, 340]
         assert "insertion in the copy (n=1)" in [t.name for t in fig.data if t.name]
 
-    def test_no_size_is_printed_on_the_panel(self):
-        """Sizes are hover-only: printed at a join they landed on neighbouring
-        copies as often as on their own (rnd-1_family-21, 2026-11-04)."""
+    def test_insertion_sizes_start_hidden_and_gap_lengths_stay_in_the_hover(self):
+        """At rest the sizes are hover-only: printed at a join they landed on
+        neighbouring copies as often as on their own (rnd-1_family-21,
+        2026-11-04). The page script shows the insertion sizes above their
+        ticks once the view is zoomed in past INSERTION_LABEL_ZOOM."""
         fig = report.build_figure(fragmented_data(), theme.LIGHT)
-        assert not [t for t in fig.data if t.mode == "text"]
         tick = [t for t in fig.data if t.name and t.name.startswith("insertion in the copy")][0]
         assert tick.mode == "markers" and tick.marker.symbol == "line-ns-open"
         assert list(tick.x) == [300]
+        labels = [t for t in fig.data if t.mode == "text"]
+        assert len(labels) == 1
+        label = labels[0]
+        assert list(label.text) == ["1,000 bp"] and list(label.x) == [300]
+        assert label.visible is False and label.textposition == "top center"
+        assert label.meta == {"teaidInsertionLabel": True}
+        assert "teaidInsertionLabel" in report._HTML_TEMPLATE
+        assert "LABEL_ZOOM" in report._HTML_TEMPLATE
+
+
+def _legend_of(fig, trace):
+    return fig.layout[trace.legend or "legend"]
+
+
+class TestLegendsSitUnderTheirPanels:
+    def _sheet(self):
+        data = fragmented_data(
+            terminal_repeats={"LTR": [SelfHit(100, 200, 800, 900, 98.0, 1e-30, 400.0)],
+                              "TIR": []},
+            homology=[hit()],
+        )
+        return report.build_figure(data, theme.LIGHT)
+
+    def test_each_panel_legend_is_centred_below_its_own_panel(self):
+        fig = self._sheet()
+        for trace in fig.data:
+            if not (trace.name and trace.showlegend is not False):
+                continue
+            legend = _legend_of(fig, trace)
+            xaxis = fig.layout[(trace.xaxis or "x").replace("x", "xaxis", 1)]
+            yaxis = fig.layout[(trace.yaxis or "y").replace("y", "yaxis", 1)]
+            assert legend.x == pytest.approx(sum(xaxis.domain) / 2), trace.name
+            assert legend.y < yaxis.domain[0], trace.name
+            assert legend.xanchor == "center" and legend.yanchor == "top"
+
+    def test_panel_1_entries_wrap_into_rows_no_wider_than_the_panel(self):
+        """Three entries at ~5.8 px a character do not fit a 489 px panel on one
+        row; Plotly would wrap them at the full plot width, across panel 2."""
+        fig = self._sheet()
+        panel_1 = [t for t in fig.data if (t.xaxis or "x") == "x"
+                   and t.name and t.showlegend is not False]
+        assert len(panel_1) == 3
+        ids = list(dict.fromkeys(t.legend or "legend" for t in panel_1))
+        assert len(ids) == 2
+        first, second = (fig.layout[i] for i in ids)
+        plot_height = report._plot_height(2)
+        assert first.y - second.y == pytest.approx(report._LEGEND_ROW_PX / plot_height)
+        assert first.y == pytest.approx(
+            fig.layout.yaxis.domain[0] - report._LEGEND_OFFSET_PX / plot_height)
+
+    def test_panels_do_not_share_a_legend(self):
+        fig = self._sheet()
+        by_panel = {}
+        for trace in fig.data:
+            if trace.name and trace.showlegend is not False:
+                by_panel.setdefault(trace.xaxis or "x", set()).add(trace.legend or "legend")
+        assert len(by_panel) >= 3
+        seen = [i for ids in by_panel.values() for i in ids]
+        assert len(seen) == len(set(seen))
+
+    def test_a_group_member_follows_the_entry_that_shows_it(self):
+        """The arrowhead of a terminal-repeat arm is drawn without a legend
+        entry but in the arm's legend group; it must sit in the arm's legend
+        or a click on the entry would hide the arm and not the head."""
+        fig = self._sheet()
+        arms = [t for t in fig.data if t.legendgroup and t.legendgroup.startswith("direct pair")]
+        assert len(arms) >= 2 and len({t.legend or "legend" for t in arms}) == 1
+
+    def test_the_structure_legend_sits_close_under_a_bare_axis(self):
+        """Panel 4 shows no tick labels when panel 5 is beneath it, so its
+        legend starts right under the axis line rather than 46 px down, where
+        it would sit midway between the two panels."""
+        fig = self._sheet()
+        arm = [t for t in fig.data if t.name and t.name.startswith("direct pair")][0]
+        xaxis = fig.layout[(arm.xaxis or "x").replace("x", "xaxis", 1)]
+        yaxis = fig.layout[(arm.yaxis or "y").replace("y", "yaxis", 1)]
+        assert xaxis.showticklabels is False
+        assert _legend_of(fig, arm).y == pytest.approx(
+            yaxis.domain[0] - report._LEGEND_OFFSET_BARE_PX / report._plot_height(2))
+
+    def test_the_notes_clear_the_deepest_bottom_legend(self):
+        """Six class keys and two ORF strands under panel 5 are more than one
+        row holds; the notes line and the bottom margin move down by the
+        extra rows."""
+        orders = ["PF00078", "PF00077", "PF00517", "PF02994", "PF01541", "PF00589",
+                  "PF01609", "PF01359"]
+        many = [hit(query=f"dom{i}", query_accession=f"{acc}.1", start=100 + 60 * i,
+                    end=150 + 60 * i) for i, acc in enumerate(orders)]
+        orfs = [ORF(0, 600, "+", "M" * 200), ORF(600, 900, "-", "M" * 100)]
+        data = fragmented_data(homology=many, orfs=orfs)
+        data.notes.append("a note")
+        fig = report.build_figure(data, theme.LIGHT)
+        plot_height = report._plot_height(2)
+        panel_5 = [t for t in fig.data if t.xaxis == "x5" and t.name and t.showlegend is not False]
+        rows = {t.legend for t in panel_5}
+        assert len(rows) >= 2
+        deepest = min(fig.layout[k].y for k in rows)
+        note = [a for a in fig.layout.annotations if a.text == "a note"][0]
+        assert note.y < deepest - report._LEGEND_ROW_PX / plot_height * 0.5
+        assert fig.layout.margin.b >= report._MARGIN_B + (len(rows) - 1) * report._LEGEND_ROW_PX
 
 
 class TestResetIsNotAliased:

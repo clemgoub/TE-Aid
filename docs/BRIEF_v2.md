@@ -118,22 +118,31 @@ concern.
         what the dot-plot says  |  what annotation says
 ```
 
+Each panel's legend sits under that panel, centred, in rows no wider than
+the panel (the maintainer asked for this on 2026-11-05; before, one legend
+under the grid mixed every panel's entries). Plotly wraps a horizontal legend at the full plot width, so
+`report._place_legends` packs a panel's entries into rows itself and makes
+each row a legend of its own. The band between panel rows holds the tick
+labels, the axis title, two legend rows and the next title (`_V_SPACING`).
+
 1. Genomic hits vs divergence (from the annotation / seed / blastn). One line
    per **copy**, not per annotation row (decided 2026-09-24): rows sharing an
    ID are one insertion, drawn as the consensus blocks its rows align to at one
    length-weighted divergence. Each join between rows carries a glyph: a
    thin dashed grey stretch for consensus the copy lacks, a short
    vertical tick where the genome carries sequence the consensus lacks (an
-   insertion, usually a nested element). Sizes are in the hover only, and the
-   lines thicken with the square root of the zoom factor, up to 8 px. We
-   dropped the `]··[` brackets, the plum gap colour and the printed sizes on
-   2026-11-04: the brackets were hard to read at 1.2 px, a dashed line reads
-   as a piece missing, and a size
-   printed at a join landed on neighbouring copies as often as on its own,
-   because the y axis is divergence and copies at close divergences share
-   pixels. That is also why panel 1 cannot give an IGV-style packed view of
-   gaps; see the SODA item in §open items. The dashes are grey and thinner
-   than the copies (0.8 px at rest) because in the copy's own colour, on
+   insertion, usually a nested element). A gap's length is in the hover only;
+   an insertion's size is in the hover and, once the view is zoomed in to a
+   quarter of the consensus or closer (`INSERTION_LABEL_ZOOM`), printed above
+   its tick (2026-11-05). The lines thicken with the square root of the zoom
+   factor, up to 8 px. We dropped the `]··[` brackets, the plum gap colour
+   and the sizes printed at rest on 2026-11-04: the brackets were hard to
+   read at 1.2 px, a dashed line reads as a piece missing, and a size printed
+   at a join landed on neighbouring copies as often as on its own, because
+   the y axis is divergence and copies at close divergences share pixels.
+   That is also why panel 1 cannot give an IGV-style packed view of gaps;
+   see the SODA item in §open items. The dashes are grey and thinner than
+   the copies (0.8 px at rest) because in the copy's own colour, on
    rnd-1_family-21, they stood out more than the copies.
 2. Consensus coverage pileup — copies **spanning** each position. A copy counts
    once per base its rows align to and **not across the gap between rows**,
