@@ -122,14 +122,19 @@ concern.
    per **copy**, not per annotation row (decided 2026-09-24): rows sharing an
    ID are one insertion, drawn as the consensus blocks its rows align to at one
    length-weighted divergence. Each join between rows carries a glyph: a
-   dashed stretch in the copy's colour for consensus the copy lacks, `|` where
-   the genome carries sequence the consensus lacks (an insertion, usually a
-   nested element). Zoomed in, the dashed stretch reads the consensus length it
-   spans (`658 bp`) and the `|` its size (`[1,045 bp]`), and the lines thicken
-   with the square root of the zoom factor, up to 8 px. We dropped the `]··[`
-   brackets and the plum gap colour on 2026-11-04: the brackets were hard to
-   read at 1.2 px, and a dashed line in the copy's own colour reads as one
-   copy with a piece missing.
+   thin dashed grey stretch for consensus the copy lacks, a short
+   vertical tick where the genome carries sequence the consensus lacks (an
+   insertion, usually a nested element). Sizes are in the hover only, and the
+   lines thicken with the square root of the zoom factor, up to 8 px. We
+   dropped the `]··[` brackets, the plum gap colour and the printed sizes on
+   2026-11-04: the brackets were hard to read at 1.2 px, a dashed line reads
+   as a piece missing, and a size
+   printed at a join landed on neighbouring copies as often as on its own,
+   because the y axis is divergence and copies at close divergences share
+   pixels. That is also why panel 1 cannot give an IGV-style packed view of
+   gaps; see the SODA item in §open items. The dashes are grey and thinner
+   than the copies (0.8 px at rest) because in the copy's own colour, on
+   rnd-1_family-21, they stood out more than the copies.
 2. Consensus coverage pileup — copies **spanning** each position. A copy counts
    once per base its rows align to and **not across the gap between rows**,
    since panel 1 draws that gap; full length likewise tests the union of the

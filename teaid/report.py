@@ -178,10 +178,10 @@ PANEL_HELP = {
         "matches, at its divergence. A copy RepeatMasker split into several rows "
         "(same ID) counts once, and its divergence is their mean weighted by "
         "consensus length, as RepeatMasker itself merges them.<br><br>"
-        "Where a copy was split: a <b>dashed</b> stretch is consensus the copy "
-        "<b>lacks</b> between its rows; <b>|</b> marks sequence the genome carries "
-        "and the consensus does not (an insertion, often a nested element). Zoom in "
-        "to read their sizes; the lines thicken as you do.<br><br>"
+        "Where a copy was split: a <b>dashed grey</b> stretch is consensus the copy "
+        "<b>lacks</b> between its rows; a <b>tick</b> marks sequence the genome "
+        "carries and the consensus does not (an insertion, often a nested element). "
+        "Hover either for its size. The lines thicken as you zoom in.<br><br>"
         "Copies whose source reports <b>no</b> divergence are left out entirely "
         "rather than drawn at zero — zero here would read as a pristine, very "
         "recent insertion, the opposite of 'unknown'. Any omitted are counted in "
@@ -493,7 +493,7 @@ def _panel_hits(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: in
             col=col,
         )
 
-    _junction_glyphs(fig, partial, full, data, theme, row, col)
+    _junction_glyphs(fig, plotted, theme, row, col)
 
     title = data.divergence_kind.axis_label
     if omitted:
@@ -508,115 +508,87 @@ def _panel_hits(fig: go.Figure, data: SheetData, theme: Theme, row: int, col: in
         _empty_note(fig, "no copy carries a divergence value", theme, row, col)
 
 
-# Panel 1 prints junction sizes once the view spans less than this fraction of
-# the consensus. At full width they would print over one another.
-JUNCTION_LABEL_ZOOM = 0.25
+# The vertical tick that marks an insertion in panel 1, in pixels.
+INSERTION_TICK = 8
 
 # Resting line widths in panel 1, in pixels. The page script multiplies them by
 # the square root of the zoom factor (full consensus span / visible span), up
 # to WIDTH_ZOOM_MAX pixels, so a junction gets room as the view closes in on it.
 COPY_WIDTH = 1.2
 FULL_LENGTH_WIDTH = 2.0
+GAP_WIDTH = 0.8
 WIDTH_ZOOM_MAX = 8.0
 
 
-def _junction_glyphs(fig: go.Figure, partial: list[Insertion], full: list[Insertion],
-                     data: SheetData, theme: Theme, row: int, col: int) -> None:
+def _junction_glyphs(fig: go.Figure, insertions: list[Insertion], theme: Theme,
+                     row: int, col: int) -> None:
     """Mark where each fragmented insertion was split, and what the split was.
 
-    - Every stretch of consensus the copy lacks between its rows is a
-      **dashed** segment in the copy's own colour, whatever kind of join
+    - Every stretch of consensus the copy lacks between its rows is a thin
+      **dashed grey** segment, whatever kind of join
       ``records._junction`` made it. So a gap under the 50 bp tolerance shows,
       and so does consensus skipped at a join that counts as an insertion
-      because its genomic gap is larger still. Zoomed in, the page script
-      labels the segment with the consensus length it spans; the hover gives
-      the join's kind and net indel size.
+      because its genomic gap is larger still. The hover gives the stretch,
+      its length, and the join's kind and net indel size.
     - An **insertion** (the genome carries sequence the consensus lacks,
       usually a nested element) uses no consensus, so the fragments abut. It is
-      a ``|`` at the join, which reads ``[1045 bp]`` zoomed in.
+      a short vertical tick at the join; its size is in the hover.
 
     Flush joins are not drawn: they are a split in the alignment, not an indel.
-    The sizes swap in and out in the browser (``write_html`` holds the handler),
-    using the ``far`` and ``near`` text carried in each trace's ``meta``.
+    The panel prints no size. The y axis is divergence, so copies at
+    close divergences share pixels, and a label printed at the join lands on
+    its neighbours as often as on its own line (seen on rnd-1_family-21,
+    19,597 copies, 2026-11-04).
     """
-    ins_x, ins_y, ins_far, ins_near, ins_hover = [], [], [], [], []
-    gap_x, gap_y, gap_near, gap_hover = [], [], [], []
-    seg: dict[str, tuple[list, list, list]] = {"partial": ([], [], []), "full": ([], [], [])}
-    for group, insertions in (("partial", partial), ("full", full)):
-        xs, ys, hovers = seg[group]
-        for insertion in insertions:
-            g0, g1 = insertion.genomic_1based()
-            where = f"{insertion.chrom}:{g0:,}-{g1:,} ({insertion.strand})"
-            y = insertion.divergence
-            blocks = insertion.consensus_blocks
-            joins = {j.consensus_at: j for j in insertion.junctions}
-            for (_, left), (right, _) in zip(blocks, blocks[1:]):
-                text = (f"{where}<br>consensus {left + 1:,}-{right:,} not in this copy "
-                        f"({right - left:,} bp)")
-                junction = joins.get(left)
-                if junction is not None and junction.kind is JunctionKind.DELETION:
-                    text += f"<br>a deletion in the copy: net {junction.size:,} bp"
-                elif junction is not None and junction.kind is JunctionKind.INSERTION:
-                    text += "<br>skipped at an insertion join"
-                xs += [left, right, None]
-                ys += [y, y, None]
-                hovers += [text, text, None]
-                gap_x.append((left + right) / 2)
-                gap_y.append(y)
-                gap_near.append(f"{right - left:,} bp")
-                gap_hover.append(text)
-            for junction in insertion.junctions:
-                if junction.kind is JunctionKind.INSERTION:
-                    ins_x.append(junction.consensus_at)
-                    ins_y.append(y)
-                    ins_far.append("|")
-                    ins_near.append(f"[{junction.size:,} bp]")
-                    ins_hover.append(f"{where}<br>insertion in the copy: {junction.size:,} bp "
-                                     f"of genome not in the consensus, at "
-                                     f"{junction.consensus_at:,}")
+    ins_x, ins_y, ins_hover = [], [], []
+    xs, ys, hovers = [], [], []
+    n_gaps = 0
+    for insertion in insertions:
+        g0, g1 = insertion.genomic_1based()
+        where = f"{insertion.chrom}:{g0:,}-{g1:,} ({insertion.strand})"
+        y = insertion.divergence
+        blocks = insertion.consensus_blocks
+        joins = {j.consensus_at: j for j in insertion.junctions}
+        for (_, left), (right, _) in zip(blocks, blocks[1:]):
+            text = (f"{where}<br>consensus {left + 1:,}-{right:,} not in this copy "
+                    f"({right - left:,} bp)")
+            junction = joins.get(left)
+            if junction is not None and junction.kind is JunctionKind.DELETION:
+                text += f"<br>a deletion in the copy: net {junction.size:,} bp"
+            elif junction is not None and junction.kind is JunctionKind.INSERTION:
+                text += "<br>skipped at an insertion join"
+            xs += [left, right, None]
+            ys += [y, y, None]
+            hovers += [text, text, None]
+            n_gaps += 1
+        for junction in insertion.junctions:
+            if junction.kind is JunctionKind.INSERTION:
+                ins_x.append(junction.consensus_at)
+                ins_y.append(y)
+                ins_hover.append(f"{where}<br>insertion in the copy: {junction.size:,} bp "
+                                 f"of genome not in the consensus, at "
+                                 f"{junction.consensus_at:,}")
 
-    font = dict(color=theme.text_primary, size=11, family=FONT_FAMILY)
-    n_gaps = len(gap_x)
-    for group, colour, width, opacity in (
-        ("partial", theme.base, COPY_WIDTH, data.partial_opacity),
-        ("full", theme.highlight, FULL_LENGTH_WIDTH, data.full_opacity),
-    ):
-        xs, ys, hovers = seg[group]
-        if not xs:
-            continue
+    if xs:
         fig.add_trace(go.Scatter(
             x=xs, y=ys, mode="lines", legendgroup="missing",
             name=f"consensus missing from the copy (n={n_gaps})",
-            # One legend entry for both colours; the partial swatch carries it
-            # unless only full-length copies have gaps.
-            showlegend=group == "partial" or not seg["partial"][0],
-            line=dict(color=colour, width=width, dash="dash"), opacity=opacity,
-            meta={"teaidWidth": width},
+            # Grey and thinner than the copy it belongs to: in the copy's own
+            # colour at the copy's width, a dense family's gaps stood out more
+            # than its copies.
+            line=dict(color=theme.muted, width=GAP_WIDTH, dash="dash"), opacity=0.85,
+            meta={"teaidWidth": GAP_WIDTH},
             hovertext=hovers, hovertemplate="%{hovertext}<extra></extra>",
         ), row=row, col=col)
-    if gap_x:
-        fig.add_trace(go.Scatter(
-            x=gap_x, y=gap_y, mode="text", text=[""] * n_gaps,
-            textfont=font, textposition="top center",
-            legendgroup="missing", showlegend=False,
-            hovertext=gap_hover, hovertemplate="%{hovertext}<extra></extra>",
-            meta={"teaidJunction": True, "far": [""] * n_gaps, "near": gap_near},
-        ), row=row, col=col)
     if ins_x:
-        # A text-only trace has no useful legend swatch, so a proxy carries it.
         fig.add_trace(go.Scatter(
-            x=[None], y=[None], mode="markers", legendgroup="insertion",
+            x=ins_x, y=ins_y, mode="markers", legendgroup="insertion",
             name=f"insertion in the copy (n={len(ins_x)})",
             # An open symbol strokes with marker.color; the line colour alone
             # leaves it on the default colourway.
-            marker=dict(symbol="line-ns-open", size=10, color=theme.text_primary,
+            marker=dict(symbol="line-ns-open", size=INSERTION_TICK, color=theme.text_primary,
                         line=dict(color=theme.text_primary, width=1.5)),
-        ), row=row, col=col)
-        fig.add_trace(go.Scatter(
-            x=ins_x, y=ins_y, mode="text", text=ins_far, textfont=font,
-            legendgroup="insertion", showlegend=False,
             hovertext=ins_hover, hovertemplate="%{hovertext}<extra></extra>",
-            meta={"teaidJunction": True, "far": ins_far, "near": ins_near},
         ), row=row, col=col)
 
 
@@ -1713,19 +1685,14 @@ _HTML_TEMPLATE = r"""<!doctype html>
     }});
   }})();
 
-  // Two things in panel 1 change with the zoom. Junction sizes appear once
-  // the view is zoomed in, because at full width they would print over one
-  // another: each junction trace carries its zoomed-out and zoomed-in text in
-  // meta.far and meta.near. Line widths grow with the square root of the zoom
-  // factor from the resting width in meta.teaidWidth, in half-pixel steps, up
-  // to WIDTH_MAX.
+  // Panel 1 line widths grow with the square root of the zoom factor from the
+  // resting width in meta.teaidWidth, in half-pixel steps, up to WIDTH_MAX.
   (function () {{
     var gd = document.getElementById({div_id!r});
     var FULL = {junction_full};
     var WIDTH_MAX = {width_max};
     if (!gd || !FULL) return;
     function attach() {{
-      var near = false;
       var step = 0;
       var timer = null;
       function follow() {{
@@ -1733,15 +1700,6 @@ _HTML_TEMPLATE = r"""<!doctype html>
         var axis = gd.layout.xaxis;
         if (!axis || !axis.range) return;
         var span = axis.range[1] - axis.range[0];
-        var zoomed = span < FULL * {junction_zoom};
-        if (zoomed !== near) {{
-          near = zoomed;
-          gd.data.forEach(function (trace, i) {{
-            if (trace.meta && trace.meta.teaidJunction) {{
-              Plotly.restyle(gd, {{text: [near ? trace.meta.near : trace.meta.far]}}, [i]);
-            }}
-          }});
-        }}
         var factor = Math.sqrt(Math.max(1, FULL / span));
         var now = Math.round(factor * 2) / 2;
         if (now === step) return;
@@ -1950,7 +1908,6 @@ def write_html(fig: go.Figure, path, data: SheetData, theme: Theme) -> None:
                 tsv_name=tsv_name,
                 alarm=STATUS_BELOW_FLOOR,
                 junction_full=data.consensus_length,
-                junction_zoom=JUNCTION_LABEL_ZOOM,
                 width_max=WIDTH_ZOOM_MAX,
             )
         )

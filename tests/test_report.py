@@ -713,21 +713,21 @@ class TestInsertionsOnTheSheet:
         assert "consensus missing from the copy (n=1)" in names
         gap = [t for t in fig.data if t.name and t.name.startswith("consensus missing")][0]
         assert gap.line.dash == "dash"
-        assert gap.line.color == theme.LIGHT.base, "a partial copy's gap is in its own colour"
+        assert gap.line.color == theme.LIGHT.muted, "grey, not the copy's colour"
+        assert gap.line.width < report.COPY_WIDTH, "thinner than the copy it belongs to"
         assert not [t for t in fig.data if t.mode == "text" and "]" in list(t.text or [])]
 
-    def test_a_full_length_copy_has_a_gap_in_its_own_colour(self):
+    def test_a_full_length_copy_shares_the_gap_trace(self):
         data = fragmented_data()
         data = make_data(insertions=data.insertions, full_length=list(data.insertions))
         fig = report.build_figure(data, theme.LIGHT)
         gaps = [t for t in fig.data if t.legendgroup == "missing" and t.mode == "lines"]
-        assert [g.line.color for g in gaps] == [theme.LIGHT.highlight]
-        assert [g.showlegend for g in gaps] == [True]
+        assert len(gaps) == 1 and gaps[0].line.color == theme.LIGHT.muted
 
     def test_panel_1_lines_carry_their_resting_width(self):
         fig = report.build_figure(fragmented_data(), theme.LIGHT)
         lines = [t for t in fig.data if t.meta and t.meta.get("teaidWidth")]
-        assert sorted(t.meta["teaidWidth"] for t in lines) == [report.COPY_WIDTH] * 2
+        assert sorted(t.meta["teaidWidth"] for t in lines) == [report.GAP_WIDTH, report.COPY_WIDTH]
         for trace in lines:
             assert trace.line.width == trace.meta["teaidWidth"]
         assert "line.width" in report._HTML_TEMPLATE and "teaidWidth" in report._HTML_TEMPLATE
@@ -748,17 +748,15 @@ class TestInsertionsOnTheSheet:
         gap = [t for t in fig.data if t.name and t.name.startswith("consensus missing")][0]
         assert list(gap.x[:2]) == [300, 340]
         assert "insertion in the copy (n=1)" in [t.name for t in fig.data if t.name]
-        labels = [t for t in fig.data if t.meta and t.meta.get("teaidJunction")
-                  and list(t.meta["near"]) == ["40 bp"]]
-        assert labels, "the 40 bp gap is labelled with the consensus it spans"
 
-    def test_junction_sizes_wait_for_a_zoom(self):
+    def test_no_size_is_printed_on_the_panel(self):
+        """Sizes are hover-only: printed at a join they landed on neighbouring
+        copies as often as on their own (rnd-1_family-21, 2026-11-04)."""
         fig = report.build_figure(fragmented_data(), theme.LIGHT)
-        carried = [t for t in fig.data if t.meta and t.meta.get("teaidJunction")]
-        texts = {tuple(t.meta["near"]) for t in carried}
-        assert ("[1,000 bp]",) in texts and ("200 bp",) in texts
-        for trace in carried:
-            assert list(trace.text) == list(trace.meta["far"])
+        assert not [t for t in fig.data if t.mode == "text"]
+        tick = [t for t in fig.data if t.name and t.name.startswith("insertion in the copy")][0]
+        assert tick.mode == "markers" and tick.marker.symbol == "line-ns-open"
+        assert list(tick.x) == [300]
 
 
 class TestResetIsNotAliased:
