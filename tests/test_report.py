@@ -500,6 +500,18 @@ class TestHomologyLaneSelection:
         sources = {getattr(h, "source", "pfam") for h in shown}
         assert sources == {"pfam", "repeatpeps-blastp"}
 
+    def test_tiers_one_and_two_are_ranked_together(self):
+        """Tier-1 and tier-2 hits both have profile-HMM bit scores, so
+        homology_lanes draws the stronger tier-2 hits instead of giving half the
+        lanes to tier 1 by round-robin."""
+        n = report.MAX_HOMOLOGY_LANES
+        pfam = self._hits(n, source="pfam")
+        gaps = [hit(query=f"G{i}", start=i * 300 + 50, end=i * 300 + 250,
+                    evalue=1e-50, score=300.0, source="repeatpeps-gaps")
+                for i in range(n)]
+        shown = report.homology_lanes(pfam + gaps)
+        assert {h.source for h in shown} == {"repeatpeps-gaps"}
+
     def test_the_table_agrees_with_the_panel(self, tmp_path):
         hits = self._hits(report.MAX_HOMOLOGY_LANES + 5)
         data = make_data(homology=hits, homology_all=hits)

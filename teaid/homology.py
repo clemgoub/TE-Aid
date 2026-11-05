@@ -149,7 +149,30 @@ def search(
             raise RuntimeError(f"bathsearch failed: {result.stderr.strip()[:400]}")
         text = table.read_text() if table.exists() else ""
 
-    return _parse_tblout(text)
+    return label_tiers(_parse_tblout(text), library)
+
+
+def label_tiers(hits: list[ProteinHit], library) -> list[ProteinHit]:
+    """Set each bathsearch hit's ``source`` to the tier its model came from.
+
+    ``proteins.build`` concatenates tiers 1 and 2 into one library and
+    :func:`search` runs one bathsearch over it, so the --tblout table has no tier
+    column. A Pfam model has an accession (``PF00078.33``); a model that
+    ``bathbuild`` made from RepeatPeps has none. Every accession-less model in a
+    deep library is from RepeatPeps. A ``--proteins`` library records nothing
+    about where its models came from, so this function labels its
+    accession-less hits ``prebuilt``.
+    """
+    tiers = getattr(library, "tiers", ())
+    if any(t.startswith("deep:") for t in tiers):
+        other = "repeatpeps-deep"
+    elif any(t.startswith("prebuilt") for t in tiers):
+        other = "prebuilt"
+    else:
+        other = "repeatpeps-gaps"
+    for hit in hits:
+        hit.source = "pfam" if hit.query_accession.startswith("PF") else other
+    return hits
 
 
 def _parse_tblout(text: str) -> list[ProteinHit]:
@@ -358,6 +381,17 @@ def apply_coverage_floor(hits, floor: float) -> tuple[list, list]:
     return kept, dropped
 
 
+def ranking_group(hit) -> str:
+    """The group this hit's score is ranked in: ``phmm`` or ``blastp``.
+
+    Every bathsearch hit has a profile-HMM bit score, whatever tier its model is
+    from, so :func:`best_per_region` and ``report.homology_lanes`` rank tier-1
+    and tier-2 hits against each other. They rank a blastp hit only against
+    other blastp hits.
+    """
+    return "blastp" if getattr(hit, "source", "pfam") == "repeatpeps-blastp" else "phmm"
+
+
 def best_per_region(
     hits: list[ProteinHit],
     overlap: float = 0.5,
@@ -371,8 +405,8 @@ def best_per_region(
     borrowed for *evidence selection only* — never for the classification
     decision RepeatClassifier goes on to make.
 
-    **Competition is within a source, not across them.** Two reasons, and either
-    alone is sufficient:
+    **Competition is within a ranking group, not across them** (see
+    :func:`ranking_group`). Two reasons, and either alone is sufficient:
 
     - The scores are not comparable. A ``blastp`` bitscore over a 1,000-residue
       ORF runs into the thousands; a profile-HMM bit score for a 200-position
@@ -387,7 +421,7 @@ def best_per_region(
     if per_source:
         groups: dict[str, list[ProteinHit]] = {}
         for hit in hits:
-            groups.setdefault(getattr(hit, "source", "pfam"), []).append(hit)
+            groups.setdefault(ranking_group(hit), []).append(hit)
         merged = [
             h
             for group in groups.values()
