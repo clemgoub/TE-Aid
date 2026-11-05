@@ -121,10 +121,20 @@ concern.
 1. Genomic hits vs divergence (from the annotation / seed / blastn). One line
    per **copy**, not per annotation row (decided 2026-09-24): rows sharing an
    ID are one insertion, drawn as the consensus blocks its rows align to at one
-   length-weighted divergence. Each join between rows carries a glyph: `]··[`
-   around consensus the copy lacks (a deletion), `|` where the genome carries
-   sequence the consensus lacks (an insertion, usually a nested element).
-   Zoomed in, the glyphs read their sizes (`]··658 bp··[`, `[1,045 bp]`).
+   length-weighted divergence. Each join between rows carries a glyph: a
+   thin dashed grey stretch for consensus the copy lacks, a short
+   vertical tick where the genome carries sequence the consensus lacks (an
+   insertion, usually a nested element). Sizes are in the hover only, and the
+   lines thicken with the square root of the zoom factor, up to 8 px. We
+   dropped the `]··[` brackets, the plum gap colour and the printed sizes on
+   2026-11-04: the brackets were hard to read at 1.2 px, a dashed line reads
+   as a piece missing, and a size
+   printed at a join landed on neighbouring copies as often as on its own,
+   because the y axis is divergence and copies at close divergences share
+   pixels. That is also why panel 1 cannot give an IGV-style packed view of
+   gaps; see the SODA item in §open items. The dashes are grey and thinner
+   than the copies (0.8 px at rest) because in the copy's own colour, on
+   rnd-1_family-21, they stood out more than the copies.
 2. Consensus coverage pileup — copies **spanning** each position. A copy counts
    once per base its rows align to and **not across the gap between rows**,
    since panel 1 draws that gap; full length likewise tests the union of the
@@ -609,7 +619,11 @@ This section is status and direction only.
   second rendering stack beside Plotly. We think the least disruptive way in
   is a separate viewer that reads the files `--all-tables` already writes
   (`copies.tsv` carries every row with its copy number), leaving the sheet as
-  it is. Not started.
+  it is. Not started. Checked again on 2026-11-04: `@sodaviz/soda` is at
+  0.13.1, last commit 2023-04-07, depends on d3 5 and ships no browser bundle.
+  We did panel 1's zoom-dependent widths and dashed gaps in Plotly instead.
+  Plotly cannot draw a packed one-row-per-copy track well; that view, the
+  separate viewer above, is where SODA or igv.js would fit.
 - **GUI.** Unscoped. The sheet is already a standalone HTML page, so the
   smallest useful version may be an index over many sheets rather than a new
   application. One correction to that idea: the sheet is **not** self-contained
