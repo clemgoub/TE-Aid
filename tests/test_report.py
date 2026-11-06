@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 
@@ -114,6 +115,20 @@ class TestQuadrantGrid:
         fig = report.build_figure(make_data(), theme.LIGHT)  # no self-hits, no ORFs
         referenced = {t.xaxis or "x" for t in fig.data}
         assert {"x3", "x4"} <= referenced
+
+
+class TestTheLogo:
+    def test_the_sheet_carries_the_logo_inline(self, tmp_path):
+        """Users move a sheet around as one file, so the logo is embedded as a
+        data URI. A relative link would break once the file leaves its folder."""
+        data = make_data()
+        fig = report.build_figure(data, theme.LIGHT)
+        path = tmp_path / "sheet.html"
+        report.write_html(fig, path, data, theme.LIGHT)
+        page = path.read_text()
+        match = re.search(r'<img class="teaid-logo" src="data:image/png;base64,([A-Za-z0-9+/=]+)"', page)
+        assert match, "logo missing from the toolbar"
+        assert base64.b64decode(match.group(1))[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 class TestResetControl:

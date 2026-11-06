@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import textwrap
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 import plotly.graph_objects as go
@@ -1698,6 +1699,7 @@ _HTML_TEMPLATE = r"""<!doctype html>
     max-width: 1180px;
     margin: 0 auto;
   }}
+  .teaid-logo {{ height: 34px; width: auto; display: block; margin-right: 4px; }}
   .teaid-reset {{
     font: inherit;
     font-size: 12px;
@@ -1746,6 +1748,7 @@ _HTML_TEMPLATE = r"""<!doctype html>
 </head>
 <body>
 <div class="teaid-bar">
+  <img class="teaid-logo" src="{logo}" alt="TE-Aid">
   <button class="teaid-reset" id="teaid-reset" type="button">Reset view</button>
   <span class="teaid-hint">drag to pan · scroll to zoom · double-click a panel to autoscale it</span>
 </div>
@@ -1943,6 +1946,16 @@ def _hits_table(data: SheetData, theme: Theme, tsv_name: str) -> tuple[str, str]
     return markup, _json.dumps(rows)
 
 
+LOGO = Path(__file__).parent / "data" / "logo.png"
+
+
+def _logo_data_uri() -> str:
+    """The logo as a data URI, so the sheet holds it instead of linking to a file."""
+    import base64
+
+    return "data:image/png;base64," + base64.b64encode(LOGO.read_bytes()).decode("ascii")
+
+
 def write_html(fig: go.Figure, path, data: SheetData, theme: Theme) -> None:
     """Write the interactive sheet, with a reset control the modebar lacks."""
     import json
@@ -1998,6 +2011,7 @@ def write_html(fig: go.Figure, path, data: SheetData, theme: Theme) -> None:
                 axis=theme.axis,
                 accent=theme.base,
                 font=FONT_FAMILY,
+                logo=_logo_data_uri(),
                 plot=plot_div,
                 reset=json.dumps(reset),
                 div_id=div_id,
