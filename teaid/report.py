@@ -104,16 +104,19 @@ _LEGEND_ROW_PX = 22
 _LEGEND_CHAR_PX = 5.8
 _LEGEND_ENTRY_PAD_PX = 44
 # Each quadrant sits on a card (see _quadrant_cards): a rectangle in the
-# surface colour with a 1 px border, square corners and no shadow, drawn under
-# the panel, its title and its legend. The card reaches this far past the axes:
-# left, over the y tick labels and axis title; right, a small margin; above,
-# the title; below, the legend, whose last row's box runs 7 px past the row
-# pitch. The maintainer asked for flat cards and a toolbar that stays at the
-# top of the page on 2026-11-05.
+# surface colour with a 1 px border in the grid colour and corners rounded by
+# _CARD_RADIUS_PX, drawn under the panel, its title and its legend. The HTML
+# page adds a faint shadow in CSS; the static export has none. The card
+# reaches this far past the axes: left, over the y tick labels and axis
+# title; right, a small margin; above, the title; below, the legend, whose
+# last row's box runs 7 px past the row pitch. The maintainer asked for cards
+# and a toolbar that stays at the top of the page on 2026-11-05, flat at
+# first; the same day they asked for rounded corners and a light shadow.
 _CARD_LEFT_PX = 56
 _CARD_RIGHT_PX = 12
 _CARD_PAD_PX = 8
 _CARD_PAD_BOTTOM_PX = 15
+_CARD_RADIUS_PX = 6
 _TITLE_PX = 17
 # Panels 4 and 5 share a card and an x-axis, so the band between them holds
 # only panel 4's legend close under its bare axis, a gap, and panel 5's title.
@@ -218,7 +221,7 @@ def _quadrant_cards(
     fig: go.Figure, theme: Theme, cell_rows: float,
     cards: list[list[tuple[int, int]]], legend_depths: dict[tuple[str, str], float],
 ) -> None:
-    """Draw a flat card under each quadrant, behind its panels.
+    """Draw a card under each quadrant, behind its panels.
 
     A card is a rectangle in paper coordinates, which run past the axes: it
     covers the panel's title above them and the tick labels, axis title and
@@ -231,7 +234,7 @@ def _quadrant_cards(
     panels 4 and 5 together when the bottom-right quadrant is split.
     """
     plot_height = _plot_height(cell_rows)
-    shapes = []
+    bounds = []
     for members in cards:
         subplots = [fig.get_subplot(row, col) for row, col in members]
         x0 = min(s.xaxis.domain[0] for s in subplots) - _CARD_LEFT_PX / _PLOT_WIDTH
@@ -243,12 +246,42 @@ def _quadrant_cards(
         bare = lowest.xaxis.showticklabels is False
         below = legend_depths.get(key, _LEGEND_OFFSET_BARE_PX if bare else _LEGEND_OFFSET_PX)
         bottom = lowest.yaxis.domain[0] - (below + _CARD_PAD_BOTTOM_PX) / plot_height
-        shapes.append(dict(
-            type="rect", name="quadrant", layer="below",
-            xref="paper", yref="paper", x0=x0, x1=x1, y0=bottom, y1=top,
-            fillcolor=theme.surface, line=dict(color=theme.axis, width=1),
-        ))
+        bounds.append([x0, x1, bottom, top])
+    # Cards in one row end at the same depth, whatever each one's legend takes.
+    for card in bounds:
+        card[2] = min(other[2] for other in bounds if abs(other[3] - card[3]) < 1e-9)
+
+    shapes = [dict(
+        type="path", name="quadrant", layer="below", xref="paper", yref="paper",
+        path=_rounded_rect(x0, x1, bottom, top, _CARD_RADIUS_PX / _PLOT_WIDTH,
+                           _CARD_RADIUS_PX / plot_height),
+        fillcolor=theme.surface, line=dict(color=theme.grid, width=1),
+    ) for x0, x1, bottom, top in bounds]
     fig.layout.shapes = tuple(shapes) + tuple(fig.layout.shapes or ())
+
+
+def _rounded_rect(x0: float, x1: float, y0: float, y1: float, rx: float, ry: float) -> str:
+    """An SVG path for a rectangle with rounded corners, in Plotly's path syntax.
+
+    Plotly's rect shape has no corner radius, so the card is a path. The
+    radii differ because a pixel is a different fraction of the plot's width
+    and of its height.
+    """
+    p = "{:.6f},{:.6f}".format
+    return " ".join([
+        f"M {p(x0 + rx, y1)}", f"L {p(x1 - rx, y1)}", f"Q {p(x1, y1)} {p(x1, y1 - ry)}",
+        f"L {p(x1, y0 + ry)}", f"Q {p(x1, y0)} {p(x1 - rx, y0)}",
+        f"L {p(x0 + rx, y0)}", f"Q {p(x0, y0)} {p(x0, y0 + ry)}",
+        f"L {p(x0, y1 - ry)}", f"Q {p(x0, y1)} {p(x0 + rx, y1)}", "Z",
+    ])
+
+
+def card_bounds(shape) -> tuple[float, float, float, float]:
+    """``(x0, x1, y0, y1)`` of a card, read back from its path."""
+    pairs = [tuple(map(float, pair.split(","))) for pair in shape.path.split()
+             if "," in pair]
+    xs, ys = zip(*pairs)
+    return min(xs), max(xs), min(ys), max(ys)
 
 
 def _note_lines(notes: list[str]) -> list[str]:
@@ -1261,8 +1294,10 @@ def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col
 
     Domain colour is v1's TE-class scheme (green LTR, blue LINE, salmon DNA
     transposon), so a curator reads type at a glance the way they always have.
-    Colour is never the only channel: every row names its contents in the tick
-    gutter, which is the one text space on the sheet that cannot collide.
+    Colour is never the only channel: each domain's name sits above its
+    arrow, and an ORF row with no domain names its length and strand in the
+    tick gutter. The maintainer had the names moved out of the gutter on
+    2026-11-05, after long ones ran out of the panel's card.
 
     The silhouette is the point. A compact block of framed rows above a run of
     bare, notched rows is a decayed element, and no ORF-finder-then-align search
@@ -1291,6 +1326,9 @@ def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col
     ticktext: list[str] = []
     seen_classes: dict[str, str] = {}
     seen_strands: set[str] = set()
+    name_x: list[float] = []
+    name_y: list[float] = []
+    name_text: list[str] = []
     y = 0.0
 
     for entry in rows:
@@ -1349,7 +1387,6 @@ def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col
         # units tall -- sizing the spread by that pushed the single row of arrows
         # to the bottom of the row while its label stayed centred.
         used = (max(entry.lanes) + 1) if entry.lanes else 1
-        roster: list[tuple[float, int, str]] = []
         for hit, lane in zip(entry.hits, entry.lanes):
             hy = centre + (lane - (used - 1) / 2) * _SUBLANE
             key = tetypes.classify_hit(hit, orders)
@@ -1388,25 +1425,28 @@ def _panel_homology(fig: go.Figure, data: SheetData, theme: Theme, row: int, col
                 if hit.stop_codons:
                     bits.append(f"{hit.stop_codons}⊗")
                 mark = " " + " ".join(bits)
-            roster.append((hy, hit.start, ("= " if derived else "") + label + mark))
+            name_x.append((hit.start + hit.end) / 2)
+            name_y.append(hy)
+            name_text.append(("= " if derived else "") + label + mark)
 
-        # The roster must read top-to-bottom in the order the arrows actually
-        # sit, or it names the wrong bar. Sub-lane 0 draws at the *bottom* of the
-        # row (hy rises with the lane index), while the hits arrive sorted by
-        # start -- so listing them as they come inverted the pairing on every
-        # multi-lane row. Sort by descending y, then left-to-right among arrows
-        # sharing a lane.
-        roster.sort(key=lambda item: (-item[0], item[1]))
-        names = [label for _, _, label in roster]
-
-        if names:
-            ticktext.append("<br>".join(names))
-        elif entry.orf is not None:
+        if entry.orf is not None and not entry.hits:
             ticktext.append(f"{entry.orf.length_aa:,} aa {entry.orf.strand}")
         else:
             ticktext.append("")
         tickvals.append(centre)
         y -= height * _SUBLANE + _ROW_GAP
+
+    if name_text:
+        fig.add_trace(
+            go.Scatter(
+                x=name_x, y=name_y, mode="text", text=name_text,
+                textposition="top center",
+                textfont=dict(size=9, color=theme.muted),
+                showlegend=False, hoverinfo="skip",
+                meta={"teaidDomainName": True},
+            ),
+            row=row, col=col,
+        )
 
     # One legend entry per TE class actually present, so the key stays as short
     # as the sheet allows.
@@ -1796,6 +1836,10 @@ _HTML_TEMPLATE = r"""<!doctype html>
   .teaid-reset:focus-visible {{ outline: 2px solid {accent}; outline-offset: 2px; }}
   .teaid-hint {{ font-size: 11px; color: {muted}; }}
   .teaid-plot {{ max-width: 1180px; margin: 0 auto; }}
+  /* The quadrant cards: paper-referenced shapes on the layer below the traces. */
+  .teaid-plot .layer-below .shapelayer path {{
+    filter: drop-shadow(0 1px 2px {shadow});
+  }}
   .teaid-hits {{
     max-width: 1180px; margin: 4px auto 40px; padding: 0 16px;
     font-size: 12px; color: {text};
@@ -2094,6 +2138,7 @@ def write_html(fig: go.Figure, path, data: SheetData, theme: Theme) -> None:
                 accent=theme.base,
                 font=FONT_FAMILY,
                 logo=_logo_data_uri(),
+                shadow="rgba(0,0,0,0.35)" if theme.is_dark else "rgba(20,20,15,0.10)",
                 plot=plot_div,
                 reset=json.dumps(reset),
                 div_id=div_id,

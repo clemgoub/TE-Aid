@@ -447,29 +447,50 @@ class TestPanelTitleOrdering:
         assert len(self._titles(fig)) == len(axes) == 7
 
 
+def _domain_names(fig) -> list[str]:
+    """The names panel 5 writes above its arrows, in drawing order."""
+    for trace in fig.data:
+        if trace.meta and trace.meta.get("teaidDomainName"):
+            return list(trace.text)
+    return []
+
+
 class TestHomologyPanel:
-    def test_repeatpeps_names_are_shortened_for_the_axis(self):
+    def test_repeatpeps_names_are_shortened_for_the_panel(self):
         """A tier-2 model is named after the whole FASTA header; the class after
-        the '#' is redundant with the panel and pushes the name off the axis."""
+        the '#' is redundant with the panel and runs far past the arrow."""
         fig = report.build_figure(
             make_data(homology=[hit(query="ACROBAT1_tnp#DNA/PiggyBac")]), theme.LIGHT
         )
-        assert "ACROBAT1_tnp" in list(fig.layout.yaxis5.ticktext)[0]
-        assert "#DNA/PiggyBac" not in list(fig.layout.yaxis5.ticktext)[0]
+        assert "ACROBAT1_tnp" in _domain_names(fig)[0]
+        assert "#DNA/PiggyBac" not in _domain_names(fig)[0]
 
-    def test_a_disrupted_hit_is_counted_on_the_axis_not_only_in_hover(self):
+    def test_a_disrupted_hit_is_counted_on_the_sheet_not_only_in_hover(self):
         """The counts, not a bare mark: 2 frameshifts and 4 is a different
         finding from 1 and 0, and a static export has no hover."""
         fig = report.build_figure(
             make_data(homology=[hit(frameshifts=2, stop_codons=1)]), theme.LIGHT
         )
-        tick = list(fig.layout.yaxis5.ticktext)[0]
-        assert "2fs" in tick and "1⊗" in tick
+        name = _domain_names(fig)[0]
+        assert "2fs" in name and "1⊗" in name
 
     def test_intact_hits_carry_no_mark(self):
         fig = report.build_figure(make_data(homology=[hit()]), theme.LIGHT)
-        tick = list(fig.layout.yaxis5.ticktext)[0]
-        assert "fs" not in tick and "⊗" not in tick
+        name = _domain_names(fig)[0]
+        assert "fs" not in name and "⊗" not in name
+
+    def test_a_row_with_domains_keeps_its_tick_gutter_empty(self):
+        """Long model names ran out of the panel's card from the tick gutter,
+        so the names sit above their arrows and only a bare ORF row has a
+        gutter label."""
+        orf = ORF(0, 900, "+", "M" * 300)
+        fig = report.build_figure(
+            make_data(orfs=[orf, ORF(1000, 1600, "-", "M" * 200)],
+                      homology=[hit(start=100, end=400)]), theme.LIGHT
+        )
+        ticks = list(fig.layout.yaxis5.ticktext)
+        assert "" in ticks
+        assert any(t.endswith("aa -") for t in ticks)
 
     def test_lane_count_is_capped_and_stated(self):
         hits = [hit(query=f"D{i}", start=i * 400, end=i * 400 + 200, score=100.0 - i)
@@ -622,29 +643,24 @@ class TestTheInlineScriptParses:
             )
 
 
-class TestRosterMatchesTheArrows:
-    """Panel 5 names each row's domains in the y-axis gutter. The names must
-    read top-to-bottom in the order the arrows actually sit, or the roster
-    labels the wrong bar -- sub-lane 0 draws at the *bottom* of a row, while the
-    hits arrive sorted by start, so listing them as they came inverted it.
+class TestNamesSitOnTheirArrows:
+    """Panel 5 writes each domain's name above its arrow. The name's anchor
+    must share the arrow's y, or it labels the wrong bar on a multi-lane row.
     """
 
     @staticmethod
-    def _roster_and_positions(fig):
-        roster = None
-        for name in fig.layout:
-            if not name.startswith("yaxis"):
-                continue
-            ticktext = fig.layout[name].ticktext
-            if ticktext and any("LOWER" in t for t in ticktext):
-                roster = next(t for t in ticktext if "LOWER" in t)
+    def _names_and_positions(fig):
+        named = {}
+        for trace in fig.data:
+            if trace.meta and trace.meta.get("teaidDomainName"):
+                named = dict(zip(trace.text, trace.y))
         drawn = {}
         for trace in fig.data:
             tpl = getattr(trace, "hovertemplate", None) or ""
             for label in ("LOWER", "UPPER"):
                 if f"<b>{label}</b>" in tpl and label not in drawn:
                     drawn[label] = trace.y[0]
-        return roster, drawn
+        return named, drawn
 
     def _two_lane_figure(self):
         # Both hits share the ORF's reading frame (frame 1) and overlap each
@@ -658,22 +674,19 @@ class TestRosterMatchesTheArrows:
     def test_the_two_hits_really_do_land_on_different_lanes(self):
         """Guards the fixture: if they shared a lane the test would pass for
         the wrong reason."""
-        _, drawn = self._roster_and_positions(self._two_lane_figure())
+        _, drawn = self._names_and_positions(self._two_lane_figure())
         assert set(drawn) == {"LOWER", "UPPER"}
         assert drawn["LOWER"] != drawn["UPPER"]
 
-    def test_the_name_listed_first_is_the_arrow_drawn_highest(self):
-        roster, drawn = self._roster_and_positions(self._two_lane_figure())
-        assert roster is not None, "expected a roster naming both hits"
-        listed = roster.split("<br>")
-        highest = max(drawn, key=lambda k: drawn[k])
-        assert listed[0].strip().endswith(highest), (
-            f"roster reads {listed} but {highest} is drawn on top"
-        )
+    def test_each_name_is_anchored_on_its_own_arrow(self):
+        named, drawn = self._names_and_positions(self._two_lane_figure())
+        assert set(named) == {"LOWER", "UPPER"}
+        for label, y in drawn.items():
+            assert named[label] == pytest.approx(y), f"{label} is named at another y"
 
-    def test_a_single_lane_row_centres_its_arrow_on_its_label(self):
-        """Row height also grows with the tick roster, so sizing the arrow
-        spread by height dropped a lone arrow below its own centred label."""
+    def test_a_single_lane_row_centres_its_arrow_on_the_row(self):
+        """Row height also grows with the name count, so sizing the arrow
+        spread by height dropped a lone arrow below the row's centre."""
         orf = ORF(0, 6000, "+", "M" * 2000)
         hits = [hit(query=f"D{i}", start=i * 900, end=i * 900 + 300)
                 for i in range(6)]
@@ -683,16 +696,10 @@ class TestRosterMatchesTheArrows:
         ys = {t.y[0] for t in fig.data
               if "<b>D" in (getattr(t, "hovertemplate", None) or "")}
         assert len(ys) == 1, "six non-overlapping hits belong on one lane"
-        centres = []
-        for name in fig.layout:
-            if name.startswith("yaxis") and fig.layout[name].ticktext:
-                for val, txt in zip(fig.layout[name].tickvals,
-                                    fig.layout[name].ticktext):
-                    if "D0" in txt:
-                        centres.append(val)
-        assert centres, "expected the roster tick for this row"
+        centres = list(fig.layout.yaxis5.tickvals)
+        assert len(centres) == 1, "expected one row"
         assert ys.pop() == pytest.approx(centres[0]), (
-            "the arrow must sit on the same y as the label naming it"
+            "the arrow must sit on the row's centre"
         )
 
 
@@ -794,14 +801,33 @@ class TestQuadrantCards:
     def _cards(self, fig):
         return [s for s in fig.layout.shapes if s.name == "quadrant"]
 
-    def test_one_flat_card_per_quadrant(self):
+    def test_one_card_per_quadrant(self):
         fig = report.build_figure(make_data(), theme.LIGHT)
         cards = self._cards(fig)
         assert len(cards) == 4
         for card in cards:
-            assert (card.xref, card.yref, card.layer) == ("paper", "paper", "below")
+            assert (card.type, card.xref, card.yref, card.layer) == (
+                "path", "paper", "paper", "below")
             assert card.fillcolor == theme.LIGHT.surface
-            assert (card.line.color, card.line.width) == (theme.LIGHT.axis, 1)
+            assert (card.line.color, card.line.width) == (theme.LIGHT.grid, 1)
+
+    def test_corners_are_rounded_by_the_card_radius(self):
+        fig = report.build_figure(make_data(), theme.LIGHT)
+        card = self._cards(fig)[0]
+        x0, x1, y0, y1 = report.card_bounds(card)
+        first = card.path.split()[1]  # the path starts one radius in from the corner
+        assert float(first.split(",")[0]) == pytest.approx(
+            x0 + report._CARD_RADIUS_PX / report._PLOT_WIDTH, abs=1e-6)
+        assert card.path.count("Q") == 4
+
+    def test_cards_in_a_row_end_at_the_same_depth(self):
+        """Panel 1 has a legend and panel 2 none; their cards still align."""
+        fig = report.build_figure(make_data(), theme.LIGHT)
+        tops = {}
+        for card in self._cards(fig):
+            x0, x1, y0, y1 = report.card_bounds(card)
+            tops.setdefault(round(y1, 6), set()).add(round(y0, 6))
+        assert len(tops) == 2 and all(len(bottoms) == 1 for bottoms in tops.values())
 
     def test_cards_go_under_a_panel_s_own_shading(self):
         """The seed-depth shading is a 'below' shape too; a card appended after
@@ -813,16 +839,17 @@ class TestQuadrantCards:
     def test_a_card_holds_its_panel_title_and_legend(self):
         fig = report.build_figure(make_data(), theme.LIGHT)
         xaxis, yaxis = fig.layout.xaxis, fig.layout.yaxis
-        card = min(self._cards(fig), key=lambda s: (s.x0, -s.y1))
+        bounds = [report.card_bounds(c) for c in self._cards(fig)]
+        x0, x1, y0, y1 = min(bounds, key=lambda b: (b[0], -b[3]))
         plot_height = report._plot_height(2)
-        assert card.x0 < xaxis.domain[0] and card.x1 > xaxis.domain[1]
-        assert card.y1 > yaxis.domain[1] + report._TITLE_PX / plot_height
+        assert x0 < xaxis.domain[0] and x1 > xaxis.domain[1]
+        assert y1 > yaxis.domain[1] + report._TITLE_PX / plot_height
         legend_bottoms = [
             fig.layout[name].y - report._LEGEND_ROW_PX / plot_height
             for name in fig.layout if name.startswith("legend")
             and abs(fig.layout[name].x - sum(xaxis.domain) / 2) < 1e-9
         ]
-        assert legend_bottoms and card.y0 < min(legend_bottoms)
+        assert legend_bottoms and y0 < min(legend_bottoms)
 
     def test_panels_4_and_5_share_one_card(self):
         data = fragmented_data(
@@ -835,9 +862,10 @@ class TestQuadrantCards:
         assert len(cards) == 4
         structure = fig.get_subplot(2, 2)
         homology = fig.get_subplot(3, 2)
-        right = [c for c in cards if c.x1 > 0.9]
-        shared = [c for c in right if c.y1 > structure.yaxis.domain[1]
-                  and c.y0 < homology.yaxis.domain[0]]
+        bounds = [report.card_bounds(c) for c in cards]
+        right = [b for b in bounds if b[1] > 0.9]
+        shared = [b for b in right if b[3] > structure.yaxis.domain[1]
+                  and b[2] < homology.yaxis.domain[0]]
         assert len(shared) == 1
         # Panel 4 shows no tick labels, so it grows down towards panel 5.
         gap_px = (structure.yaxis.domain[0] - homology.yaxis.domain[1]) * report._plot_height(2)
@@ -851,6 +879,16 @@ class TestQuadrantCards:
         page = path.read_text()
         bar = re.search(r"\.teaid-bar \{(.*?)\}", page, re.S)
         assert bar and "position: sticky" in bar.group(1)
+
+    def test_the_page_gives_the_cards_a_shadow(self, tmp_path):
+        """Plotly shapes have no shadow, so the page adds one in CSS to the
+        shape layer below the traces, where the cards are drawn."""
+        data = make_data()
+        fig = report.build_figure(data, theme.LIGHT)
+        path = tmp_path / "sheet.html"
+        report.write_html(fig, path, data, theme.LIGHT)
+        assert re.search(r"\.layer-below \.shapelayer path \{\s*filter: drop-shadow",
+                         path.read_text())
 
 
 class TestLegendsSitUnderTheirPanels:

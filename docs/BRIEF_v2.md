@@ -122,15 +122,17 @@ Each panel's legend sits under that panel, centred, in rows no wider than
 the panel (the maintainer asked for this on 2026-11-05; before, one legend
 under the grid mixed every panel's entries). Plotly wraps a horizontal legend at the full plot width, so
 `report._place_legends` packs a panel's entries into rows itself and makes
-each row a legend of its own. Each quadrant sits on a flat card, a
-rectangle in the surface colour with a 1 px border, square corners and no
-shadow. `report._quadrant_cards` draws it as a paper-coordinate shape on the
+each row a legend of its own. Each quadrant sits on a card, a rectangle in
+the surface colour with a 1 px border in the grid colour and 6 px rounded
+corners. `report._quadrant_cards` draws it as a paper-coordinate path on the
 layer below the traces, so it extends under the panel's title, tick labels,
-axis title and legend. The maintainer asked for cards and a toolbar that
-stays at the top of the page on 2026-11-05, and turned down rounded corners
-and shadows. Panels 4 and 5 share the bottom-right card. The band between
-quadrant rows holds the tick labels, the axis title, two legend rows, the
-card paddings, a 20 px gap between cards and the next title (`_V_SPACING`).
+axis title and legend. The HTML page adds a faint shadow in CSS; the static
+export has none. The maintainer asked for cards and a toolbar that stays
+at the top of the page on 2026-11-05, saw a flat version, and asked for it a
+little softer. Panels 4 and 5 share the bottom-right card, and cards in one
+row end at the same depth. The band between quadrant rows holds the tick
+labels, the axis title, two legend rows, the card paddings, a 20 px gap
+between cards and the next title (`_V_SPACING`).
 
 1. Genomic hits vs divergence (from the annotation / seed / blastn). One line
    per **copy**, not per annotation row (decided 2026-09-24): rows sharing an
@@ -196,8 +198,10 @@ card paddings, a 20 px gap between cards and the next title (`_V_SPACING`).
    on top of it. A hit with no open frame in its own register gets a bare row
    over a dotted ground rule. Domain colour is **v1's TE-class scheme** (green
    LTR, blue LINE, salmon DNA transposon) so type reads at a glance the way
-   curators are used to; colour is never the only channel, since every row names
-   its contents in the tick gutter. Also: best nucleotide hits (§5.1), pending.
+   curators are used to; colour is never the only channel, since each domain's
+   name sits above its arrow (moved out of the tick gutter on 2026-11-05, where
+   long names ran out of the card) and a bare ORF row names its length and
+   strand in the gutter. Also: best nucleotide hits (§5.1), pending.
 
    Two rules the layout depends on, both argued in full where the code lives:
    **a hit is housed by reading frame, not by coordinate overlap**
