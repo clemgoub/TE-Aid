@@ -300,7 +300,10 @@ class TestThemes:
         chosen = theme.get(name)
         fig = report.build_figure(make_data(), chosen)
         assert fig.layout.paper_bgcolor == chosen.paper
-        assert fig.layout.plot_bgcolor == chosen.surface
+        # The cards paint the surface; the plot background is clear so they show.
+        assert fig.layout.plot_bgcolor == "rgba(0,0,0,0)"
+        cards = [s for s in fig.layout.shapes if s.name == "quadrant"]
+        assert cards and all(s.fillcolor == chosen.surface for s in cards)
 
     def test_unknown_theme_is_rejected(self):
         with pytest.raises(ValueError):
@@ -785,6 +788,69 @@ class TestInsertionsOnTheSheet:
 
 def _legend_of(fig, trace):
     return fig.layout[trace.legend or "legend"]
+
+
+class TestQuadrantCards:
+    def _cards(self, fig):
+        return [s for s in fig.layout.shapes if s.name == "quadrant"]
+
+    def test_one_flat_card_per_quadrant(self):
+        fig = report.build_figure(make_data(), theme.LIGHT)
+        cards = self._cards(fig)
+        assert len(cards) == 4
+        for card in cards:
+            assert (card.xref, card.yref, card.layer) == ("paper", "paper", "below")
+            assert card.fillcolor == theme.LIGHT.surface
+            assert (card.line.color, card.line.width) == (theme.LIGHT.axis, 1)
+
+    def test_cards_go_under_a_panel_s_own_shading(self):
+        """The seed-depth shading is a 'below' shape too; a card appended after
+        it would cover it, so the cards go first."""
+        fig = report.build_figure(make_data(), theme.LIGHT)
+        names = [s.name for s in fig.layout.shapes]
+        assert names[:4] == ["quadrant"] * 4
+
+    def test_a_card_holds_its_panel_title_and_legend(self):
+        fig = report.build_figure(make_data(), theme.LIGHT)
+        xaxis, yaxis = fig.layout.xaxis, fig.layout.yaxis
+        card = min(self._cards(fig), key=lambda s: (s.x0, -s.y1))
+        plot_height = report._plot_height(2)
+        assert card.x0 < xaxis.domain[0] and card.x1 > xaxis.domain[1]
+        assert card.y1 > yaxis.domain[1] + report._TITLE_PX / plot_height
+        legend_bottoms = [
+            fig.layout[name].y - report._LEGEND_ROW_PX / plot_height
+            for name in fig.layout if name.startswith("legend")
+            and abs(fig.layout[name].x - sum(xaxis.domain) / 2) < 1e-9
+        ]
+        assert legend_bottoms and card.y0 < min(legend_bottoms)
+
+    def test_panels_4_and_5_share_one_card(self):
+        data = fragmented_data(
+            terminal_repeats={"LTR": [SelfHit(100, 200, 800, 900, 98.0, 1e-30, 400.0)],
+                              "TIR": []},
+            homology=[hit()],
+        )
+        fig = report.build_figure(data, theme.LIGHT)
+        cards = self._cards(fig)
+        assert len(cards) == 4
+        structure = fig.get_subplot(2, 2)
+        homology = fig.get_subplot(3, 2)
+        right = [c for c in cards if c.x1 > 0.9]
+        shared = [c for c in right if c.y1 > structure.yaxis.domain[1]
+                  and c.y0 < homology.yaxis.domain[0]]
+        assert len(shared) == 1
+        # Panel 4 shows no tick labels, so it grows down towards panel 5.
+        gap_px = (structure.yaxis.domain[0] - homology.yaxis.domain[1]) * report._plot_height(2)
+        assert abs(gap_px - report._STACK_GAP_PX) < 0.5
+
+    def test_the_toolbar_stays_at_the_top_of_the_page(self, tmp_path):
+        data = make_data()
+        fig = report.build_figure(data, theme.LIGHT)
+        path = tmp_path / "sheet.html"
+        report.write_html(fig, path, data, theme.LIGHT)
+        page = path.read_text()
+        bar = re.search(r"\.teaid-bar \{(.*?)\}", page, re.S)
+        assert bar and "position: sticky" in bar.group(1)
 
 
 class TestLegendsSitUnderTheirPanels:

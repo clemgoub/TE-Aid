@@ -122,8 +122,15 @@ Each panel's legend sits under that panel, centred, in rows no wider than
 the panel (the maintainer asked for this on 2026-11-05; before, one legend
 under the grid mixed every panel's entries). Plotly wraps a horizontal legend at the full plot width, so
 `report._place_legends` packs a panel's entries into rows itself and makes
-each row a legend of its own. The band between panel rows holds the tick
-labels, the axis title, two legend rows and the next title (`_V_SPACING`).
+each row a legend of its own. Each quadrant sits on a flat card, a
+rectangle in the surface colour with a 1 px border, square corners and no
+shadow. `report._quadrant_cards` draws it as a paper-coordinate shape on the
+layer below the traces, so it extends under the panel's title, tick labels,
+axis title and legend. The maintainer asked for cards and a toolbar that
+stays at the top of the page on 2026-11-05, and turned down rounded corners
+and shadows. Panels 4 and 5 share the bottom-right card. The band between
+quadrant rows holds the tick labels, the axis title, two legend rows, the
+card paddings, a 20 px gap between cards and the next title (`_V_SPACING`).
 
 1. Genomic hits vs divergence (from the annotation / seed / blastn). One line
    per **copy**, not per annotation row (decided 2026-09-24): rows sharing an
