@@ -166,8 +166,9 @@ silent:
 from  seed families.stk (Stockholm, 44 sequences)  +  annotation genome.fa.out (rmout)
 ```
 
-In the HTML sheet you can drag to pan, scroll to zoom, and double-click a panel
-to autoscale it. **Reset view** returns all four quadrants to the full consensus
+Each quadrant sits on its own card. The toolbar stays at the top of the page as
+you scroll. In the HTML sheet you can drag to pan, scroll to zoom, and
+double-click a panel to autoscale it. **Reset view** returns all four quadrants to the full consensus
 span at once — unlike Plotly's built-in reset, which autoscales each panel
 independently and so leaves them on different x-ranges. Each panel title carries
 a faded **?**: hover it for what the panel shows and the trap it exists to avoid.

@@ -274,12 +274,16 @@ class TestSeedQcPanels:
         shading only the shortfall answers 'where is it thin' directly."""
         depth = np.array([5] * 400 + [1] * 200 + [5] * 400)
         fig = report.build_figure(self._sheet(depth), theme.LIGHT)
-        shapes = fig.layout.shapes or []
+        shapes = [s for s in fig.layout.shapes or [] if s.name != "quadrant"]
         assert [(s.x0, s.x1) for s in shapes] == [(400, 600)]
 
     def test_a_seed_clearing_the_floor_is_not_shaded(self):
         fig = report.build_figure(self._sheet(np.array([9] * 1000)), theme.LIGHT)
-        assert not (fig.layout.shapes or [])
+        assert not [s for s in fig.layout.shapes or [] if s.name != "quadrant"]
+
+    def test_the_seed_qc_row_gets_its_own_two_cards(self):
+        fig = report.build_figure(self._sheet(np.array([9] * 1000)), theme.LIGHT)
+        assert len([s for s in fig.layout.shapes if s.name == "quadrant"]) == 6
 
     def test_shortfall_is_stated_on_the_sheet(self):
         data = self._sheet(np.array([2] * 300 + [8] * 700))
